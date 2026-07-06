@@ -26,6 +26,8 @@ import yaml
 from datetime import datetime, timezone
 from pathlib import Path
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 
 from .config   import BASE_DATA_DIR
@@ -56,10 +58,17 @@ log = logging.getLogger("spectro.main")
 # Application FastAPI
 # ─────────────────────────────────────────────────────────────
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await db_init()
+    await targets_db_init()
+    yield
+
 app = FastAPI(
     title="Spectro Orchestrator",
     description="Orchestrateur d'observations spectroscopiques",
-    version="0.5.0"
+    version="0.5.0",
+    lifespan=lifespan,
 )
 
 # ─────────────────────────────────────────────────────────────

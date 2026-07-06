@@ -102,6 +102,17 @@ Queries CDS TAP via ADQL over HTTPS. Returns `StarCreate`. Raises `SimbadNotFoun
 
 `TARGETS_DB_PATH` is defined in `targets.py` as `/tmp/rosace/targets.db`.
 
+### GUI (`rosace/rosace/gui/`)
+
+The control interface is a single-page application built **exclusively with [X4 (x4js)](https://github.com/rlibre/x4)**. No other UI framework or DOM manipulation library is permitted.
+
+- Entry point: `src/main.ts` — one `RosaceApp` class, all layout via X4 components
+- All containers must be `VBox` / `HBox`; all text via `Label`; all interactive elements via `Button` or `Component`
+- Build: `node build.mjs` (esbuild + TypeScript API plugin for decorator support — see comment in `build.mjs`)
+- Serve: `rosace_gui.py` serves `gui/` as static files and proxies `/api/*` to FastAPI
+
+**Known constraint:** esbuild does not compile TypeScript legacy decorators (`@class_ns`) for files inside `node_modules/`. The workaround in `main.ts` applies `class_ns("x4")` manually before any component is instantiated — this must be preserved.
+
 ### On-disk layout
 
 ```
