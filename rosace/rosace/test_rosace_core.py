@@ -1,0 +1,706 @@
+"""
+test_rosace_core.py — Tests de régression du module cœur Rosace.
+Périmètre : models, config, database, targets, simbad (hors plugins).
+
+Lancement :
+    pytest test_rosace_core.py -v
+    pytest test_rosace_core.py -v --tb=short   # traceback concis
+    pytest test_rosace_core.py -v -k "models"  # un groupe seulement
+
+Dépendances :
+    pip install pytest pytest-asyncio aiosqlite pydantic httpx
+"""
+
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+import pytest_asyncio
+
+# ─────────────────────────────────────────────────────────────
+# Patch de BASE_DATA_DIR avant tout import du package
+# (les tests utilisent un répertoire temporaire isolé)
+# ─────────────────────────────────────────────────────────────
+
+@pytest.fixture(scope="session", autouse=True)
+def tmp_data_dir(tmp_path_factory):
+    """
+    Remplace BASE_DATA_DIR par un répertoire temporaire pour toute la session.
+    Évite de polluer /tmp/rosace ou le répertoire de prod.
+    """
+    tmp = tmp_path_factory.mktemp("rosace_test_data")
+    # Patch avant le premier import du package rosace
+    import rosace.config as cfg
+    cfg.BASE_DATA_DIR = tmp
+    cfg.DB_PATH       = tmp / "rosace.db"
+    import rosace.targets as tgt
+    tgt.TARGETS_DB_PATH = tmp / "targets.db"
+    import rosace.database as db_mod
+    db_mod.DB_PATH = tmp / "rosace.db"
+    return tmp
+
+
+# ─────────────────────────────────────────────────────────────
+# Imports du package (après le patch)
+# ─────────────────────────────────────────────────────────────
+
+from rosace.models import (
+    OrchestratorStage,
+    Target,
+    ExposureConfig,
+    ObservationRequest,
+    Observation,
+    SessionContext,
+)
+from rosace.database import (
+    db_init,
+    db_insert_session,
+    db_close_session,
+    db_insert_observation,
+    db_set_yaml_file,
+    db_stamp_stage,
+    db_set_error,
+    db_set_stage_status,
+    db_get_recent_observations,
+)
+from rosace.targets import (
+    targets_db_init,
+    StarCreate, Star,
+    ProgramCreate, Program,
+    star_insert, star_get, star_get_by_name, star_list,
+    star_update, star_delete,
+    program_insert, program_get, program_list, program_delete,
+    program_add_star, program_remove_star,
+    program_get_stars, star_get_programs,
+)
+from rosace.simbad import (
+    simbad_search,
+    SimbadNotFoundError,
+    SimbadQueryError,
+)
+
+
+# ═════════════════════════════════════════════════════════════
+# GROUPE 1 — Modèles Pydantic
+# ═════════════════════════════════════════════════════════════
+
+class TestOrchestratorStage:
+    """Énumération des stages de la machine à états."""
+
+    def test_all_stages_present(self):
+        """Les 9 stages attendus sont bien déclarés."""
+        expected = {
+            "idle", "init_session", "scheduler", "sequencer",
+            "reduction", "sharing", "archive", "close_session", "error",
+        }
+        actual = {s.value for s in OrchestratorStage}
+        assert actual == expected
+
+    def test_stage_is_string_enum(self):
+        """OrchestratorStage hérite de str — utilisable comme chaîne."""
+        assert OrchestratorStage.IDLE == "idle"
+        assert isinstance(OrchestratorStage.SCHEDULER, str)
+
+    def test_stage_comparison(self):
+        assert OrchestratorStage.ERROR != OrchestratorStage.IDLE
+
+
+class TestTargetModel:
+    """Modèle Target (coordonnées célestes)."""
+
+    def test_valid_target(self):
+        t = Target(name="Vega", ra=279.23, dec=38.78)
+        assert t.name == "Vega"
+        assert t.ra == 279.23
+        assert t.dec == 38.78
+        assert t.magnitude is None
+
+    def test_target_with_magnitude(self):
+        t = Target(name="Sirius", ra=101.28, dec=-16.71, magnitude=-1.46)
+        assert t.magnitude == pytest.approx(-1.46)
+
+    def test_ra_lower_bound(self):
+        t = Target(name="Test", ra=0.0, dec=0.0)
+        assert t.ra == 0.0
+
+    def test_ra_upper_bound_exclusive(self):
+        """ra doit être strictement < 360."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            Target(name="Bad", ra=360.0, dec=0.0)
+
+    def test_ra_negative_rejected(self):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            Target(name="Bad", ra=-1.0, dec=0.0)
+
+    def test_dec_bounds(self):
+        Target(name="NP",  ra=0.0, dec=90.0)
+        Target(name="SP",  ra=0.0, dec=-90.0)
+
+    def test_dec_out_of_bounds(self):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            Target(name="Bad", ra=0.0, dec=91.0)
+        with pytest.raises(ValidationError):
+            Target(name="Bad", ra=0.0, dec=-91.0)
+
+
+class TestExposureConfig:
+    """Configuration d'exposition."""
+
+    def test_defaults(self):
+        e = ExposureConfig(exposure_time=300.0)
+        assert e.num_exposures == 1
+        assert e.binning == 1
+        assert e.grating == "R1200"
+        assert e.central_wavelength == pytest.approx(6563.0)
+
+    def test_custom_values(self):
+        e = ExposureConfig(exposure_time=600.0, num_exposures=3, binning=2, grating="R600")
+        assert e.num_exposures == 3
+        assert e.binning == 2
+        assert e.grating == "R600"
+
+    def test_exposure_time_must_be_positive(self):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            ExposureConfig(exposure_time=0.0)
+        with pytest.raises(ValidationError):
+            ExposureConfig(exposure_time=-1.0)
+
+    def test_binning_bounds(self):
+        from pydantic import ValidationError
+        ExposureConfig(exposure_time=1.0, binning=4)       # ok
+        with pytest.raises(ValidationError):
+            ExposureConfig(exposure_time=1.0, binning=5)   # > 4
+        with pytest.raises(ValidationError):
+            ExposureConfig(exposure_time=1.0, binning=0)   # < 1
+
+
+class TestObservation:
+    """Modèle Observation complet."""
+
+    def _make(self, obs_id="abc12345") -> Observation:
+        return Observation(
+            id=obs_id,
+            created_at=datetime.now(timezone.utc),
+            request=ObservationRequest(
+                target=Target(name="Altair", ra=297.69, dec=8.87),
+                exposure=ExposureConfig(exposure_time=120.0),
+            ),
+        )
+
+    def test_basic_creation(self):
+        obs = self._make()
+        assert obs.id == "abc12345"
+        assert obs.request.target.name == "Altair"
+        assert obs.files == []
+
+    def test_files_list_is_independent(self):
+        """Deux instances ne partagent pas la même liste files."""
+        obs1 = self._make("id1")
+        obs2 = self._make("id2")
+        obs1.files.append("spec.fits")
+        assert obs2.files == []
+
+
+class TestSessionContext:
+    """Contexte de session transmis entre les stages."""
+
+    def test_default_values(self):
+        ctx = SessionContext()
+        assert ctx.site_name == "St-Pancrasse"
+        assert ctx.current_observation is None
+        assert ctx.raw_files == []
+        assert ctx.reduced_files == []
+        assert len(ctx.session_id) == 8      # UUID[:8]
+
+    def test_session_ids_are_unique(self):
+        ids = {SessionContext().session_id for _ in range(50)}
+        assert len(ids) == 50                # très forte probabilité
+
+    def test_started_at_is_utc(self):
+        ctx = SessionContext()
+        assert ctx.started_at.tzinfo is not None
+
+    def test_custom_site(self):
+        ctx = SessionContext(site_name="Pic du Midi")
+        assert ctx.site_name == "Pic du Midi"
+
+
+# ═════════════════════════════════════════════════════════════
+# GROUPE 2 — Base de données sessions / observations
+# ═════════════════════════════════════════════════════════════
+
+class TestDatabase:
+    """Tests des fonctions database.py (SQLite via aiosqlite)."""
+
+    @pytest_asyncio.fixture(autouse=True)
+    async def init_db(self):
+        """Initialise les tables avant chaque test."""
+        await db_init()
+
+    def _make_ctx(self) -> SessionContext:
+        return SessionContext(site_name="St-Pancrasse")
+
+    def _make_obs(self, session_id: str) -> Observation:
+        import uuid
+        return Observation(
+            id=str(uuid.uuid4())[:8],
+            created_at=datetime.now(timezone.utc),
+            request=ObservationRequest(
+                target=Target(name="Vega", ra=279.23, dec=38.78),
+                exposure=ExposureConfig(exposure_time=300.0),
+            ),
+        )
+
+    async def test_db_init_idempotent(self):
+        """db_init peut être appelé plusieurs fois sans erreur."""
+        await db_init()
+        await db_init()
+
+    async def test_insert_and_close_session(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        await db_close_session(ctx, status="closed")
+
+    async def test_close_session_error_status(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        await db_close_session(ctx, status="error")
+
+    async def test_insert_observation(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs, ctx.session_id)
+
+    async def test_set_yaml_file(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs, ctx.session_id)
+        await db_set_yaml_file(obs.id, "/tmp/obs.yaml")
+
+    async def test_stamp_stages(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs, ctx.session_id)
+        for stage in (
+            OrchestratorStage.SEQUENCER,
+            OrchestratorStage.REDUCTION,
+            OrchestratorStage.SHARING,
+            OrchestratorStage.ARCHIVE,
+        ):
+            await db_stamp_stage(obs.id, stage)
+
+    async def test_stamp_ignored_stage(self):
+        """Un stage non mappé (ex. IDLE) ne lève pas d'erreur."""
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs, ctx.session_id)
+        await db_stamp_stage(obs.id, OrchestratorStage.IDLE)   # doit passer silencieusement
+
+    async def test_set_error(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs, ctx.session_id)
+        await db_set_error(obs.id, "Timeout séquenceur")
+
+    async def test_insert_observation_scheduler_status_is_done(self):
+        """Observation inserted with scheduler_status='done' and scheduler_done timestamp."""
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs, ctx.session_id)
+        rows = await db_get_recent_observations(limit=1)
+        assert rows[0]["stages"]["scheduler"]["status"] == "done"
+        assert rows[0]["stages"]["scheduler"]["done_at"] is not None
+
+    async def test_set_stage_status(self):
+        """db_set_stage_status updates the correct column."""
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs, ctx.session_id)
+        await db_set_stage_status(obs.id, OrchestratorStage.SEQUENCER, "running")
+        rows = await db_get_recent_observations(limit=1)
+        assert rows[0]["stages"]["sequencer"]["status"] == "running"
+
+    async def test_stamp_stage_sets_done_status_and_timestamp(self):
+        """db_stamp_stage records both the timestamp and status='done'."""
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs, ctx.session_id)
+        await db_stamp_stage(obs.id, OrchestratorStage.SEQUENCER)
+        rows = await db_get_recent_observations(limit=1)
+        seq = rows[0]["stages"]["sequencer"]
+        assert seq["status"] == "done"
+        assert seq["done_at"] is not None
+
+    async def test_get_recent_observations_order(self):
+        """db_get_recent_observations returns rows newest-first."""
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs1 = self._make_obs(ctx.session_id)
+        obs2 = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs1, ctx.session_id)
+        await db_insert_observation(obs2, ctx.session_id)
+        rows = await db_get_recent_observations(limit=2)
+        # Both observations are present (order by created_at DESC)
+        ids = [r["id"] for r in rows]
+        assert obs1.id in ids and obs2.id in ids
+
+
+# ═════════════════════════════════════════════════════════════
+# GROUPE 3 — Base de données cibles (targets.py)
+# ═════════════════════════════════════════════════════════════
+
+class TestTargetsDB:
+    """Tests CRUD étoiles et programmes (targets.py)."""
+
+    @pytest_asyncio.fixture(autouse=True)
+    async def init_db(self):
+        await targets_db_init()
+
+    def _star(self, name="Altair", ra=297.69, dec=8.87) -> StarCreate:
+        return StarCreate(name=name, ra=ra, dec=dec, magnitude=0.76,
+                          spectral_type="A7V", exposure_time=120.0)
+
+    def _program(self, name="Programme A") -> ProgramCreate:
+        return ProgramCreate(name=name, description="Test programme")
+
+    # ── Étoiles ──────────────────────────────────────────────
+
+    async def test_star_insert_and_get(self):
+        sid = await star_insert(self._star("Deneb"))
+        star = await star_get(sid)
+        assert star is not None
+        assert star.name == "Deneb"
+        assert star.id == sid
+
+    async def test_star_get_nonexistent(self):
+        star = await star_get(999999)
+        assert star is None
+
+    async def test_star_get_by_name(self):
+        await star_insert(self._star("Fomalhaut"))
+        star = await star_get_by_name("Fomalhaut")
+        assert star is not None
+        assert star.name == "Fomalhaut"
+
+    async def test_star_get_by_name_missing(self):
+        star = await star_get_by_name("PasDansLaBase")
+        assert star is None
+
+    async def test_star_list(self):
+        await star_insert(self._star("Alpha1"))
+        await star_insert(self._star("Alpha2", ra=10.0, dec=10.0))
+        stars = await star_list()
+        names = [s.name for s in stars]
+        assert "Alpha1" in names
+        assert "Alpha2" in names
+
+    async def test_star_update(self):
+        sid = await star_insert(self._star("OldName"))
+        updated = StarCreate(name="NewName", ra=100.0, dec=20.0)
+        await star_update(sid, updated)
+        star = await star_get(sid)
+        assert star.name == "NewName"
+        assert star.ra == pytest.approx(100.0)
+
+    async def test_star_delete(self):
+        sid = await star_insert(self._star("ToDelete"))
+        await star_delete(sid)
+        assert await star_get(sid) is None
+
+    async def test_star_fields_roundtrip(self):
+        """Tous les champs facultatifs survivent un aller-retour en base."""
+        sc = StarCreate(name="Rigel", ra=78.63, dec=-8.20,
+                        magnitude=0.13, spectral_type="B8Ia",
+                        exposure_time=600.0, notes="Belle étoile")
+        sid = await star_insert(sc)
+        star = await star_get(sid)
+        assert star.magnitude     == pytest.approx(0.13)
+        assert star.spectral_type == "B8Ia"
+        assert star.exposure_time == pytest.approx(600.0)
+        assert star.notes         == "Belle étoile"
+
+    # ── Programmes ───────────────────────────────────────────
+
+    async def test_program_insert_and_get(self):
+        pid = await program_insert(self._program("Prog-X"))
+        prog = await program_get(pid)
+        assert prog is not None
+        assert prog.name == "Prog-X"
+
+    async def test_program_get_nonexistent(self):
+        prog = await program_get(999999)
+        assert prog is None
+
+    async def test_program_list(self):
+        await program_insert(self._program("ListA"))
+        await program_insert(self._program("ListB"))
+        progs = await program_list()
+        names = [p.name for p in progs]
+        assert "ListA" in names
+        assert "ListB" in names
+
+    async def test_program_delete(self):
+        pid = await program_insert(self._program("ToDelete"))
+        await program_delete(pid)
+        assert await program_get(pid) is None
+
+    # ── Liens program ↔ stars ─────────────────────────────────
+
+    async def test_program_add_and_get_stars(self):
+        sid1 = await star_insert(self._star("S1", ra=10.0, dec=10.0))
+        sid2 = await star_insert(self._star("S2", ra=20.0, dec=20.0))
+        pid  = await program_insert(self._program("P-Lien"))
+        await program_add_star(pid, sid1)
+        await program_add_star(pid, sid2)
+        stars = await program_get_stars(pid)
+        assert len(stars) == 2
+        assert {s.id for s in stars} == {sid1, sid2}
+
+    async def test_program_add_star_idempotent(self):
+        """Ajouter deux fois la même étoile ne crée pas de doublon."""
+        sid = await star_insert(self._star("SIdem", ra=30.0, dec=5.0))
+        pid = await program_insert(self._program("P-Idem"))
+        await program_add_star(pid, sid)
+        await program_add_star(pid, sid)
+        stars = await program_get_stars(pid)
+        assert len(stars) == 1
+
+    async def test_program_remove_star(self):
+        sid = await star_insert(self._star("SRemove", ra=40.0, dec=5.0))
+        pid = await program_insert(self._program("P-Remove"))
+        await program_add_star(pid, sid)
+        await program_remove_star(pid, sid)
+        stars = await program_get_stars(pid)
+        assert stars == []
+
+    async def test_star_get_programs(self):
+        sid = await star_insert(self._star("SMultiProg", ra=50.0, dec=5.0))
+        pid1 = await program_insert(self._program("PA"))
+        pid2 = await program_insert(self._program("PB"))
+        await program_add_star(pid1, sid)
+        await program_add_star(pid2, sid)
+        progs = await star_get_programs(sid)
+        assert {p.id for p in progs} == {pid1, pid2}
+
+    async def test_delete_star_cleans_program_links(self):
+        """Supprimer une étoile retire aussi ses entrées program_stars."""
+        sid = await star_insert(self._star("SClean", ra=60.0, dec=5.0))
+        pid = await program_insert(self._program("P-Clean"))
+        await program_add_star(pid, sid)
+        await star_delete(sid)
+        stars = await program_get_stars(pid)
+        assert stars == []
+
+    async def test_delete_program_cleans_star_links(self):
+        """Supprimer un programme retire aussi ses entrées program_stars."""
+        sid = await star_insert(self._star("SPClean", ra=70.0, dec=5.0))
+        pid = await program_insert(self._program("PP-Clean"))
+        await program_add_star(pid, sid)
+        await program_delete(pid)
+        progs = await star_get_programs(sid)
+        assert progs == []
+
+
+# ═════════════════════════════════════════════════════════════
+# GROUPE 4 — Module Simbad (requêtes mockées)
+# ═════════════════════════════════════════════════════════════
+
+# Réponse JSON TAP simulée (format Simbad)
+SIMBAD_RESPONSE_VEGA = {
+    "metadata": [
+        {"name": "main_id"},
+        {"name": "ra"},
+        {"name": "dec"},
+        {"name": "sp_type"},
+        {"name": "vmag"},
+    ],
+    "data": [
+        ["* alf Lyr", 279.23473, 38.78369, "A0Va", 0.03],
+    ],
+}
+
+SIMBAD_RESPONSE_EMPTY = {"metadata": [], "data": []}
+
+SIMBAD_RESPONSE_NO_MAG = {
+    "metadata": [
+        {"name": "main_id"},
+        {"name": "ra"},
+        {"name": "dec"},
+        {"name": "sp_type"},
+        {"name": "vmag"},
+    ],
+    "data": [
+        ["* alf CMa", 101.287, -16.716, "A1Vm", None],
+    ],
+}
+
+
+def _mock_httpx_response(payload: dict, status_code: int = 200):
+    """Construit un mock de réponse httpx."""
+    import json as _json
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.json.return_value = payload
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
+class TestSimbad:
+    """Tests du module simbad.py (requêtes réseau mockées)."""
+
+    async def test_simbad_found(self):
+        """Retourne un StarCreate correctement peuplé."""
+        mock_resp = _mock_httpx_response(SIMBAD_RESPONSE_VEGA)
+
+        async def _fake_get(url, params):
+            return mock_resp
+
+        with patch("rosace.simbad.httpx.AsyncClient") as MockClient:
+            instance = AsyncMock()
+            instance.get = AsyncMock(return_value=mock_resp)
+            instance.__aenter__ = AsyncMock(return_value=instance)
+            instance.__aexit__  = AsyncMock(return_value=False)
+            MockClient.return_value = instance
+
+            result = await simbad_search("Vega")
+
+        assert result.name == "* alf Lyr"
+        assert result.ra   == pytest.approx(279.23473)
+        assert result.dec  == pytest.approx(38.78369)
+        assert result.spectral_type == "A0Va"
+        assert result.magnitude == pytest.approx(0.03)
+
+    async def test_simbad_not_found(self):
+        """Lève SimbadNotFoundError si data est vide."""
+        mock_resp = _mock_httpx_response(SIMBAD_RESPONSE_EMPTY)
+
+        with patch("rosace.simbad.httpx.AsyncClient") as MockClient:
+            instance = AsyncMock()
+            instance.get = AsyncMock(return_value=mock_resp)
+            instance.__aenter__ = AsyncMock(return_value=instance)
+            instance.__aexit__  = AsyncMock(return_value=False)
+            MockClient.return_value = instance
+
+            with pytest.raises(SimbadNotFoundError):
+                await simbad_search("PasUnEtoile")
+
+    async def test_simbad_magnitude_none(self):
+        """magnitude est None quand vmag est NULL dans Simbad."""
+        mock_resp = _mock_httpx_response(SIMBAD_RESPONSE_NO_MAG)
+
+        with patch("rosace.simbad.httpx.AsyncClient") as MockClient:
+            instance = AsyncMock()
+            instance.get = AsyncMock(return_value=mock_resp)
+            instance.__aenter__ = AsyncMock(return_value=instance)
+            instance.__aexit__  = AsyncMock(return_value=False)
+            MockClient.return_value = instance
+
+            result = await simbad_search("Sirius")
+
+        assert result.magnitude is None
+
+    async def test_simbad_network_error(self):
+        """Lève SimbadQueryError en cas d'erreur réseau."""
+        import httpx
+
+        with patch("rosace.simbad.httpx.AsyncClient") as MockClient:
+            instance = AsyncMock()
+            instance.get = AsyncMock(side_effect=httpx.RequestError("timeout"))
+            instance.__aenter__ = AsyncMock(return_value=instance)
+            instance.__aexit__  = AsyncMock(return_value=False)
+            MockClient.return_value = instance
+
+            with pytest.raises(SimbadQueryError):
+                await simbad_search("Vega")
+
+    async def test_simbad_http_error(self):
+        """Lève SimbadQueryError en cas d'erreur HTTP 5xx."""
+        import httpx
+
+        with patch("rosace.simbad.httpx.AsyncClient") as MockClient:
+            instance = AsyncMock()
+            mock_resp = MagicMock()
+            mock_resp.status_code = 503
+            mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+                "503", request=MagicMock(), response=mock_resp
+            )
+            instance.get = AsyncMock(return_value=mock_resp)
+            instance.__aenter__ = AsyncMock(return_value=instance)
+            instance.__aexit__  = AsyncMock(return_value=False)
+            MockClient.return_value = instance
+
+            with pytest.raises(SimbadQueryError):
+                await simbad_search("Vega")
+
+    async def test_simbad_sql_injection_escape(self):
+        """
+        Le nom contenant une apostrophe est correctement échappé
+        (pas de crash sur la construction de la requête ADQL).
+        """
+        mock_resp = _mock_httpx_response(SIMBAD_RESPONSE_EMPTY)
+
+        with patch("rosace.simbad.httpx.AsyncClient") as MockClient:
+            instance = AsyncMock()
+            instance.get = AsyncMock(return_value=mock_resp)
+            instance.__aenter__ = AsyncMock(return_value=instance)
+            instance.__aexit__  = AsyncMock(return_value=False)
+            MockClient.return_value = instance
+
+            with pytest.raises(SimbadNotFoundError):
+                await simbad_search("L'Etoile d'Argent")   # apostrophe
+
+
+# ═════════════════════════════════════════════════════════════
+# GROUPE 5 — Cohérence croisée modèles / machine à états
+# ═════════════════════════════════════════════════════════════
+
+class TestSystemState:
+    """
+    Vérifie la cohérence de SystemState (importé depuis main)
+    sans démarrer l'application FastAPI.
+    """
+
+    def test_system_state_initial(self):
+        from rosace.main import SystemState
+        s = SystemState()
+        assert s.stage            == OrchestratorStage.IDLE
+        assert s.is_running       is False
+        assert s.completed        == []
+        assert s.pending_post_obs == 0
+
+    def test_system_state_transition(self):
+        from rosace.main import SystemState
+        s = SystemState()
+        s.stage      = OrchestratorStage.SCHEDULER
+        s.is_running = True
+        assert s.stage == OrchestratorStage.SCHEDULER
+        assert s.is_running is True
+
+    def test_obs_stages_order(self):
+        """Foreground stages: SCHEDULER then SEQUENCER only."""
+        from rosace.main import OBS_STAGES
+        assert OBS_STAGES == [
+            OrchestratorStage.SCHEDULER,
+            OrchestratorStage.SEQUENCER,
+        ]
+
+    def test_post_obs_stages_order(self):
+        """Background post-obs stages: REDUCTION → SHARING → ARCHIVE."""
+        from rosace.main import POST_OBS_STAGES
+        assert POST_OBS_STAGES == [
+            OrchestratorStage.REDUCTION,
+            OrchestratorStage.SHARING,
+            OrchestratorStage.ARCHIVE,
+        ]

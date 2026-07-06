@@ -1,0 +1,14 @@
+# ── Programme : Suivi de novæ / transitoires ─────────────────────────────────
+# Réactivité maximale : pipeline minimal pour capturer un événement transitoire.
+# Réduction différée possible (raw_files conservés).
+
+programme: nova_monitoring
+description: "Surveillance spectrale de novæ et transitoires — réactivité maximale"
+
+sequencer:
+  - slew        # Pointage immédiat
+  - expose      # Pose directe sans mise au point (urgence)
+
+reduction:
+  - bias        # Correction minimale
+  - extract     # Extraction directe (sans dark ni flat si non disponibles)

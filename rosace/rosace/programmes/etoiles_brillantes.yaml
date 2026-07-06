@@ -1,0 +1,15 @@
+# ── Programme : Étoiles brillantes ───────────────────────────────────────────
+# Vitesses radiales d'étoiles brillantes (V < 4).
+# Pas de dark (CCD refroidi, poses courtes), mise au point ignorée si récente.
+
+programme: etoiles_brillantes
+description: "Mesures de vitesse radiale sur étoiles brillantes — poses courtes"
+
+sequencer:
+  - slew        # Pointage télescope (focus omis : étoile brillante, réglage manuel)
+  - expose      # Exposition CCD
+
+reduction:
+  - bias        # Soustraction biais
+  - flat        # Flat-field (dark négligeable sur poses courtes)
+  - extract     # Extraction spectre 1D
