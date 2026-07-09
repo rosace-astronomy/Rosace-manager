@@ -1,12 +1,4 @@
-import { VBox, HBox, Button, Label, Component, Box, Icon, class_ns } from "x4js";
-
-// esbuild 0.19+ does not compile TypeScript legacy decorators (@class_ns) for
-// files inside node_modules.  x4js relies on those decorators to attach the
-// "x4" namespace symbol to each class so it can generate CSS class names like
-// x4vbox, x4hbox, x4button …  Without the symbol the names become "vbox",
-// "hbox" etc. and none of our CSS selectors match.
-// Fix: call the decorator function manually before any component is created.
-[Box, VBox, HBox, Button, Label, Icon].forEach(cls => class_ns("x4")(cls));
+import { VBox, HBox, Button, Label, Component, Box, Icon } from "./x4js/x4";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

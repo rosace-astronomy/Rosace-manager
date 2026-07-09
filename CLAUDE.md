@@ -108,10 +108,9 @@ The control interface is a single-page application built **exclusively with [X4 
 
 - Entry point: `src/main.ts` — one `RosaceApp` class, all layout via X4 components
 - All containers must be `VBox` / `HBox`; all text via `Label`; all interactive elements via `Button` or `Component`
-- Build: `node build.mjs` (esbuild + TypeScript API plugin for decorator support — see comment in `build.mjs`)
+- Build: `npm run build` inside `gui/` — pure esbuild CLI, no extra tooling
 - Serve: `rosace_gui.py` serves `gui/` as static files and proxies `/api/*` to FastAPI
-
-**Known constraint:** esbuild does not compile TypeScript legacy decorators (`@class_ns`) for files inside `node_modules/`. The workaround in `main.ts` applies `class_ns("x4")` manually before any component is instantiated — this must be preserved.
+- x4js source lives at `gui/src/x4js/` (copied from the upstream repo, **not** an npm dependency). esbuild compiles it as project code, so TypeScript decorators work natively with `experimentalDecorators: true` in `tsconfig.json`.
 
 ### On-disk layout
 
