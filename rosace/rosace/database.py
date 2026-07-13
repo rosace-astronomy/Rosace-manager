@@ -35,15 +35,16 @@ _DONE_COL: dict[OrchestratorStage, str] = {
 # ─────────────────────────────────────────────────────────────
 
 async def db_init() -> None:
-    """Creates tables if they do not exist, and migrates missing columns."""
+    """Creates tables if they do not exist."""
     BASE_DATA_DIR.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
-                id         TEXT PRIMARY KEY,
-                started_at TEXT NOT NULL,
-                closed_at  TEXT,
-                status     TEXT NOT NULL DEFAULT 'running'
+                id          TEXT PRIMARY KEY,
+                started_at  TEXT NOT NULL,
+                closed_at   TEXT,
+                status      TEXT NOT NULL DEFAULT 'running',
+                session_dir TEXT
             )
         """)
         await db.execute("""
@@ -66,15 +67,6 @@ async def db_init() -> None:
                 archive_status   TEXT NOT NULL DEFAULT 'pending'
             )
         """)
-        # Migrate existing databases that predate the status columns
-        for col in ('scheduler_status', 'sequencer_status', 'reduction_status',
-                    'sharing_status', 'archive_status'):
-            try:
-                await db.execute(
-                    f"ALTER TABLE observations ADD COLUMN {col} TEXT NOT NULL DEFAULT 'pending'"
-                )
-            except aiosqlite.OperationalError:
-                pass  # column already exists
         await db.commit()
     log.info(f"[DB] Database initialised: {DB_PATH}")
 
@@ -87,8 +79,8 @@ async def db_insert_session(ctx: SessionContext) -> None:
     """Inserts a new session."""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT INTO sessions (id, started_at, status) VALUES (?, ?, 'running')",
-            (ctx.session_id, ctx.started_at.isoformat())
+            "INSERT INTO sessions (id, started_at, status, session_dir) VALUES (?, ?, 'running', ?)",
+            (ctx.session_id, ctx.started_at.isoformat(), ctx.session_dir)
         )
         await db.commit()
     log.info(f"[DB] Session inserted: {ctx.session_id}")

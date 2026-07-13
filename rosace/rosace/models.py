@@ -72,6 +72,7 @@ class SessionContext(BaseModel):
     current_observation: Optional[Observation] = None
     yaml_file: Optional[str] = None
     obs_dir: Optional[str] = None
+    session_dir: Optional[str] = None
     next_target_name: Optional[str] = None
     # Fichiers produits par SEQUENCER, consommés par REDUCTION puis SHARING/ARCHIVE
     raw_files: list[str] = []

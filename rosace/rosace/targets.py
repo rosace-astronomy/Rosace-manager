@@ -13,7 +13,7 @@ from .config import BASE_DATA_DIR
 
 log = logging.getLogger("spectro.targets")
 
-TARGETS_DB_PATH = BASE_DATA_DIR / "targets.db"
+TARGETS_DB_PATH = BASE_DATA_DIR / "databases" / "targets.db"
 
 # ─────────────────────────────────────────────────────────────
 # Modèles

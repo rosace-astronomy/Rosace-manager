@@ -30,7 +30,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 
-from .config   import BASE_DATA_DIR
+from .config   import BASE_DATA_DIR, SITE_NAME
 from .models   import (
     OrchestratorStage, Observation, ObservationRequest,
     Target, ExposureConfig, SessionContext,
@@ -167,11 +167,12 @@ async def session_runner():
     await db_init()
     await targets_db_init()
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    safe_site = "St-Pancrasse".replace(" ", "_").replace("/", "-")
-    ctx = SessionContext(site_name="St-Pancrasse")
+    safe_site = SITE_NAME.replace(" ", "_").replace("/", "-")
+    ctx = SessionContext(site_name=SITE_NAME)
 
-    session_dir = BASE_DATA_DIR / f"{date_str}_{safe_site}_{ctx.session_id}"
+    session_dir = BASE_DATA_DIR / "observations" / f"{date_str}_{safe_site}"
     session_dir.mkdir(parents=True, exist_ok=True)
+    ctx.session_dir = str(session_dir)
     log.info(f"[ORCHESTRATOR] Session directory: {session_dir}")
 
     try:
@@ -211,13 +212,8 @@ async def session_runner():
                     )
                     ctx.current_observation = obs
                     await db_insert_observation(obs, ctx.session_id)
-                    iso_str = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-                    safe_target = obs.request.target.name.replace(" ", "_").replace("/", "-")
-                    obs_dir = session_dir / f"{iso_str}_{safe_target}"
-                    obs_dir.mkdir(parents=True, exist_ok=True)
-                    ctx.obs_dir = str(obs_dir)
-                    log.info(f"[ORCHESTRATOR] Observation directory: {obs_dir}")
-                    yaml_path = create_observation_file(ctx, obs_dir)
+                    ctx.obs_dir = str(session_dir)
+                    yaml_path = create_observation_file(ctx, session_dir)
                     ctx.yaml_file = str(yaml_path)
                     await db_set_yaml_file(obs.id, ctx.yaml_file)
                 else:
