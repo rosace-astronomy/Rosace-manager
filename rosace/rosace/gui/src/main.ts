@@ -1,10 +1,6 @@
 import { VBox, HBox, Button, Label, Application, BoxProps, Image, Listbox, ListItem, 
-	SimpleText, SimpleTextArea, Notification, 
-	Tag,
-	initTooltips,
-	makeState,
-	asap,
-	Menu} from "x4js";
+	SimpleText, SimpleTextArea, Notification, Tag, initTooltips, makeState, asap,
+	} from "x4js";
 
 import "./main.scss";
 
@@ -16,6 +12,8 @@ import red_icon from "./assets/flask.svg";
 import check_icon from "./assets/circle-check.svg";
 import error_icon from "./assets/circle-exclamation.svg";
 
+import "@fontsource/montserrat/400.css"
+import "@fontsource/montserrat/700.css"
 
 // ::: Types ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
@@ -466,11 +464,12 @@ class RosaceApp extends Application {
 			new MainView( { } )
 		)
 
+		/*
 		if( __debug ) {
 			app_data.observations = FAKE_OBS as any; // no warning
 			app_data.status = FAKE_STATUS as any;
 		}
-
+		*/
 
 		// update darkmode as desired
 		app_data.watch( "settings.darkMode", ev => {

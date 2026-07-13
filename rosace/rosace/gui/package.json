@@ -4,11 +4,14 @@
 	"private": true,
 	"scripts": {
 		"build-debug": "x4build --watch --hmr --serve src/main.ts",
-		"build": "x4build --watch"
+		"build": "x4build"
 	},
 	"devDependencies": {
 		"x4build": "latest",
 		"x4js": "latest"
+	},
+	"dependencies": {
+		"@fontsource/montserrat": "^5.1"
 	},
 	"x4build": {
 		"copy": [
