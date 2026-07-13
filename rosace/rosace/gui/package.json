@@ -3,7 +3,8 @@
 	"version": "1.0.0",
 	"private": true,
 	"scripts": {
-		"build": "x4build --watch --hmr --serve src/main.ts"
+		"build-debug": "x4build --watch --hmr --serve src/main.ts",
+		"build": "x4build --watch"
 	},
 	"devDependencies": {
 		"x4build": "latest",
