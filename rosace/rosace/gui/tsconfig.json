@@ -1,12 +1,18 @@
 {
-  "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "lib": ["ES2020", "DOM"],
-    "skipLibCheck": true,
-    "experimentalDecorators": true
-  },
-  "include": ["src/**/*"]
+	"compilerOptions": {
+		"target": "ES2020",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"strict": true,
+		"strictNullChecks": false,
+		"lib": [
+			"ES2020",
+			"DOM"
+		],
+		"skipLibCheck": true,
+		"experimentalDecorators": true
+	},
+	"include": [
+		"src/**/*"
+	]
 }

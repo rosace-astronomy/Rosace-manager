@@ -1,12 +1,19 @@
 {
-  "name": "rosace-gui",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "build": "esbuild src/main.ts --bundle --outfile=bundle.js --minify --keep-names --sourcemap --loader:.scss=empty --loader:.svg=dataurl",
-    "dev":   "esbuild src/main.ts --bundle --outfile=bundle.js --watch --keep-names --sourcemap --loader:.scss=empty --loader:.svg=dataurl"
-  },
-  "devDependencies": {
-    "esbuild": "latest"
-  }
+	"name": "rosace-gui",
+	"version": "1.0.0",
+	"private": true,
+	"scripts": {
+		"build": "x4build --watch --hmr --serve src/main.ts"
+	},
+	"devDependencies": {
+		"x4build": "latest",
+		"x4js": "latest"
+	},
+	"x4build": {
+		"copy": [
+			{ "from": "src/assets", "to": "assets" },
+			{ "from": "src/index.html", "to": "index.html" }
+		]
+	}
+
 }

@@ -1,316 +1,500 @@
-import { VBox, HBox, Button, Label, Component, Box, Icon } from "./x4js/x4";
+import { VBox, HBox, Button, Label, Application, BoxProps, Image, Listbox, ListItem, 
+	SimpleText, SimpleTextArea, Notification, 
+	Tag,
+	initTooltips,
+	makeState,
+	asap,
+	Menu} from "x4js";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+import "./main.scss";
+
+import play_icon from "./assets/play.svg";
+import stop_icon from "./assets/stop.svg";
+import clock_icon from "./assets/clock.svg";
+import seq_icon from "./assets/sequence.svg";
+import red_icon from "./assets/flask.svg";
+import check_icon from "./assets/circle-check.svg";
+import error_icon from "./assets/circle-exclamation.svg";
+
+
+// ::: Types ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+const STAGES  			= ["scheduler", "sequencer", "reduction", "sharing", "archive" ] as const;
+type StageType = typeof STAGES[number]
+
+const PIPELINE_STAGES 	= ["idle","init_session","observing","close_session"] as const;
+type PipelineStageType = typeof PIPELINE_STAGES[number]
 
 interface StageInfo {
     status: "pending" | "running" | "done" | "error";
-    done_at: string | null;
+    done_at: string | Date;
 }
+
+/**
+ * returned by api server
+ */
 
 interface ObsRow {
     id: string;
     target_name: string;
-    created_at: string;
-    error_message: string | null;
+    created_at: string | Date;
+    error_message: string;
     stages: Record<string, StageInfo>;
 }
 
+/**
+ * returned by api server
+ */
+
 interface ApiStatus {
-    stage: string;
+    stage: PipelineStageType;
     is_running: boolean;
     completed_count: number;
     pending_post_obs_count: number;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+/**
+ * application data
+ * shoud be exported & in a specific file
+ */
+
+interface AppData {
+	connected: boolean;
+	status: ApiStatus;
+	observations: ObsRow[];
+	settings: {	//saved locally
+		darkMode: boolean;
+	}
+};
+
+const app_data = makeState<AppData>( {
+	status: { stage: "idle", is_running: false, completed_count: 0, pending_post_obs_count: 0 },
+	connected: false,
+	observations: [],
+	settings: {
+		darkMode: true,
+	}
+} );
+
+
+// :: Debug  ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+
+const __debug = true;
+
+const FAKE_OBS = [
+	{ id: "1", target_name: "Altair", created_at: new Date(), error_message: "", stages: { 
+		"scheduler": 	{ status: "done", done_at: new Date() },
+		"sequencer": 	{ status: "running", done_at: new Date() },
+//		"reduction":   	{ status: "done", done_at: new Date() },
+		"sharing": 		{ status: "error", done_at: "" },
+		"archive": 		{ status: "pending", done_at: new Date() }, }
+	}
+];
+
+const FAKE_STATUS: ApiStatus = {
+	is_running: true,
+	completed_count: 1,
+	pending_post_obs_count: 5,
+	stage: "idle"
+}
+
+
+
+// ::: Constants ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 const API = "/api";
 
-const STAGES = ["scheduler", "sequencer", "reduction", "sharing", "archive"] as const;
+const OBS_FETCH_TIME = 10000;
+const STATUS_FETCH_TIME = 5000;
 
-const STAGE_LABEL: Record<string, string> = {
-    scheduler: "SCHED",
-    sequencer: "SEQ",
-    reduction: "RED",
-    sharing:   "SHARE",
-    archive:   "ARC",
+const STAGE_LABEL: Record<StageType, { text: string, icon: string }> = {	//allow only a value of stages in stage_label
+    scheduler: { text: "SCHED", icon: null },
+    sequencer: { text: "SEQ", icon: null },
+    reduction: { text: "RED", icon: null },
+    sharing:   { text: "SHARE", icon: null },
+    archive:   { text: "ARC", icon: null },
 };
 
-const PIPELINE_STAGES = [
-    { key: "idle",          label: "IDLE"      },
-    { key: "init_session",  label: "INIT"      },
-    { key: "observing",     label: "OBSERVING" },
-    { key: "close_session", label: "CLOSE"     },
-] as const;
 
-const OBS_SUB_STAGES = new Set(["scheduler", "sequencer", "reduction", "sharing", "archive"]);
 
-// ─── App ──────────────────────────────────────────────────────────────────────
 
-class RosaceApp {
-    private stageChips: Label[] = [];
-    private obsCountBadge!: Label;
-    private startBtn!: Button;
-    private stopBtn!: Button;
-    private msgLabel!: Label;
-    private obsListBox!: VBox;
-    private logBox!: VBox;
+const PIPELINE_LABEL: Record<typeof PIPELINE_STAGES[number], string> = {	//allow only a value of pipeline_stages in pipeline_label
+    idle:          "IDLE",
+    init_session:  "INIT",
+    observing:     "OBSERVING",
+    close_session: "CLOSE",
+ };
 
-    private lastStage: string | null = null;
-    private logLines: string[] = [];
-    private apiConnected = false;
+/**
+ * Application Header
+ */
 
-    constructor() {
-        const root = this.buildRoot();
-        document.body.appendChild(root.dom);
-        this.startPolling();
+class AppHeader extends HBox {
+	
+	constructor( props: BoxProps ) {
+		super( props );
+
+        const chips = PIPELINE_STAGES.map( s => {
+            return new Label({ 
+				cls: "chip", 
+				id: "chip-"+s, 
+				text: PIPELINE_LABEL[s],
+			})
+        });
+        
+		let label;
+		this.setContent( [
+                new HBox({ cls: "header-logo", content: [
+					new Image( { id: "image", src: "assets/logo.svg" } ), 
+					new Label( { id: "title", text: "Rosace — Robotic Spectro" })
+				] }),
+                new HBox({ cls: "pipeline-bar", content: chips }),
+                label = new Label({ cls: "obs-count-badge", text: "0 obs" }),
+				new Button( { icon: "", menu: [
+					{ text: "Dark mode", checked: ( ) => app_data.settings.darkMode, click: ( ) => { app_data.settings.darkMode = !app_data.settings.darkMode; } },
+				]} ),
+        ] );
+
+		app_data.watch( "status.completed_count", e => {
+			label.setText( `${e.value} obs` );	// update label
+		})
+	}
+}
+
+/**
+ * MainView is the main dashboard view
+ */
+
+class MainView extends VBox {
+
+	private obs_list: Listbox;
+	private log_lines: string[];
+	private last_stage: PipelineStageType;
+	
+	constructor( props: BoxProps ) {
+		super( props );
+
+		this.log_lines = [];
+
+		this.setContent( [
+			new AppHeader( { } ),
+
+			new HBox( { flex: 1, content: [
+				new VBox( { cls: "left-col", flex: 1, content: [
+					//<todo: x4btngroup
+					new HBox( { cls: "controls-bar", content: [
+						//<todo: use button.icon
+						new Button({ label: "START", icon: play_icon, id: "start", click: () => this.controlStart() }),
+						//<todo: use button.icon
+						new Button({ label: "STOP", icon: stop_icon, id: "stop",  click: () => this.controlStop() }),
+						//new SimpleText({ flex: 1, id: "status-text", text: "text" }), // replaced by notification
+					]} ),
+					//<todo: use x4panel
+					new VBox({ cls: "panel obs", flex: 1, content: [
+						new Label({ cls: "title", text: "Observations" }),
+						this.obs_list = new Listbox({ cls: "obs-list", flex: 1, items: [] }),
+					] }),
+					//<todo: use x4panel
+					new VBox({ cls: "panel log", flex: 1, content: [
+						new Label({ cls: "title", text: "Journal" }),
+						new SimpleTextArea({ cls: "log-box", id: "logger", flex: 1, readonly: true, resize: false }),
+					]}),
+					
+				]}),
+				new VBox({ cls: "right-col", flex: 1, content: [
+					new VBox({ cls: "panel spectre image-placeholder", flex: 1, content: [
+						new Label({ cls: "title", text: "Spectre" })
+					] }),
+					new VBox({ cls: "panel guidage image-placeholder", flex: 1, content: [
+						new Label({ cls: "title", text: "Guidage" })
+					] })
+				] })
+			]})
+		]);
+
+		this.log( "application started" )
+
+		// watch observations
+		app_data.watch( "observations", e => {
+			this.renderObs( e.value );
+		})
+
+		// watch status
+		app_data.watch( "status", e => {
+			this.updateStageChips( e.value );
+		} );
+			
+		// attendons d'etre montés dans l'UI
+		asap( () => {
+			this.fetchStatus();
+			this.fetchObs();
+		});
     }
 
-    // ── Layout ────────────────────────────────────────────────────────────────
 
-    private buildRoot(): VBox {
-        return new VBox({
-            cls: "app-root",
-            content: [
-                this.buildHeader(),
-                this.buildMain(),
-            ],
-        });
+	/**
+	 * render observations,
+	 * trigged when application.data.observations change
+	 */
+
+	private renderObs(rows: ObsRow[]) {
+
+        this.obs_list.setItems( rows.map( obs => {
+			const time = new Date(obs.created_at).toLocaleTimeString("fr-FR");
+
+			const stages = STAGES.map( (key) => {
+				const info    = obs.stages[key];
+				if( !info ) {
+					return new Tag({
+						label:    STAGE_LABEL[key].text,
+						icon:     error_icon,
+						cls:      `stage unknown`,
+						tooltip:  `no information`,
+					});
+				}
+				else {
+					const doneAt  = info.done_at ? " @ " + new Date(info.done_at).toLocaleTimeString("fr-FR") : "";
+
+					return new Tag({
+						label:    STAGE_LABEL[key].text,
+						icon:     info.done_at ? check_icon : clock_icon,
+						cls:      `stage ${info.status}`,
+						tooltip:  `${STAGE_LABEL[key].text}: ${info.status}${doneAt}`,
+					});
+				}
+			});
+
+			const r: ListItem = {
+				id: obs.id,
+				text: null,
+				cls: 'obs-row',
+				sub_cols: [
+					new SimpleText({ cls: "obs-id", text: obs.id }),
+					new SimpleText({ cls: "obs-target", text: obs.target_name }),
+					new SimpleText({ cls: "obs-time",   text: time }),
+					new HBox({ cls: "obs-stages",  content: stages }),
+				]
+			}
+
+			return r;
+		}) );
     }
 
-    private buildHeader(): HBox {
-        const logoImg = new Component({
-            tag: "img",
-            cls: "logo-img",
-            attrs: { src: "assets/logo.svg", alt: "Logo" },
-        });
-        const logoTitle = new Label({ cls: "logo-title", text: "Rosace — Robotic Spectro" });
+	/**
+	 * 
+	 */
 
-        const chipsWithSeps: Component[] = [];
-        PIPELINE_STAGES.forEach((s, i) => {
-            if (i > 0) chipsWithSeps.push(new Label({ cls: "chip-sep", text: "›" }));
-            const chip = new Label({ cls: "chip chip-dim", text: s.label });
-            this.stageChips.push(chip);
-            chipsWithSeps.push(chip);
-        });
-        const pipelineBar = new HBox({ cls: "pipeline-bar", content: chipsWithSeps });
-
-        this.obsCountBadge = new Label({ cls: "obs-count-badge", text: "0 obs" });
-
-        return new HBox({
-            cls: "app-header",
-            content: [
-                new HBox({ cls: "header-logo", content: [logoImg, logoTitle] }),
-                pipelineBar,
-                this.obsCountBadge,
-            ],
-        });
-    }
-
-    private updateStageChips(stage: string, isRunning: boolean): void {
+	private updateStageChips( status: ApiStatus ) {
         let activeKey: string;
-        if (!isRunning)                      activeKey = "idle";
-        else if (stage === "init_session")   activeKey = "init_session";
-        else if (OBS_SUB_STAGES.has(stage))  activeKey = "observing";
-        else if (stage === "close_session")  activeKey = "close_session";
-        else                                 activeKey = "idle";
+        
+		if (!status.is_running) {
+			activeKey = "idle";
+		}
+        else if (status.stage === "init_session")   {
+			activeKey = "init_session";
+		}
+        else if ( status.stage in STAGES )  {
+			activeKey = "observing";
+		}
+        else if (status.stage === "close_session")  {
+			activeKey = "close_session";
+		}
+        else                                 {
+			activeKey = "idle";
+		}
 
-        PIPELINE_STAGES.forEach((s, i) => {
-            const chip = this.stageChips[i];
-            chip.removeClass("chip-dim chip-active chip-error");
-            if (s.key === activeKey) {
-                chip.addClass(stage === "error" ? "chip-error" : "chip-active");
-            } else {
-                chip.addClass("chip-dim");
+        PIPELINE_STAGES.forEach( s => {
+            const chip = this.query<Label>( "#chip-"+s )
+            chip.removeClass("dim active error");
+            if (s === activeKey) {
+				//<review, pourquoi error, c'est une valeur retournée possible ?
+				// dans ce cas l'ajouter aux valeurs acceptées
+                chip.addClass(status.stage === "error" ? "error" : "active");
+            } 
+			else {
+                chip.addClass("dim");
             }
         });
     }
 
-    private buildControls(): HBox {
-        this.startBtn = new Button({ label: "▶  START", cls: "btn-ctrl btn-start", click: () => this.controlStart() });
-        this.stopBtn  = new Button({ label: "■  STOP",  cls: "btn-ctrl btn-stop",  click: () => this.controlStop() });
-        this.msgLabel = new Label({ cls: "ctrl-msg", text: "" });
+	private log(msg: string) {
+        const ts = new Date().toLocaleTimeString("fr-FR");
 
-        return new HBox({
-            cls: "controls-bar",
-            content: [this.startBtn, this.stopBtn, this.msgLabel],
-        });
+		const l = this.query<SimpleTextArea>( "#logger" );
+        this.log_lines.push(`[${ts}]\t${msg}`);
+
+        if (this.log_lines.length > 100) {
+			this.log_lines.shift();
+		}
+
+        l.setText( this.log_lines.join('\n' ) );
     }
 
-    private buildMain(): HBox {
-        return new HBox({
-            cls: "main-area",
-            content: [this.buildLeftCol(), this.buildRightCol()],
-        });
-    }
-
-    private buildObsSection(): VBox {
-        this.obsListBox = new VBox({ cls: "obs-list" });
-        return new VBox({
-            cls: "panel panel-obs",
-            content: [
-                new Label({ cls: "panel-title", text: "Observations" }),
-                this.obsListBox,
-            ],
-        });
-    }
-
-    private buildLeftCol(): VBox {
-        this.logBox = new VBox({ cls: "log-box" });
-        const logPanel = new VBox({
-            cls: "panel panel-log",
-            content: [
-                new Label({ cls: "panel-title", text: "Journal" }),
-                this.logBox,
-            ],
-        });
-        return new VBox({
-            cls: "left-col",
-            content: [this.buildControls(), this.buildObsSection(), logPanel],
-        });
-    }
-
-    private buildRightCol(): VBox {
-        const spectrum = new VBox({
-            cls: "image-placeholder",
-            content: [new Label({ cls: "placeholder-label", text: "Spectre" })],
-        });
-        const guiding = new VBox({
-            cls: "image-placeholder",
-            content: [new Label({ cls: "placeholder-label", text: "Guidage" })],
-        });
-
-        return new VBox({ cls: "right-col", content: [spectrum, guiding] });
-    }
-
-    // ── Polling ───────────────────────────────────────────────────────────────
-
-    private startPolling(): void {
-        this.fetchStatus();
-        this.fetchObs();
-        setInterval(() => this.fetchStatus(), 5000);
-        setInterval(() => this.fetchObs(),    5000);
-    }
-
-    private async fetchStatus(): Promise<void> {
+	private async fetchStatus() {
         try {
             const res = await fetch(`${API}/status`, { signal: AbortSignal.timeout(5000) });
-            if (!res.ok) return;
+            if (!res.ok) {
+				throw new Error( res.statusText );
+			}
+
             const data = await res.json() as ApiStatus;
-            if (!this.apiConnected) {
-                this.apiConnected = true;
+			if( !app_data.connected ) {
+				app_data.connected = true;
                 this.log(`API connected — ${data.is_running ? "session running" : "idle"}`);
             }
-            this.applyStatus(data);
-        } catch {
-            if (this.apiConnected) {
-                this.apiConnected = false;
+
+			app_data.status = data;
+
+			//this.obsCountBadge.setText(`${d.completed_count} obs`);
+			this.query("#start").enable(!data.is_running);
+			this.query("#stop").enable(data.is_running);
+
+			if (data.stage !== this.last_stage) {
+				if (this.last_stage !== null) {
+					let label;
+					if( PIPELINE_STAGES.includes( data.stage ) ) {
+						label = PIPELINE_LABEL[data.stage];
+					}
+					else {
+						label = data.stage.toUpperCase()
+					}
+
+					this.log(`Stage → ${label}`);
+				}
+
+				this.last_stage = data.stage;
+			}
+		}
+		catch( e ) {
+			this.showError( `status fetch error`, e.toString() );
+            if (app_data.connected) {
+                app_data.connected = false;
                 this.log("API disconnected");
             }
         }
+		finally {
+			this.setTimeout( "status", STATUS_FETCH_TIME, ( ) => this.fetchStatus() );
+		}
     }
 
-    private applyStatus(d: ApiStatus): void {
-        this.updateStageChips(d.stage, d.is_running);
-        this.obsCountBadge.setText(`${d.completed_count} obs`);
-        this.startBtn.enable(!d.is_running);
-        this.stopBtn.enable(d.is_running);
-
-        if (d.stage !== this.lastStage) {
-            if (this.lastStage !== null) {
-                const stageLabel = PIPELINE_STAGES.find(s => s.key === d.stage)?.label ?? d.stage.toUpperCase();
-                this.log(`Stage → ${stageLabel}`);
-            }
-            this.lastStage = d.stage;
-        }
-    }
-
-    private async fetchObs(): Promise<void> {
+	private async fetchObs() {
         try {
-            const res = await fetch(`${API}/observations/recent?limit=20`, { signal: AbortSignal.timeout(5000) });
-            if (!res.ok) return;
-            this.renderObs(await res.json() as ObsRow[]);
-        } catch { /* API unreachable */ }
+			const res = await fetch(`${API}/observations/recent?limit=20`, { signal: AbortSignal.timeout(5000) });
+			if (!res.ok) {
+				throw new Error( res.statusText );
+			}
+
+			const obs = await res.json() as ObsRow[];
+			//this.renderObs( obs );
+			app_data.observations = obs;
+        } 
+		catch( e ) { 
+			this.showError( `obj fetch error`, e.toString() );
+		}
+		finally {
+			this.setTimeout( "obs", OBS_FETCH_TIME, ( ) => this.fetchObs() );
+		}
     }
 
-    private renderObs(rows: ObsRow[]): void {
-        if (!rows.length) {
-            this.obsListBox.setContent([new Label({ cls: "obs-empty", text: "Aucune observation." })]);
-            return;
-        }
-        this.obsListBox.setContent(rows.map(r => this.buildObsRow(r)));
-    }
-
-    private buildObsRow(obs: ObsRow): HBox {
-        const time = new Date(obs.created_at).toLocaleTimeString("fr-FR");
-
-        const stageBtns = STAGES.map(key => {
-            const info    = obs.stages[key];
-            const doneAt  = info.done_at ? " @ " + new Date(info.done_at).toLocaleTimeString("fr-FR") : "";
-            return new Button({
-                label:    STAGE_LABEL[key],
-                cls:      `stage-btn stage-${info.status}`,
-                tabindex: false,
-                tooltip:  `${STAGE_LABEL[key]}: ${info.status}${doneAt}`,
-            });
-        });
-
-        return new HBox({
-            cls: `obs-row${obs.error_message ? " obs-has-error" : ""}`,
-            content: [
-                new Label({ cls: "obs-id",     text: obs.id }),
-                new Label({ cls: "obs-target", text: obs.target_name }),
-                new Label({ cls: "obs-time",   text: time }),
-                new HBox({ cls: "obs-stages",  content: stageBtns }),
-            ],
-        });
-    }
-
-    // ── Controls ──────────────────────────────────────────────────────────────
-
-    private async controlStart(): Promise<void> {
-        this.startBtn.enable(false);
+	private async controlStart() {
+        const bt = this.query("#start")
+		
+    	bt.disable();
         try {
-            const res  = await fetch(`${API}/control/start`, { method: "POST", signal: AbortSignal.timeout(5000) });
-            const data = await res.json() as { message: string };
-            this.log(`START → ${data.message}`);
-            this.showMsg(data.message);
-            await this.fetchStatus();
-        } catch (e) {
-            this.log(`Erreur START : ${e}`);
-            this.startBtn.enable(true);
+	        const res  = await fetch(`${API}/control/start`, { method: "POST", signal: AbortSignal.timeout(5000) });
+			if( res.ok ) {
+				const data = await res.json() as { message: string };
+				this.log(`START → ${data.message}`);
+				this.showMsg( "start", data.message );
+				this.fetchStatus();
+			}
+			else {
+				this.showError( `network error ${res.status}`, res.statusText );
+				this.log(`start error (${res.status}) ${res.statusText }` );
+			}
+        } 
+		catch (e) {
+			this.showError( `fetch error`, e.toString() );
+		}
+		finally {
+            bt.enable( );
         }
     }
 
-    private async controlStop(): Promise<void> {
-        this.stopBtn.enable(false);
+    private async controlStop() {
+        const bt = this.query("#stop")
+		bt.disable();
+
         try {
             const res  = await fetch(`${API}/control/stop`, { method: "POST", signal: AbortSignal.timeout(5000) });
-            const data = await res.json() as { message: string };
-            this.log(`STOP → ${data.message}`);
-            this.showMsg(data.message);
-            await this.fetchStatus();
-        } catch (e) {
+			if( res.ok ) {
+				const data = await res.json() as { message: string };
+				this.log(`STOP → ${data.message}`);
+				this.showMsg( "stop", data.message);
+				this.fetchStatus();
+			}
+			else {
+				this.showError( `network error ${res.status}`, res.statusText );
+			}
+        } 
+		catch (e) {
+			this.showError( `internal error`, "" );
             this.log(`Erreur STOP : ${e}`);
-            this.stopBtn.enable(true);
+        }
+		finally {
+            bt.enable( );
         }
     }
 
-    // ── Log ───────────────────────────────────────────────────────────────────
-
-    private log(msg: string): void {
-        const ts = new Date().toLocaleTimeString("fr-FR");
-        this.logLines.push(`${ts}  ${msg}`);
-        if (this.logLines.length > 100) this.logLines.shift();
-        this.logBox.setContent(this.logLines.map(l => new Label({ cls: "log-line", text: l })));
-        const el = this.logBox.dom as HTMLElement;
-        el.scrollTop = el.scrollHeight;
+	private showMsg( title: string, text: string) {
+        new Notification( {title,text,}).display( 5 );
     }
 
-    private showMsg(msg: string): void {
-        this.msgLabel.setText(msg);
-        setTimeout(() => this.msgLabel.setText(""), 5000);
+	private showError( title: string, text: string) {
+		new Notification( {title,text,mode:"danger"}).display( 5 );
+	}
+}
+
+class RosaceApp extends Application {
+    
+    constructor( ) {
+		super( );
+
+		initTooltips( );
+		this.setMainView( 
+			new MainView( { } )
+		)
+
+		if( __debug ) {
+			app_data.observations = FAKE_OBS as any; // no warning
+			app_data.status = FAKE_STATUS as any;
+		}
+
+
+		// update darkmode as desired
+		app_data.watch( "settings.darkMode", ev => {
+			document.documentElement.setAttribute('data-theme', ev.value ? 'dark' : null );
+		} );
+
+		const s = this.getStorageJSON( "settings" );
+		if( s ) {
+			// on valide l'entrée
+			if( "darkMode" in s ) {
+				app_data.settings.darkMode = !!s.darkMode;
+			}
+		}
+
+		// apres load pour eviter la boucle
+		// les settings ont changé -> sauvegarde
+		app_data.watch( "settings", ( ev ) => {
+			// on retrig si ecritures tres rapprochées
+			this.setTimeout( "save", 500, ( ) => {
+				this.setStorageJSON( "settings", app_data.settings );
+			})
+		});
     }
 }
 
 new RosaceApp();
+
