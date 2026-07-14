@@ -29,6 +29,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi.staticfiles import StaticFiles
 
 from .config     import BASE_DATA_DIR, SITE_NAME
 from .log_config import configure_logging
@@ -437,3 +438,12 @@ async def add_star_to_program(program_id: int, star_id: int):
 async def remove_star_from_program(program_id: int, star_id: int):
     """Retire une étoile d'un programme."""
     await program_remove_star(program_id, star_id)
+
+# ─────────────────────────────────────────────────────────────
+# Interface web (fichiers statiques du GUI)
+# ─────────────────────────────────────────────────────────────
+# Monté en dernier : les routes API ci-dessus restent prioritaires.
+
+GUI_DIR = Path(__file__).parent / "gui" / "bin"
+
+app.mount("/", StaticFiles(directory=GUI_DIR, html=True), name="gui")

@@ -101,7 +101,7 @@ const FAKE_STATUS: ApiStatus = {
 
 // ::: Constants ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-const API = "/api";
+const API = "";
 
 const OBS_FETCH_TIME = 10000;
 const STATUS_FETCH_TIME = 5000;

@@ -31,9 +31,8 @@ uvicorn rosace.main:app --host 0.0.0.0 --port 8000
 # Interactive API docs
 # http://localhost:8000/docs
 
-# In a separate terminal (same directory, same virtualenv): start the GUI
-python rosace/rosace/rosace_gui.py
-# GUI available at http://localhost:8080/
+# The web GUI is served by the same process, at the same port
+# http://localhost:8000/
 ```
 
 ## Running tests
@@ -108,8 +107,8 @@ The control interface is a single-page application built **exclusively with [X4 
 
 - Entry point: `src/main.ts` — one `RosaceApp` class, all layout via X4 components
 - All containers must be `VBox` / `HBox`; all text via `Label`; all interactive elements via `Button` or `Component`
-- Build: `npm run build` inside `gui/` — pure esbuild CLI, no extra tooling
-- Serve: `rosace_gui.py` serves `gui/` as static files and proxies `/api/*` to FastAPI
+- Build: `npm run build` inside `gui/` — pure esbuild CLI, no extra tooling, outputs to `gui/bin/`
+- Serve: FastAPI mounts `gui/bin/` as static files directly (`main.py`, end of file) — same process, same port as the API, no separate GUI server
 - x4js source lives at `gui/src/x4js/` (copied from the upstream repo, **not** an npm dependency). esbuild compiles it as project code, so TypeScript decorators work natively with `experimentalDecorators: true` in `tsconfig.json`.
 
 ### On-disk layout
