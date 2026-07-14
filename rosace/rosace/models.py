@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Optional, Protocol, runtime_checkable
 import uuid
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ─────────────────────────────────────────────────────────────
@@ -78,8 +78,7 @@ class SessionContext(BaseModel):
     raw_files: list[str] = []
     reduced_files: list[str] = []
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 # ─────────────────────────────────────────────────────────────

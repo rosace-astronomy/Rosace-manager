@@ -289,10 +289,7 @@ class MainView extends VBox {
 	private updateStageChips( status: ApiStatus ) {
         let activeKey: string;
         
-		if (!status.is_running) {
-			activeKey = "idle";
-		}
-        else if (status.stage === "init_session")   {
+		if (status.stage === "init_session")   {
 			activeKey = "init_session";
 		}
         else if ( (STAGES as readonly string[]).includes( status.stage ) )  {

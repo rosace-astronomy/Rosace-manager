@@ -704,3 +704,248 @@ class TestSystemState:
             OrchestratorStage.SHARING,
             OrchestratorStage.ARCHIVE,
         ]
+
+
+# ═════════════════════════════════════════════════════════════
+# GROUPE 6 — Machine à états orchestrée (session_runner)
+# ═════════════════════════════════════════════════════════════
+
+class TestSessionRunner:
+    """
+    Teste la boucle session_runner() de main.py avec des plugins factices
+    (monkeypatch de rosace.main.plugins) pour contrôler précisément le
+    déroulement sans dépendre des vrais sous-plugins (qui ne s'arrêtent
+    jamais tout seuls — cf. SchedulerPlugin).
+    """
+
+    @pytest.fixture(autouse=True)
+    def reset_state(self):
+        """Isole chaque test : état propre avant et après."""
+        import rosace.main as main_mod
+        main_mod.state.is_running = False
+        main_mod.state.stage = OrchestratorStage.IDLE
+        yield
+        main_mod.state.is_running = False
+        main_mod.state.stage = OrchestratorStage.IDLE
+
+    async def test_clean_stop_calls_close_session(self, monkeypatch):
+        """Un SchedulerStopRequested déclenche CLOSE_SESSION puis repasse à IDLE."""
+        import rosace.main as main_mod
+        from rosace.plugins.scheduler import SchedulerStopRequested
+
+        close_called = []
+
+        class FakeInit:
+            async def run(self, ctx): return ctx
+
+        class FakeScheduler:
+            async def run(self, ctx):
+                raise SchedulerStopRequested()
+
+        class FakeClose:
+            async def run(self, ctx):
+                close_called.append(True)
+                return ctx
+
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.INIT_SESSION, FakeInit())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SCHEDULER, FakeScheduler())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.CLOSE_SESSION, FakeClose())
+
+        main_mod.state.is_running = True
+        await main_mod.session_runner()
+
+        assert close_called == [True]
+        assert main_mod.state.stage == OrchestratorStage.IDLE
+
+    async def test_error_restarts_from_scheduler_not_init(self, monkeypatch):
+        """Une erreur dans SEQUENCER relance depuis SCHEDULER, pas depuis INIT_SESSION."""
+        import rosace.main as main_mod
+        from rosace.plugins.scheduler import SchedulerStopRequested
+
+        init_calls = []
+        scheduler_calls = []
+
+        class FakeInit:
+            async def run(self, ctx):
+                init_calls.append(1)
+                return ctx
+
+        class FakeScheduler:
+            async def run(self, ctx):
+                scheduler_calls.append(1)
+                if len(scheduler_calls) >= 2:
+                    raise SchedulerStopRequested()
+                ctx.next_target_name = "TestStar"
+                return ctx
+
+        class FakeSequencer:
+            async def run(self, ctx):
+                raise RuntimeError("boom")
+
+        class FakeClose:
+            async def run(self, ctx): return ctx
+
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.INIT_SESSION, FakeInit())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SCHEDULER, FakeScheduler())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SEQUENCER, FakeSequencer())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.CLOSE_SESSION, FakeClose())
+
+        main_mod.state.is_running = True
+        await main_mod.session_runner()
+
+        assert init_calls == [1]           # INIT_SESSION jamais relancé
+        assert len(scheduler_calls) == 2   # SCHEDULER relancé après l'erreur
+
+    async def test_close_session_error_still_reaches_idle(self, monkeypatch):
+        """Si CLOSE_SESSION lève une exception, l'état repasse quand même à IDLE."""
+        import rosace.main as main_mod
+        from rosace.plugins.scheduler import SchedulerStopRequested
+
+        class FakeInit:
+            async def run(self, ctx): return ctx
+
+        class FakeScheduler:
+            async def run(self, ctx):
+                raise SchedulerStopRequested()
+
+        class FakeClose:
+            async def run(self, ctx):
+                raise RuntimeError("close failed")
+
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.INIT_SESSION, FakeInit())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SCHEDULER, FakeScheduler())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.CLOSE_SESSION, FakeClose())
+
+        main_mod.state.is_running = True
+        await main_mod.session_runner()
+
+        assert main_mod.state.stage == OrchestratorStage.IDLE
+
+    async def test_init_session_failure_prevents_loop(self, monkeypatch):
+        """Un échec dans INIT_SESSION empêche la boucle SCHEDULER de démarrer."""
+        import rosace.main as main_mod
+
+        scheduler_called = []
+
+        class FakeInit:
+            async def run(self, ctx):
+                raise RuntimeError("init failed")
+
+        class FakeScheduler:
+            async def run(self, ctx):
+                scheduler_called.append(1)
+                return ctx
+
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.INIT_SESSION, FakeInit())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SCHEDULER, FakeScheduler())
+
+        main_mod.state.is_running = True
+        await main_mod.session_runner()
+
+        assert scheduler_called == []
+        assert main_mod.state.is_running is False
+        assert main_mod.state.stage == OrchestratorStage.ERROR
+
+
+# ═════════════════════════════════════════════════════════════
+# GROUPE 7 — Endpoints FastAPI (TestClient, lifespan réel)
+# ═════════════════════════════════════════════════════════════
+
+class TestApiEndpoints:
+    """Tests de la couche HTTP (jamais exercée directement par les autres groupes)."""
+
+    @pytest.fixture(autouse=True)
+    def reset_state(self):
+        import rosace.main as main_mod
+        main_mod.state.is_running = False
+        main_mod.state.stage = OrchestratorStage.IDLE
+        yield
+        main_mod.state.is_running = False
+        main_mod.state.stage = OrchestratorStage.IDLE
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        from rosace.main import app
+        return TestClient(app)
+
+    def test_status_endpoint_shape(self):
+        with self._client() as client:
+            res = client.get("/status")
+        assert res.status_code == 200
+        data = res.json()
+        assert set(data.keys()) == {"stage", "is_running", "completed_count", "pending_post_obs_count"}
+
+    def test_control_start_when_idle(self, monkeypatch):
+        """Démarre la session ; session_runner est mocké pour ne pas boucler indéfiniment."""
+        import rosace.main as main_mod
+
+        async def fake_runner():
+            pass
+
+        monkeypatch.setattr(main_mod, "session_runner", fake_runner)
+
+        with self._client() as client:
+            res = client.post("/control/start")
+
+        assert res.status_code == 200
+        assert "démarrée" in res.json()["message"].lower()
+
+    def test_control_start_when_already_running(self):
+        """Ne redémarre pas une session déjà en cours (pas de background task ajoutée)."""
+        import rosace.main as main_mod
+
+        with self._client() as client:
+            main_mod.state.is_running = True
+            res = client.post("/control/start")
+
+        assert res.status_code == 200
+        assert "déjà" in res.json()["message"].lower()
+
+    def test_control_stop_sets_is_running_false(self):
+        import rosace.main as main_mod
+
+        with self._client() as client:
+            main_mod.state.is_running = True
+            res = client.post("/control/stop")
+
+        assert res.status_code == 200
+        assert main_mod.state.is_running is False
+
+    def test_get_star_404_when_missing(self):
+        with self._client() as client:
+            res = client.get("/stars/999999")
+        assert res.status_code == 404
+
+    def test_create_and_get_star_via_api(self):
+        with self._client() as client:
+            create_res = client.post("/stars", json={
+                "name": "ApiTestStar", "ra": 100.0, "dec": 20.0,
+            })
+            assert create_res.status_code == 201
+            star_id = create_res.json()["id"]
+            get_res = client.get(f"/stars/{star_id}")
+
+        assert get_res.status_code == 200
+        assert get_res.json()["name"] == "ApiTestStar"
+
+    def test_simbad_import_409_on_duplicate(self, monkeypatch):
+        import rosace.main as main_mod
+        from rosace.targets import StarCreate
+
+        async def fake_simbad_search(name):
+            return StarCreate(name="DupStar", ra=10.0, dec=10.0)
+
+        monkeypatch.setattr(main_mod, "simbad_search", fake_simbad_search)
+
+        with self._client() as client:
+            first = client.post("/simbad/import", params={"name": "DupStar"})
+            assert first.status_code == 201
+            second = client.post("/simbad/import", params={"name": "DupStar"})
+
+        assert second.status_code == 409
+
+    def test_observations_recent_endpoint(self):
+        with self._client() as client:
+            res = client.get("/observations/recent?limit=5")
+        assert res.status_code == 200
+        assert isinstance(res.json(), list)

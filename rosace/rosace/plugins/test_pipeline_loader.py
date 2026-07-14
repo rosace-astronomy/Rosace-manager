@@ -4,6 +4,7 @@ Vérifie le chargement dynamique des pipelines depuis les fichiers YAML de progr
 Lancez avec : pytest plugins/test_pipeline_loader.py -v
 """
 
+import inspect
 import pytest
 import tempfile
 from pathlib import Path
@@ -17,6 +18,8 @@ from rosace.plugins.pipeline_loader import (
     list_programmes,
     _build_registry,
 )
+from rosace.plugins.sequencer_plugins.slew import SlewPlugin
+from rosace.plugins.reduction_plugins.bias import BiasPlugin
 
 
 class TestListProgrammes:
@@ -169,3 +172,60 @@ class TestLoadPipelines:
 
         with pytest.raises(KeyError, match="reduction"):
             load_pipelines("bad2")
+
+
+class TestSubPluginConfigPath:
+    """
+    Régression : la configuration d'un sous-plugin doit être résolue à côté
+    du fichier de la SOUS-CLASSE réelle (via inspect.getfile(type(self))),
+    pas à côté de sub_plugin_base.py.
+    """
+
+    def test_config_dir_matches_subclass_own_directory(self):
+        plugin = SlewPlugin()
+        own_dir = Path(inspect.getfile(SlewPlugin)).parent
+        assert own_dir.name == "sequencer_plugins"
+        assert "plugins/plugins" not in str(own_dir)
+
+    def test_different_subplugins_resolve_different_directories(self):
+        seq_plugin = SlewPlugin()
+        red_plugin = BiasPlugin()
+        seq_dir = Path(inspect.getfile(type(seq_plugin))).parent
+        red_dir = Path(inspect.getfile(type(red_plugin))).parent
+        assert seq_dir != red_dir
+        assert seq_dir.name == "sequencer_plugins"
+        assert red_dir.name == "reduction_plugins"
+
+    def test_missing_config_returns_empty_dict(self):
+        """Aucun config.yaml n'est présent par défaut dans le dépôt."""
+        plugin = SlewPlugin()
+        assert plugin.config == {}
+
+    def test_config_is_lazy_not_loaded_before_access(self, monkeypatch):
+        called = []
+        monkeypatch.setattr(SlewPlugin, "_load_config", lambda self: called.append(1) or {})
+        plugin = SlewPlugin()
+        assert called == []          # pas chargé à l'instanciation
+        _ = plugin.config
+        assert called == [1]         # chargé au premier accès
+
+    def test_config_is_cached_after_first_access(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(SlewPlugin, "_load_config", lambda self: calls.append(1) or {})
+        plugin = SlewPlugin()
+        _ = plugin.config
+        _ = plugin.config
+        assert len(calls) == 1       # pas rechargé au second accès
+
+    def test_real_config_file_is_loaded_next_to_subclass(self):
+        """Un vrai config.yaml écrit à côté de slew.py est bien lu et parsé."""
+        import yaml as _yaml
+
+        real_dir = Path(inspect.getfile(SlewPlugin)).parent
+        config_path = real_dir / "config.yaml"
+        config_path.write_text(_yaml.dump({"slew_speed_deg_per_sec": 9.9}))
+        try:
+            plugin = SlewPlugin()
+            assert plugin.config.get("slew_speed_deg_per_sec") == pytest.approx(9.9)
+        finally:
+            config_path.unlink()

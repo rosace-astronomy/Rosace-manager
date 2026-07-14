@@ -9,6 +9,7 @@ sequencer:
   - slew        # Pointage télescope
   - focus       # Mise au point automatique
   - expose      # Exposition CCD
+  # - tatatata    # Pour tester...
 
 reduction:
   - bias        # Soustraction biais
