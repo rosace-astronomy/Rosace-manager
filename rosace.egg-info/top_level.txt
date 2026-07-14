@@ -1,2 +1,0 @@
-rosace
-rosace-manager

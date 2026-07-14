@@ -5,6 +5,7 @@ Chaque sous-plugin hérite de SubPlugin et implémente `execute()`.
 
 from __future__ import annotations
 
+import inspect
 import logging
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,7 @@ class SubPlugin:
 
     Chaque sous-plugin dispose :
     - d'un nom (utilisé dans les logs)
-    - d'une configuration chargée depuis config.yaml au démarrage
+    - d'une configuration chargée depuis config.yaml au premier accès (paresseuse)
     - d'une méthode `execute(context: dict) -> dict` à implémenter
 
     Le contexte est un dict libre enrichi au fil des sous-plugins.
@@ -30,13 +31,20 @@ class SubPlugin:
     def __init__(self) -> None:
         self.name = self.__class__.__name__
         self.log = logging.getLogger(f"spectro.subplugin.{self.name.lower()}")
-        self.config: dict[str, Any] = self._load_config()
+        self._config: dict[str, Any] | None = None
+
+    @property
+    def config(self) -> dict[str, Any]:
+        """Configuration du sous-plugin, chargée depuis config.yaml au premier accès."""
+        if self._config is None:
+            self._config = self._load_config()
+        return self._config
 
     def _load_config(self) -> dict[str, Any]:
         """Charge config.yaml depuis le répertoire du sous-plugin."""
-        config_path = Path(__file__).parent / self._config_relative_path()
+        config_path = Path(inspect.getfile(type(self))).parent / self._config_relative_path()
         if not config_path.exists():
-            self.log.warning(f"[{self.name}] Pas de config.yaml trouvé à {config_path}")
+            self.log.debug(f"[{self.name}] Pas de config.yaml — valeurs par défaut utilisées")
             return {}
         with open(config_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}

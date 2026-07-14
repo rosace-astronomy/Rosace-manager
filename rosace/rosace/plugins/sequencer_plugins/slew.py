@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
 
 from ..sub_plugin_base import SubPlugin
 
@@ -18,11 +17,6 @@ class SlewPlugin(SubPlugin):
     """Pointe le télescope vers la cible (RA/Dec)."""
 
     CONFIG_FILE = "config.yaml"
-
-    def _config_relative_path(self) -> str:
-        return Path(__file__).with_name("config.yaml").relative_to(
-            Path(__file__).parents[2]
-        ).as_posix()
 
     async def execute(self, context: dict) -> dict:
         target = context.get("target_name", "inconnue")

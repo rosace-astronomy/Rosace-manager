@@ -30,7 +30,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 
-from .config   import BASE_DATA_DIR, SITE_NAME
+from .config     import BASE_DATA_DIR, SITE_NAME
+from .log_config import configure_logging
+
+configure_logging()
+
 from .models   import (
     OrchestratorStage, Observation, ObservationRequest,
     Target, ExposureConfig, SessionContext,
