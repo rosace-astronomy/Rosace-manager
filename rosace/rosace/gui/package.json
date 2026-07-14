@@ -11,7 +11,7 @@
 		"x4js": "latest"
 	},
 	"dependencies": {
-		"@fontsource/montserrat": "^5.1"
+		"@fontsource/montserrat": "^5.2.8"
 	},
 	"x4build": {
 		"copy": [

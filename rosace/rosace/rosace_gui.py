@@ -41,7 +41,7 @@ DEFAULT_API_HOST = "localhost"
 DEFAULT_API_PORT = 8000
 
 # Static files are served from this directory (sibling of this script)
-GUI_DIR = Path(__file__).parent / "gui"
+GUI_DIR = Path(__file__).parent / "gui" / "bin"
 
 # Supplementary MIME types not always registered by the OS
 _EXTRA_MIME: dict[str, str] = {
@@ -173,9 +173,9 @@ def main() -> None:
         datefmt="%H:%M:%S",
     )
 
-    if not (GUI_DIR / "bundle.js").exists():
+    if not (GUI_DIR / "main.js").exists():
         logging.warning(
-            "bundle.js not found in %s — run: cd rosace/gui && npm install && npm run build",
+            "main.js not found in %s — run: cd rosace/gui && npm install && npm run build",
             GUI_DIR,
         )
 
