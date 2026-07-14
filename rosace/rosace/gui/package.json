@@ -15,9 +15,17 @@
 	},
 	"x4build": {
 		"copy": [
-			{ "from": "src/assets", "to": "assets" },
-			{ "from": "src/index.html", "to": "index.html" }
+			{
+				"from": "src/assets",
+				"to": "assets"
+			},
+			{
+				"from": "src/index.html",
+				"to": "index.html"
+			}
 		]
+	},
+	"allowScripts": {
+		"@parcel/watcher@2.5.6": true
 	}
-
 }

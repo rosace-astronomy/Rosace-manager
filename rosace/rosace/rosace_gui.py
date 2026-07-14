@@ -15,6 +15,13 @@ Requirements: Python ≥ 3.9, stdlib only.
 The GUI must be built first: cd rosace/gui && npm install && npm run build
 """
 
+"""
+Added by FC - Jul 14th, 2026 : 
+- go to folder .../gui
+- npm install (once)
+- npm run build (to compile, each time this file is updated)
+"""
+
 import argparse
 import http.server
 import json
