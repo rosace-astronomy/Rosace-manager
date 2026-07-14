@@ -20,6 +20,9 @@ import "@fontsource/montserrat/700.css"
 const STAGES  			= ["scheduler", "sequencer", "reduction", "sharing", "archive" ] as const;
 type StageType = typeof STAGES[number]
 
+// Toutes les valeurs possibles renvoyées par /status (backend OrchestratorStage)
+type OrchestratorStageType = "idle" | "init_session" | StageType | "close_session" | "error";
+
 const PIPELINE_STAGES 	= ["idle","init_session","observing","close_session"] as const;
 type PipelineStageType = typeof PIPELINE_STAGES[number]
 
@@ -45,7 +48,7 @@ interface ObsRow {
  */
 
 interface ApiStatus {
-    stage: PipelineStageType;
+    stage: OrchestratorStageType;
     is_running: boolean;
     completed_count: number;
     pending_post_obs_count: number;
@@ -168,7 +171,7 @@ class MainView extends VBox {
 
 	private obs_list: Listbox;
 	private log_lines: string[];
-	private last_stage: PipelineStageType;
+	private last_stage: OrchestratorStageType;
 	
 	constructor( props: BoxProps ) {
 		super( props );
@@ -292,7 +295,7 @@ class MainView extends VBox {
         else if (status.stage === "init_session")   {
 			activeKey = "init_session";
 		}
-        else if ( status.stage in STAGES )  {
+        else if ( (STAGES as readonly string[]).includes( status.stage ) )  {
 			activeKey = "observing";
 		}
         else if (status.stage === "close_session")  {
@@ -351,8 +354,8 @@ class MainView extends VBox {
 			if (data.stage !== this.last_stage) {
 				if (this.last_stage !== null) {
 					let label;
-					if( PIPELINE_STAGES.includes( data.stage ) ) {
-						label = PIPELINE_LABEL[data.stage];
+					if( (PIPELINE_STAGES as readonly string[]).includes( data.stage ) ) {
+						label = PIPELINE_LABEL[data.stage as PipelineStageType];
 					}
 					else {
 						label = data.stage.toUpperCase()
