@@ -64,7 +64,7 @@ On any plugin error in the observation loop, the error is recorded in the DB, an
 
 ### Plugin system (two levels)
 
-**Stage plugins** (`plugins/__init__.py` registry) — one per `OrchestratorStage` enum value, each implementing `async def run(self, ctx: SessionContext) -> SessionContext`.
+**Stage plugins** (`plugins/__init__.py` registry) — one per `OrchestratorStage` enum value. Two interfaces (`models.py`): `SessionStagePlugin` for `INIT_SESSION`/`CLOSE_SESSION` (`run(self, ctx: SessionContext) -> SessionContext`), and `ObservationStagePlugin` for `SCHEDULER` → `ARCHIVE` (`run(self, ctx: ObservationContext) -> ObservationContext`).
 
 **Sub-plugins** — loaded dynamically by `pipeline_loader.py` at runtime from a YAML programme file. The active programme is set by `ACTIVE_PROGRAMME` in `config.py`.
 
@@ -76,9 +76,14 @@ Note: the `sequencer-plugins/` and `reduction-plugins/` hyphenated directories c
 
 To add a new sub-plugin: create the class in the appropriate `*_plugins/` package, register it in `pipeline_loader.py`'s `_build_registry()`, and add its name to the relevant programme YAML.
 
-### Session context (`SessionContext`)
+### Session & observation context (`SessionContext`, `ObservationContext`)
 
-The `SessionContext` Pydantic object is the shared work memory passed between all stages. After SCHEDULER runs, the orchestrator (`main.py`) creates the `Observation` object and populates `ctx.current_observation`, `ctx.obs_dir`, and `ctx.yaml_file` before the next stage.
+Two separate Pydantic objects (`models.py`), deliberately not merged:
+
+- **`SessionContext`** — passed only to `INIT_SESSION`/`CLOSE_SESSION`. Minimal and stable for the whole night: `session_id`, `started_at`, `site_name`, `session_dir`. Recorded once in the `sessions` table.
+- **`ObservationContext`** — passed from `SCHEDULER` through `ARCHIVE`. `main.py`'s `session_runner()` creates a fresh instance for each observation, carrying forward only `session_id` (for traceability — every observation row references its session, never the reverse). Holds `current_observation`, `obs_dir`, `yaml_file`, `next_target_name`, `raw_files`, `reduced_files`. After SCHEDULER runs, the orchestrator creates the `Observation` object and populates these fields before the next stage.
+
+Naming convention: the local variable holding an `ObservationContext` is `obs_ctx`, a `SessionContext` is `session`. Plain `ctx` is reserved for the few genuinely generic spots (e.g. `run_stage()`) that accept either type.
 
 ### Two SQLite databases
 
