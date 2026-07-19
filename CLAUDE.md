@@ -46,7 +46,7 @@ pytest rosace/test_rosace_core.py -v -k "TestSimbad"   # run one class
 pytest rosace/rosace/plugins/test_pipeline_loader.py -v
 ```
 
-Tests patch `BASE_DATA_DIR`, `DB_PATH`, and `TARGETS_DB_PATH` via a session-scoped fixture in `test_rosace_core.py` — always apply this pattern in new test files to avoid writing to `/tmp/rosace` or production databases.
+Tests patch `BASE_DATA_DIR`, `DB_PATH`, and `TARGETS_DB_PATH` via a session-scoped fixture in `test_rosace_core.py` — always apply this pattern in new test files to avoid writing to `~/.rosace` or production databases.
 
 ## Architecture
 
@@ -85,7 +85,7 @@ The `SessionContext` Pydantic object is the shared work memory passed between al
 - **`rosace.db`** (`database.py`) — sessions and observations. Functions: `db_init`, `db_insert_session`, `db_close_session`, `db_insert_observation`, `db_stamp_stage`, `db_set_error`, `db_set_yaml_file`.
 - **`targets.db`** (`targets.py`) — stars catalogue and scientific programs (N-N via `program_stars`). CRUD functions follow the pattern `star_*` / `program_*`.
 
-Default path is `/tmp/rosace/` (`config.py`). Both databases are created automatically on startup.
+Default path is `~/.rosace/databases/` (`config.py`). Both databases are created automatically on startup.
 
 ### Simbad client (`simbad.py`)
 
@@ -95,11 +95,21 @@ Queries CDS TAP via ADQL over HTTPS. Returns `StarCreate`. Raises `SimbadNotFoun
 
 | Constant | Default | Purpose |
 |---|---|---|
-| `BASE_DATA_DIR` | `/tmp/rosace` | Root for all session data |
-| `DB_PATH` | `/tmp/rosace/rosace.db` | Sessions + observations DB |
+| `BASE_DATA_DIR` | `~/.rosace` | Root for all persistent data (databases, log, session directories) |
+| `DB_PATH` | `~/.rosace/databases/rosace.db` | Sessions + observations DB |
+| `SITE_NAME` | `"St-Pancrasse"` | Used to name session directories |
 | `ACTIVE_PROGRAMME` | `"etoiles_be"` | YAML programme to load at session start |
 
-`TARGETS_DB_PATH` is defined in `targets.py` as `/tmp/rosace/targets.db`.
+`TARGETS_DB_PATH` is defined in `targets.py` as `~/.rosace/databases/targets.db`.
+
+### Logging (`log_config.py`, `conf/logging.cfg`)
+
+Centralized logging, configured once via `configure_logging()`, called at the very top of `main.py` (right after importing `.config`, before any other internal import) — so that log messages emitted at plugin-instantiation time (which happens at import time) are also captured.
+
+- Config format: classic `fileConfig` ini file (`conf/logging.cfg`), not `dictConfig`.
+- Logger hierarchy: everything under the `spectro` logger (`spectro.main`, `spectro.plugin.*`, `spectro.subplugin.*`) propagates to a single `spectro` handler set — no per-module setup needed.
+- Two handlers: console (`StreamHandler`, INFO+) and rotating file (`RotatingFileHandler`, DEBUG+, 1 MB × 9 backups) at `~/.rosace/log/rosace.log`.
+- `root` logger stays at WARNING to silence FastAPI/uvicorn/httpx noise.
 
 ### GUI (`rosace/rosace/gui/`)
 
@@ -114,11 +124,14 @@ The control interface is a single-page application built **exclusively with [X4 
 ### On-disk layout
 
 ```
-/tmp/rosace/
-├── rosace.db
-├── targets.db
-└── 2026-07-05_St-Pancrasse_<session_id>/
-    └── <datetime>_<target>/
+~/.rosace/
+├── databases/
+│   ├── rosace.db
+│   └── targets.db
+├── log/
+│   └── rosace.log
+└── observations/
+    └── <date>_<site_name>/
         ├── <datetime>_<target>.yaml
         └── spectrum_0001.fits
 ```
