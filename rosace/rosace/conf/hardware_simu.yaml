@@ -1,0 +1,50 @@
+science_camera:
+    module: IndiCamera
+    module_dir: IndiDevices.Camera
+    camera_name: CCD Simulator
+    class_name: IndiCamera
+    indi_client:
+        indi_host: localhost
+        indi_port: 7624
+    cooling: true
+    cooling_capability: -20
+
+guiding_camera:
+    module: IndiCamera
+    module_dir: IndiDevices.Camera
+    camera_name: CCD Simulator
+    class_name: IndiCamera
+    indi_client:
+        indi_host: localhost
+        indi_port: 7624
+    cooling: true
+    cooling_capability: -20
+
+mount:
+    module: IndiMount
+    module_dir: IndiDevices.Mount
+    mount_name: Telescope Simulator
+    class_name: IndiMount
+    indi_client:
+        indi_host: localhost
+        indi_port: 7624
+    equatorial_eod: J2000
+
+focuser:
+    module: IndiFocuser
+    module_dir: IndiDevices.Focuser
+    focuser_name: Focuser Simulator
+    class_name: IndiFocuser
+    port: /dev/ttyUSB0
+    indi_client:
+        indi_host: localhost
+        indi_port: 7624
+    focus_range:
+        min: 10200
+        max: 11400
+    autofocus_step:
+        fine: 300
+        coarse: 300
+    autofocus_range:
+        fine: 2000
+        coarse: 2000

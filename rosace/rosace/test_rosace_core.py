@@ -26,17 +26,20 @@ import pytest_asyncio
 def tmp_data_dir(tmp_path_factory):
     """
     Remplace BASE_DATA_DIR par un répertoire temporaire pour toute la session.
-    Évite de polluer /tmp/rosace ou le répertoire de prod.
+    Évite de polluer ~/.rosace ou le répertoire de prod.
     """
     tmp = tmp_path_factory.mktemp("rosace_test_data")
     # Patch avant le premier import du package rosace
     import rosace.config as cfg
     cfg.BASE_DATA_DIR = tmp
+    cfg.DATABASES_DIR = tmp
     cfg.DB_PATH       = tmp / "rosace.db"
     import rosace.targets as tgt
+    tgt.DATABASES_DIR   = tmp
     tgt.TARGETS_DB_PATH = tmp / "targets.db"
     import rosace.database as db_mod
-    db_mod.DB_PATH = tmp / "rosace.db"
+    db_mod.DATABASES_DIR = tmp
+    db_mod.DB_PATH        = tmp / "rosace.db"
     return tmp
 
 

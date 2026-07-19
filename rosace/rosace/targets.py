@@ -1,6 +1,6 @@
 """
 Base de données des cibles (étoiles) et programmes scientifiques.
-Fichier : /tmp/rosace/targets.db
+Fichier : ~/.rosace/databases/targets.db
 """
 
 import logging
@@ -9,11 +9,11 @@ from typing import Optional
 import aiosqlite
 from pydantic import BaseModel, Field
 
-from .config import BASE_DATA_DIR
+from .config import DATABASES_DIR
 
 log = logging.getLogger("spectro.targets")
 
-TARGETS_DB_PATH = BASE_DATA_DIR / "databases" / "targets.db"
+TARGETS_DB_PATH = DATABASES_DIR / "targets.db"
 
 # ─────────────────────────────────────────────────────────────
 # Modèles
@@ -50,7 +50,7 @@ class Program(ProgramCreate):
 
 async def targets_db_init() -> None:
     """Crée les tables si elles n'existent pas."""
-    BASE_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    DATABASES_DIR.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(TARGETS_DB_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS stars (

@@ -91,16 +91,31 @@ Default path is `~/.rosace/databases/` (`config.py`). Both databases are created
 
 Queries CDS TAP via ADQL over HTTPS. Returns `StarCreate`. Raises `SimbadNotFoundError` (404) or `SimbadQueryError` (network/HTTP errors). In tests, mock `rosace.simbad.httpx.AsyncClient` as an async context manager.
 
-### Key configuration (`config.py`)
+### Configuration (`rosace/rosace/conf/`)
 
-| Constant | Default | Purpose |
-|---|---|---|
-| `BASE_DATA_DIR` | `~/.rosace` | Root for all persistent data (databases, log, session directories) |
-| `DB_PATH` | `~/.rosace/databases/rosace.db` | Sessions + observations DB |
-| `SITE_NAME` | `"St-Pancrasse"` | Used to name session directories |
-| `ACTIVE_PROGRAMME` | `"etoiles_be"` | YAML programme to load at session start |
+All application configuration lives in `conf/` — one predictable place to look, split into separate files by concern rather than crammed into a single monolith:
 
-`TARGETS_DB_PATH` is defined in `targets.py` as `~/.rosace/databases/targets.db`.
+| File | Purpose |
+|---|---|
+| `config.yaml` | Core application settings (data paths, site name, active programme) |
+| `logging.cfg` | Logging setup (`fileConfig` ini format — see below) |
+| `hardware_<variant>.yaml` | Hardware/instrument definitions, one file per variant (e.g. `hardware_simu.yaml` for the INDI simulators, a future `hardware_obs.yaml` for the real observatory). Not yet wired into any Python loader — real hardware integration is still a TODO, this is only a template so far. |
+
+Note: `programmes/*.yaml` (scientific programme definitions) intentionally live outside `conf/` — they're a catalogue of interchangeable observation plans, not app configuration.
+
+### Key configuration (`config.py` loads `conf/config.yaml`)
+
+`config.py` is a thin loader: it reads `conf/config.yaml` at import time and exposes the same constants the rest of the codebase already imports (`from .config import BASE_DATA_DIR, ...`).
+
+| Constant | Source key in `config.yaml` | Default | Purpose |
+|---|---|---|---|
+| `BASE_DATA_DIR` | `base_data_dir` | `~/.rosace` | Root for all persistent data (databases, log, session directories) |
+| `DATABASES_DIR` | `databases_dir` | `~/.rosace/databases` | Subdirectory holding both SQLite databases |
+| `DB_PATH` | *(derived)* | `~/.rosace/databases/rosace.db` | Sessions + observations DB |
+| `SITE_NAME` | `site_name` | `"St-Pancrasse"` | Used to name session directories |
+| `ACTIVE_PROGRAMME` | `active_programme` | `"etoiles_be"` | YAML programme to load at session start |
+
+`TARGETS_DB_PATH` is defined in `targets.py` as `DATABASES_DIR / "targets.db"`.
 
 ### Logging (`log_config.py`, `conf/logging.cfg`)
 

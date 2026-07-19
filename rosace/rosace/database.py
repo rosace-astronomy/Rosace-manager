@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 import aiosqlite
 
-from .config import BASE_DATA_DIR, DB_PATH
+from .config import DATABASES_DIR, DB_PATH
 from .models import OrchestratorStage, SessionContext, Observation
 
 log = logging.getLogger("spectro.database")
@@ -36,7 +36,7 @@ _DONE_COL: dict[OrchestratorStage, str] = {
 
 async def db_init() -> None:
     """Creates tables if they do not exist."""
-    BASE_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    DATABASES_DIR.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
