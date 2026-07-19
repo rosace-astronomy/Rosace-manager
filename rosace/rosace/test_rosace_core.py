@@ -54,6 +54,7 @@ from rosace.models import (
     ObservationRequest,
     Observation,
     SessionContext,
+    ObservationContext,
 )
 from rosace.database import (
     db_init,
@@ -214,9 +215,7 @@ class TestSessionContext:
     def test_default_values(self):
         ctx = SessionContext()
         assert ctx.site_name == "St-Pancrasse"
-        assert ctx.current_observation is None
-        assert ctx.raw_files == []
-        assert ctx.reduced_files == []
+        assert ctx.session_dir is None
         assert len(ctx.session_id) == 8      # UUID[:8]
 
     def test_session_ids_are_unique(self):
@@ -230,6 +229,25 @@ class TestSessionContext:
     def test_custom_site(self):
         ctx = SessionContext(site_name="Pic du Midi")
         assert ctx.site_name == "Pic du Midi"
+
+
+class TestObservationContext:
+    """Contexte d'observation transmis de SCHEDULER à ARCHIVE."""
+
+    def test_default_values(self):
+        ctx = ObservationContext(session_id="abcd1234")
+        assert ctx.session_id == "abcd1234"
+        assert ctx.current_observation is None
+        assert ctx.yaml_file is None
+        assert ctx.obs_dir is None
+        assert ctx.next_target_name is None
+        assert ctx.raw_files == []
+        assert ctx.reduced_files == []
+
+    def test_session_id_is_required(self):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            ObservationContext()  # session_id manquant
 
 
 # ═════════════════════════════════════════════════════════════

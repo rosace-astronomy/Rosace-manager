@@ -62,17 +62,31 @@ class Observation(BaseModel):
 
 # ─────────────────────────────────────────────────────────────
 # Contexte de session
-# Transmis de stage en stage ; chaque plugin peut l'enrichir.
+# Transmis uniquement à INIT_SESSION et CLOSE_SESSION.
+# Rôle réduit : nommer/organiser la session, jamais modifié par les
+# plugins liés aux observations (SCHEDULER → ARCHIVE).
 # ─────────────────────────────────────────────────────────────
 
 class SessionContext(BaseModel):
     session_id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     site_name: str = "St-Pancrasse"
+    session_dir: Optional[str] = None
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+# ─────────────────────────────────────────────────────────────
+# Contexte d'observation
+# Transmis de stage en stage, de SCHEDULER à ARCHIVE ; chaque plugin
+# peut l'enrichir. Un nouvel objet est créé pour chaque observation.
+# ─────────────────────────────────────────────────────────────
+
+class ObservationContext(BaseModel):
+    session_id: str  # traçabilité : dans quelle session cette observation a été réalisée
     current_observation: Optional[Observation] = None
     yaml_file: Optional[str] = None
     obs_dir: Optional[str] = None
-    session_dir: Optional[str] = None
     next_target_name: Optional[str] = None
     # Fichiers produits par SEQUENCER, consommés par REDUCTION puis SHARING/ARCHIVE
     raw_files: list[str] = []
@@ -86,13 +100,26 @@ class SessionContext(BaseModel):
 # ─────────────────────────────────────────────────────────────
 
 @runtime_checkable
-class StagePlugin(Protocol):
-    """Interface commune à tous les plugins de stage."""
+class SessionStagePlugin(Protocol):
+    """Interface des plugins rattachés à la session (INIT_SESSION, CLOSE_SESSION)."""
 
     async def run(self, ctx: SessionContext) -> SessionContext:
         """
         Exécute la logique du stage.
-        Reçoit le contexte courant, retourne le contexte enrichi.
+        Reçoit le contexte de session courant, retourne le contexte enrichi.
+        Toute exception remonte à l'orchestrateur qui gère le fallback.
+        """
+        ...
+
+
+@runtime_checkable
+class ObservationStagePlugin(Protocol):
+    """Interface des plugins rattachés à une observation (SCHEDULER → ARCHIVE)."""
+
+    async def run(self, ctx: ObservationContext) -> ObservationContext:
+        """
+        Exécute la logique du stage.
+        Reçoit le contexte d'observation courant, retourne le contexte enrichi.
         Toute exception remonte à l'orchestrateur qui gère le fallback.
         """
         ...

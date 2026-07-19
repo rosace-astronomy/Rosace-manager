@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from ..models import SessionContext
+from ..models import ObservationContext
 
 log = logging.getLogger("spectro.plugin.scheduler")
 
@@ -18,7 +18,7 @@ class SchedulerPlugin:
     Version future : interrogera la base de données des cibles.
     """
 
-    async def run(self, ctx: SessionContext) -> SessionContext:
+    async def run(self, obs_ctx: ObservationContext) -> ObservationContext:
         from .. import main as _main  # import tardif pour éviter la circularité
         log.info("[SCHEDULER] Sélection de la prochaine cible…")
 
@@ -29,8 +29,8 @@ class SchedulerPlugin:
             # TODO : interroger la base de données des cibles
             target_name = "Vega"
             log.info(f"[SCHEDULER] Cible sélectionnée : {target_name}")
-            ctx.next_target_name = target_name
-            ctx.raw_files = []
-            ctx.reduced_files = []
-            ctx.yaml_file = None
-            return ctx
+            obs_ctx.next_target_name = target_name
+            obs_ctx.raw_files = []
+            obs_ctx.reduced_files = []
+            obs_ctx.yaml_file = None
+            return obs_ctx

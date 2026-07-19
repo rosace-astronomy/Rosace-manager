@@ -38,7 +38,7 @@ configure_logging()
 
 from .models   import (
     OrchestratorStage, Observation, ObservationRequest,
-    Target, ExposureConfig, SessionContext,
+    Target, ExposureConfig, SessionContext, ObservationContext,
 )
 from .database import (
     db_init, db_insert_session, db_close_session,
@@ -93,14 +93,14 @@ state = SystemState()
 # Fichier d'observation YAML
 # ─────────────────────────────────────────────────────────────
 
-def create_observation_file(ctx: SessionContext, target_dir: Path) -> Path:
+def create_observation_file(obs_ctx: ObservationContext, target_dir: Path) -> Path:
     """
     Crée un fichier YAML pour l'observation courante.
     Nom : <datetime_iso>_<target_name>.yaml
     Emplacement : target_dir (répertoire d'observation)
     Retourne le chemin du fichier créé.
     """
-    obs = ctx.current_observation
+    obs = obs_ctx.current_observation
     target_name = obs.request.target.name if obs else "target"
     now = datetime.now(timezone.utc)
 
@@ -136,22 +136,24 @@ POST_OBS_STAGES: list[OrchestratorStage] = [
     OrchestratorStage.ARCHIVE,
 ]
 
-async def run_stage(stage: OrchestratorStage, ctx: SessionContext) -> SessionContext:
+async def run_stage(
+    stage: OrchestratorStage, ctx: SessionContext | ObservationContext
+) -> SessionContext | ObservationContext:
     """Executes a stage via its plugin and updates the global state."""
     state.stage = stage
     return await plugins[stage].run(ctx)
 
 
-async def run_post_obs(ctx: SessionContext) -> None:
+async def run_post_obs(obs_ctx: ObservationContext) -> None:
     """Runs REDUCTION → SHARING → ARCHIVE in the background for a completed observation."""
     state.pending_post_obs += 1
     try:
         for stage in POST_OBS_STAGES:
-            obs_id = ctx.current_observation.id if ctx.current_observation else None
+            obs_id = obs_ctx.current_observation.id if obs_ctx.current_observation else None
             try:
                 if obs_id:
                     await db_set_stage_status(obs_id, stage, "running")
-                ctx = await plugins[stage].run(ctx)
+                obs_ctx = await plugins[stage].run(obs_ctx)
                 await db_stamp_stage(obs_id, stage)  # sets done timestamp + status='done'
             except Exception as e:
                 log.error(f"[{stage.value.upper()}] Background error: {e}")
@@ -173,16 +175,16 @@ async def session_runner():
     await targets_db_init()
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     safe_site = SITE_NAME.replace(" ", "_").replace("/", "-")
-    ctx = SessionContext(site_name=SITE_NAME)
+    session = SessionContext(site_name=SITE_NAME)
 
     session_dir = BASE_DATA_DIR / "observations" / f"{date_str}_{safe_site}"
     session_dir.mkdir(parents=True, exist_ok=True)
-    ctx.session_dir = str(session_dir)
+    session.session_dir = str(session_dir)
     log.info(f"[ORCHESTRATOR] Session directory: {session_dir}")
 
     try:
-        ctx = await run_stage(OrchestratorStage.INIT_SESSION, ctx)
-        await db_insert_session(ctx)
+        session = await run_stage(OrchestratorStage.INIT_SESSION, session)
+        await db_insert_session(session)
     except Exception as e:
         log.error(f"[INIT_SESSION] Critical failure, session cancelled: {e}")
         state.stage = OrchestratorStage.ERROR
@@ -190,6 +192,7 @@ async def session_runner():
         return
 
     post_obs_tasks: list[asyncio.Task] = []
+    obs_ctx = ObservationContext(session_id=session.session_id)
 
     while state.is_running:
         for stage in OBS_STAGES:
@@ -197,10 +200,10 @@ async def session_runner():
                 break
             try:
                 # Mark SEQUENCER as running before starting (obs exists at that point)
-                if stage == OrchestratorStage.SEQUENCER and ctx.current_observation:
-                    await db_set_stage_status(ctx.current_observation.id, stage, "running")
+                if stage == OrchestratorStage.SEQUENCER and obs_ctx.current_observation:
+                    await db_set_stage_status(obs_ctx.current_observation.id, stage, "running")
 
-                ctx = await run_stage(stage, ctx)
+                obs_ctx = await run_stage(stage, obs_ctx)
 
                 if stage == OrchestratorStage.SCHEDULER:
                     obs = Observation(
@@ -208,21 +211,21 @@ async def session_runner():
                         created_at=datetime.now(timezone.utc),
                         request=ObservationRequest(
                             target=Target(
-                                name=ctx.next_target_name or "target",
+                                name=obs_ctx.next_target_name or "target",
                                 ra=0.0,
                                 dec=0.0,
                             ),
                             exposure=ExposureConfig(exposure_time=300.0),
                         )
                     )
-                    ctx.current_observation = obs
-                    await db_insert_observation(obs, ctx.session_id)
-                    ctx.obs_dir = str(session_dir)
-                    yaml_path = create_observation_file(ctx, session_dir)
-                    ctx.yaml_file = str(yaml_path)
-                    await db_set_yaml_file(obs.id, ctx.yaml_file)
+                    obs_ctx.current_observation = obs
+                    await db_insert_observation(obs, obs_ctx.session_id)
+                    obs_ctx.obs_dir = str(session_dir)
+                    yaml_path = create_observation_file(obs_ctx, session_dir)
+                    obs_ctx.yaml_file = str(yaml_path)
+                    await db_set_yaml_file(obs.id, obs_ctx.yaml_file)
                 else:
-                    await db_stamp_stage(ctx.current_observation.id, stage)
+                    await db_stamp_stage(obs_ctx.current_observation.id, stage)
 
             except SchedulerStopRequested:
                 log.info("[SCHEDULER] Clean stop requested")
@@ -230,18 +233,18 @@ async def session_runner():
                 break
             except Exception as e:
                 log.error(f"[{stage.value.upper()}] Error: {e} — restarting from SCHEDULER")
-                if ctx.current_observation:
-                    await db_set_stage_status(ctx.current_observation.id, stage, "error")
-                    await db_set_error(ctx.current_observation.id, str(e))
-                ctx = SessionContext(session_id=ctx.session_id, started_at=ctx.started_at)
+                if obs_ctx.current_observation:
+                    await db_set_stage_status(obs_ctx.current_observation.id, stage, "error")
+                    await db_set_error(obs_ctx.current_observation.id, str(e))
+                obs_ctx = ObservationContext(session_id=obs_ctx.session_id)
                 break
         else:
             # SEQUENCER succeeded: record observation and launch post-obs in background
-            if ctx.current_observation:
-                state.completed.append(ctx.current_observation)
-            task = asyncio.create_task(run_post_obs(ctx.model_copy(deep=True)))
+            if obs_ctx.current_observation:
+                state.completed.append(obs_ctx.current_observation)
+            task = asyncio.create_task(run_post_obs(obs_ctx.model_copy(deep=True)))
             post_obs_tasks.append(task)
-            ctx = SessionContext(session_id=ctx.session_id, started_at=ctx.started_at)
+            obs_ctx = ObservationContext(session_id=obs_ctx.session_id)
 
     # Wait for all background post-obs tasks before closing the session
     if post_obs_tasks:
@@ -249,11 +252,11 @@ async def session_runner():
         await asyncio.gather(*post_obs_tasks, return_exceptions=True)
 
     try:
-        ctx = await run_stage(OrchestratorStage.CLOSE_SESSION, ctx)
-        await db_close_session(ctx, status="closed")
+        session = await run_stage(OrchestratorStage.CLOSE_SESSION, session)
+        await db_close_session(session, status="closed")
     except Exception as e:
         log.error(f"[CLOSE_SESSION] Error: {e}")
-        await db_close_session(ctx, status="error")
+        await db_close_session(session, status="error")
     finally:
         state.stage = OrchestratorStage.IDLE
 
