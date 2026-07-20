@@ -64,7 +64,7 @@ interface AppData {
 	status: ApiStatus;
 	observations: ObsRow[];
 	settings: {	//saved locally
-		darkMode: boolean;
+		darkMode?: boolean;
 	}
 };
 
@@ -73,7 +73,6 @@ const app_data = makeState<AppData>( {
 	connected: false,
 	observations: [],
 	settings: {
-		darkMode: true,
 	}
 } );
 
@@ -495,5 +494,7 @@ class RosaceApp extends Application {
     }
 }
 
-new RosaceApp();
+window.onload = ( ) => {
+	new RosaceApp();
+}
 
