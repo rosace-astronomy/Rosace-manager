@@ -104,7 +104,7 @@ All application configuration lives in `conf/` — one predictable place to look
 |---|---|
 | `config.yaml` | Core application settings (data paths, site name, active programme) |
 | `logging.cfg` | Logging setup (`fileConfig` ini format — see below) |
-| `hardware_<variant>.yaml` | Hardware/instrument definitions, one file per variant (e.g. `hardware_simu.yaml` for the INDI simulators, a future `hardware_obs.yaml` for the real observatory). Not yet wired into any Python loader — real hardware integration is still a TODO, this is only a template so far. |
+| `hardware_<variant>.yaml` | Hardware/instrument definitions, one file per variant (e.g. `hardware_simu.yaml` for the INDI simulators, a future `hardware_obs.yaml` for the real observatory). Which variant is active is selected via `active_hardware` in `config.yaml` (resolved to `HARDWARE_CONFIG_PATH` in `config.py`); the file itself is not yet parsed/consumed by any Python code — real hardware integration is still a TODO, this is only a template so far. |
 
 Note: `programmes/*.yaml` (scientific programme definitions) intentionally live outside `conf/` — they're a catalogue of interchangeable observation plans, not app configuration.
 
@@ -118,7 +118,9 @@ Note: `programmes/*.yaml` (scientific programme definitions) intentionally live 
 | `DATABASES_DIR` | `databases_dir` | `~/.rosace/databases` | Subdirectory holding both SQLite databases |
 | `DB_PATH` | *(derived)* | `~/.rosace/databases/rosace.db` | Sessions + observations DB |
 | `SITE_NAME` | `site_name` | `"St-Pancrasse"` | Used to name session directories |
-| `ACTIVE_PROGRAMME` | `active_programme` | `"etoiles_be"` | YAML programme to load at session start |
+| `ACTIVE_PROGRAMME` | `active_programme` | `"etoiles_be"` | YAML programme to load at session start (⚠️ misplaced here — this is per-observation, not global deployment config; slated to move out of `config.yaml`, see project memory) |
+| `ACTIVE_HARDWARE` | `active_hardware` | `"hardware_simu"` | Name (no extension) of the hardware YAML file to use |
+| `HARDWARE_CONFIG_PATH` | *(derived)* | `conf/hardware_simu.yaml` | Full path to the active hardware YAML — resolved but not yet loaded/parsed anywhere |
 
 `TARGETS_DB_PATH` is defined in `targets.py` as `DATABASES_DIR / "targets.db"`.
 

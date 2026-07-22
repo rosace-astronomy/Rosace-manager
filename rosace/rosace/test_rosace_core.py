@@ -83,6 +83,22 @@ from rosace.simbad import (
     SimbadQueryError,
 )
 
+from rosace.config import ACTIVE_HARDWARE, HARDWARE_CONFIG_PATH
+
+
+# ═════════════════════════════════════════════════════════════
+# GROUPE 0 — Configuration
+# ═════════════════════════════════════════════════════════════
+
+class TestHardwareConfig:
+    """Sélection du fichier de configuration matérielle active."""
+
+    def test_active_hardware_matches_config_path_stem(self):
+        assert HARDWARE_CONFIG_PATH.stem == ACTIVE_HARDWARE
+
+    def test_default_hardware_config_file_exists(self):
+        assert HARDWARE_CONFIG_PATH.exists()
+
 
 # ═════════════════════════════════════════════════════════════
 # GROUPE 1 — Modèles Pydantic

@@ -30,3 +30,10 @@ SITE_NAME = _cfg["site_name"]
 # Ce programme définit les pipelines séquenceur et réduction de la session.
 # Valeurs disponibles : etoiles_be | etoiles_brillantes | nova_monitoring
 ACTIVE_PROGRAMME = _cfg["active_programme"]
+
+# ── Configuration matérielle active ────────────────────────────
+# Nom du fichier YAML dans conf/ (sans extension) décrivant le hardware à utiliser.
+# Permet de basculer entre plusieurs configurations (simulateur, observatoire réel…)
+# en changeant uniquement cette valeur.
+ACTIVE_HARDWARE = _cfg["active_hardware"]
+HARDWARE_CONFIG_PATH = Path(__file__).parent / "conf" / f"{ACTIVE_HARDWARE}.yaml"
