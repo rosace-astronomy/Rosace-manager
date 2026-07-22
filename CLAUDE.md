@@ -137,9 +137,10 @@ The control interface is a single-page application built **exclusively with [X4 
 
 - Entry point: `src/main.ts` — one `RosaceApp` class, all layout via X4 components
 - All containers must be `VBox` / `HBox`; all text via `Label`; all interactive elements via `Button` or `Component`
-- Build: `npm run build` inside `gui/` — pure esbuild CLI, no extra tooling, outputs to `gui/bin/`
+- Build: `npm run build` inside `gui/`, via `x4build` (esbuild-based CLI dedicated to x4js), outputs to `gui/bin/`
 - Serve: FastAPI mounts `gui/bin/` as static files directly (`main.py`, end of file) — same process, same port as the API, no separate GUI server
-- x4js source lives at `gui/src/x4js/` (copied from the upstream repo, **not** an npm dependency). esbuild compiles it as project code, so TypeScript decorators work natively with `experimentalDecorators: true` in `tsconfig.json`.
+- x4js is a regular npm dependency (`package.json`, `devDependencies.x4js`), installed under `node_modules/x4js`. TypeScript decorators are compiled correctly by `x4build` even from `node_modules`, so no local vendoring is needed.
+- After editing `package.json` (e.g. bumping x4js), always run a full `npm install` and confirm `node_modules/` matches `package-lock.json` before rebuilding — a partial/interrupted install here has caused the built app to silently fail to render (blank page, no build error).
 
 ### On-disk layout
 
