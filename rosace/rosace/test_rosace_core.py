@@ -19,30 +19,9 @@ import pytest
 import pytest_asyncio
 
 # ─────────────────────────────────────────────────────────────
-# Patch de BASE_DATA_DIR avant tout import du package
-# (les tests utilisent un répertoire temporaire isolé)
+# La fixture tmp_data_dir (patch de BASE_DATA_DIR) vit désormais dans
+# conftest.py — partagée par tous les fichiers de tests du paquet.
 # ─────────────────────────────────────────────────────────────
-
-@pytest.fixture(scope="session", autouse=True)
-def tmp_data_dir(tmp_path_factory):
-    """
-    Remplace BASE_DATA_DIR par un répertoire temporaire pour toute la session.
-    Évite de polluer ~/.rosace ou le répertoire de prod.
-    """
-    tmp = tmp_path_factory.mktemp("rosace_test_data")
-    # Patch avant le premier import du package rosace
-    import rosace.config as cfg
-    cfg.BASE_DATA_DIR = tmp
-    cfg.DATABASES_DIR = tmp
-    cfg.DB_PATH       = tmp / "rosace.db"
-    import rosace.targets as tgt
-    tgt.DATABASES_DIR   = tmp
-    tgt.TARGETS_DB_PATH = tmp / "targets.db"
-    import rosace.database as db_mod
-    db_mod.DATABASES_DIR = tmp
-    db_mod.DB_PATH        = tmp / "rosace.db"
-    return tmp
-
 
 # ─────────────────────────────────────────────────────────────
 # Imports du package (après le patch)

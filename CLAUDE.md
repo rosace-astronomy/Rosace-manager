@@ -39,14 +39,27 @@ uvicorn rosace.main:app --host 0.0.0.0 --port 8000
 
 ```bash
 cd rosace
+pytest rosace -v                                       # everything, recursively
 pytest rosace/test_rosace_core.py -v
 pytest rosace/test_rosace_core.py -v --tb=short
 pytest rosace/test_rosace_core.py -v -k "models"       # run one group
 pytest rosace/test_rosace_core.py -v -k "TestSimbad"   # run one class
-pytest rosace/rosace/plugins/test_pipeline_loader.py -v
+pytest rosace/plugins/test_pipeline_loader.py -v
+pytest rosace/plugins -v                                # every stage plugin's tests
+pytest rosace/plugins/sequencer_plugins rosace/plugins/reduction_plugins -v  # every sub-plugin's tests
 ```
 
-Tests patch `BASE_DATA_DIR`, `DB_PATH`, and `TARGETS_DB_PATH` via a session-scoped fixture in `test_rosace_core.py` — always apply this pattern in new test files to avoid writing to `~/.rosace` or production databases.
+Tests patch `BASE_DATA_DIR`, `DB_PATH`, and `TARGETS_DB_PATH` via a session-scoped `tmp_data_dir` fixture in `conftest.py` (`rosace/rosace/conftest.py`, shared by every test file in the tree — always apply this pattern in new test files, no need to redefine it) — to avoid writing to `~/.rosace` or production databases.
+
+### Test layout
+
+`test_rosace_core.py` covers models, config, database, targets, and Simbad. Each plugin and sub-plugin has its own dedicated test file, next to the source it tests (mirroring the pre-existing `plugins/test_pipeline_loader.py` convention):
+
+- Stage plugins: `plugins/test_<stage>.py` (e.g. `plugins/test_scheduler.py`), one per `OrchestratorStage`.
+- Sequencer sub-plugins: `plugins/sequencer_plugins/test_<name>.py`.
+- Reduction sub-plugins: `plugins/reduction_plugins/test_<name>.py`.
+
+`SequencerPlugin`/`ReductionPlugin` tests mock `pipeline_loader.load_pipelines` — they cover orchestration (order, error propagation, which programme gets loaded), not real sub-plugin behavior, which is covered by the sub-plugin test files themselves.
 
 ## Architecture
 
