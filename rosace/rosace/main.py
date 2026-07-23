@@ -31,7 +31,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.staticfiles import StaticFiles
 
-from .config     import BASE_DATA_DIR, SITE_NAME
+from .config     import SITE_NAME
 from .log_config import configure_logging
 
 configure_logging()
@@ -176,17 +176,11 @@ async def session_runner():
     """
     await db_init()
     await targets_db_init()
-    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    safe_site = SITE_NAME.replace(" ", "_").replace("/", "-")
     session = SessionContext(site_name=SITE_NAME)
-
-    session_dir = BASE_DATA_DIR / "observations" / f"{date_str}_{safe_site}"
-    session_dir.mkdir(parents=True, exist_ok=True)
-    session.session_dir = str(session_dir)
-    log.info(f"[ORCHESTRATOR] Session directory: {session_dir}")
 
     try:
         session = await run_stage(OrchestratorStage.INIT_SESSION, session)
+        session_dir = Path(session.session_dir)
         await db_insert_session(session)
     except Exception as e:
         log.error(f"[INIT_SESSION] Critical failure, session cancelled: {e}")

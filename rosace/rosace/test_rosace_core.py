@@ -12,6 +12,7 @@ Dépendances :
 """
 
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -763,7 +764,10 @@ class TestSessionRunner:
         close_called = []
 
         class FakeInit:
-            async def run(self, ctx): return ctx
+            async def run(self, ctx):
+                Path("/tmp/fake_session_dir").mkdir(parents=True, exist_ok=True)
+                ctx.session_dir = "/tmp/fake_session_dir"
+                return ctx
 
         class FakeScheduler:
             async def run(self, ctx):
@@ -795,6 +799,8 @@ class TestSessionRunner:
         class FakeInit:
             async def run(self, ctx):
                 init_calls.append(1)
+                Path("/tmp/fake_session_dir").mkdir(parents=True, exist_ok=True)
+                ctx.session_dir = "/tmp/fake_session_dir"
                 return ctx
 
         class FakeScheduler:
@@ -829,7 +835,10 @@ class TestSessionRunner:
         from rosace.plugins.scheduler import SchedulerStopRequested
 
         class FakeInit:
-            async def run(self, ctx): return ctx
+            async def run(self, ctx):
+                Path("/tmp/fake_session_dir").mkdir(parents=True, exist_ok=True)
+                ctx.session_dir = "/tmp/fake_session_dir"
+                return ctx
 
         class FakeScheduler:
             async def run(self, ctx):
