@@ -9,6 +9,7 @@ import asyncio
 import logging
 from pathlib import Path
 
+from ...models import Observation
 from ..sub_plugin_base import SubPlugin
 
 log = logging.getLogger("spectro.subplugin.flat")
@@ -19,15 +20,15 @@ class FlatPlugin(SubPlugin):
 
     CONFIG_FILE = "config.yaml"
 
-    async def execute(self, context: dict) -> dict:
+    async def execute(self, obs: Observation) -> Observation:
         # Chaîne de traitement : dark_corrected → bias_corrected → raw
         input_files: list[str] = (
-            context.get("dark_corrected_files")
-            or context.get("bias_corrected_files")
-            or context.get("raw_files", [])
+            obs.reduction_data.get("dark_corrected_files")
+            or obs.reduction_data.get("bias_corrected_files")
+            or obs.sequencer_data.get("raw_files", [])
         )
         if not input_files:
-            raise RuntimeError("FLAT : aucun fichier d'entrée disponible dans le contexte")
+            raise RuntimeError("FLAT : aucun fichier d'entrée disponible")
 
         master_flat = self.config.get("master_flat_path", "")
         simulate = self.config.get("simulate", True)
@@ -60,7 +61,7 @@ class FlatPlugin(SubPlugin):
                 await asyncio.sleep(0.05)
             flat_corrected.append(out)
 
-        context["flat_corrected_files"] = flat_corrected
-        context["flat_done"] = True
+        obs.reduction_data["flat_corrected_files"] = flat_corrected
+        obs.reduction_data["flat_done"] = True
         log.info(f"[FLAT] Correction terminée — {len(flat_corrected)} fichier(s)")
-        return context
+        return obs

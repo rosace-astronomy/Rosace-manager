@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from ...models import Observation
 from ..sub_plugin_base import SubPlugin
 
 log = logging.getLogger("spectro.subplugin.slew")
@@ -18,16 +19,17 @@ class SlewPlugin(SubPlugin):
 
     CONFIG_FILE = "config.yaml"
 
-    async def execute(self, context: dict) -> dict:
-        target = context.get("target_name", "inconnue")
-        ra = context.get("ra", 0.0)
-        dec = context.get("dec", 0.0)
+    async def execute(self, obs: Observation) -> Observation:
+        target = obs.scheduler_data.get("target")
+        target_name = target.name if target else "inconnue"
+        ra = target.ra if target else 0.0
+        dec = target.dec if target else 0.0
 
         slew_speed = self.config.get("slew_speed_deg_per_sec", 2.0)
         settle_time = self.config.get("settle_time_sec", 3.0)
         simulate = self.config.get("simulate", True)
 
-        log.info(f"[SLEW] Pointage vers {target} RA={ra:.4f}° Dec={dec:.4f}°")
+        log.info(f"[SLEW] Pointage vers {target_name} RA={ra:.4f}° Dec={dec:.4f}°")
 
         if simulate:
             # Simulation : durée proportionnelle à la distance angulaire (placeholder)
@@ -39,7 +41,7 @@ class SlewPlugin(SubPlugin):
             # await telescope.slew_to(ra=ra, dec=dec)
             await asyncio.sleep(settle_time * 0.1)
 
-        context["slew_done"] = True
-        context["slew_target"] = target
-        log.info(f"[SLEW] Télescope en position sur {target}")
-        return context
+        obs.sequencer_data["slew_done"] = True
+        obs.sequencer_data["slew_target"] = target_name
+        log.info(f"[SLEW] Télescope en position sur {target_name}")
+        return obs

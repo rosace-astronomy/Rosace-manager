@@ -12,6 +12,8 @@ from typing import Any
 
 import yaml
 
+from ..models import Observation
+
 
 class SubPlugin:
     """
@@ -20,9 +22,11 @@ class SubPlugin:
     Chaque sous-plugin dispose :
     - d'un nom (utilisé dans les logs)
     - d'une configuration chargée depuis config.yaml au premier accès (paresseuse)
-    - d'une méthode `execute(context: dict) -> dict` à implémenter
+    - d'une méthode `execute(obs: Observation) -> Observation` à implémenter
 
-    Le contexte est un dict libre enrichi au fil des sous-plugins.
+    Le sous-plugin lit/écrit dans le casier de son plugin de stage parent
+    (obs.sequencer_data ou obs.reduction_data), et peut lire celui d'une
+    étape précédente si besoin (ex. extract lit obs.sequencer_data["raw_files"]).
     """
 
     #: Surcharger dans la sous-classe pour pointer vers le bon config.yaml
@@ -58,9 +62,10 @@ class SubPlugin:
         """
         return self.CONFIG_FILE
 
-    async def execute(self, context: dict) -> dict:
+    async def execute(self, obs: Observation) -> Observation:
         """
-        Logique du sous-plugin. Reçoit le contexte courant, retourne le contexte enrichi.
+        Logique du sous-plugin. Reçoit le dossier d'observation courant,
+        retourne le dossier enrichi.
         Toute exception remonte à l'orchestrateur du plugin parent.
         """
         raise NotImplementedError(f"{self.name} doit implémenter execute()")

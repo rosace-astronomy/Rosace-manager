@@ -111,7 +111,7 @@ async def db_insert_observation(obs: Observation, session_id: str) -> None:
             (
                 obs.id,
                 session_id,
-                obs.request.target.name,
+                obs.scheduler_data["target"].name,
                 obs.created_at.isoformat(),
                 datetime.now(timezone.utc).isoformat(),
             )

@@ -51,10 +51,8 @@ from rosace.models import (
     OrchestratorStage,
     Target,
     ExposureConfig,
-    ObservationRequest,
     Observation,
     SessionContext,
-    ObservationContext,
 )
 from rosace.database import (
     db_init,
@@ -199,30 +197,31 @@ class TestExposureConfig:
 
 
 class TestObservation:
-    """Modèle Observation complet."""
+    """Dossier d'observation complet (rempli par les plugins de stage)."""
 
     def _make(self, obs_id="abc12345") -> Observation:
-        return Observation(
+        obs = Observation(
             id=obs_id,
             created_at=datetime.now(timezone.utc),
-            request=ObservationRequest(
-                target=Target(name="Altair", ra=297.69, dec=8.87),
-                exposure=ExposureConfig(exposure_time=120.0),
-            ),
+            session_id="sess1234",
         )
+        obs.scheduler_data["target"] = Target(name="Altair", ra=297.69, dec=8.87)
+        obs.scheduler_data["exposure"] = ExposureConfig(exposure_time=120.0)
+        obs.scheduler_data["programme"] = "etoiles_be"
+        return obs
 
     def test_basic_creation(self):
         obs = self._make()
         assert obs.id == "abc12345"
-        assert obs.request.target.name == "Altair"
-        assert obs.files == []
+        assert obs.scheduler_data["target"].name == "Altair"
+        assert obs.sequencer_data == {}
 
-    def test_files_list_is_independent(self):
-        """Deux instances ne partagent pas la même liste files."""
+    def test_stage_data_is_independent_per_instance(self):
+        """Deux instances ne partagent pas les mêmes casiers <stage>_data."""
         obs1 = self._make("id1")
         obs2 = self._make("id2")
-        obs1.files.append("spec.fits")
-        assert obs2.files == []
+        obs1.sequencer_data["raw_files"] = ["a.fits"]
+        assert obs2.sequencer_data == {}
 
 
 class TestSessionContext:
@@ -247,23 +246,13 @@ class TestSessionContext:
         assert ctx.site_name == "Pic du Midi"
 
 
-class TestObservationContext:
-    """Contexte d'observation transmis de SCHEDULER à ARCHIVE."""
-
-    def test_default_values(self):
-        ctx = ObservationContext(session_id="abcd1234")
-        assert ctx.session_id == "abcd1234"
-        assert ctx.current_observation is None
-        assert ctx.yaml_file is None
-        assert ctx.obs_dir is None
-        assert ctx.next_target_name is None
-        assert ctx.raw_files == []
-        assert ctx.reduced_files == []
+class TestObservationSessionId:
+    """Observation.session_id — traçabilité de la session d'origine."""
 
     def test_session_id_is_required(self):
         from pydantic import ValidationError
         with pytest.raises(ValidationError):
-            ObservationContext()  # session_id manquant
+            Observation(id="x", created_at=datetime.now(timezone.utc))  # session_id manquant
 
 
 # ═════════════════════════════════════════════════════════════
@@ -283,14 +272,15 @@ class TestDatabase:
 
     def _make_obs(self, session_id: str) -> Observation:
         import uuid
-        return Observation(
+        obs = Observation(
             id=str(uuid.uuid4())[:8],
             created_at=datetime.now(timezone.utc),
-            request=ObservationRequest(
-                target=Target(name="Vega", ra=279.23, dec=38.78),
-                exposure=ExposureConfig(exposure_time=300.0),
-            ),
+            session_id=session_id,
         )
+        obs.scheduler_data["target"] = Target(name="Vega", ra=279.23, dec=38.78)
+        obs.scheduler_data["exposure"] = ExposureConfig(exposure_time=300.0)
+        obs.scheduler_data["programme"] = "etoiles_be"
+        return obs
 
     async def test_db_init_idempotent(self):
         """db_init peut être appelé plusieurs fois sans erreur."""
@@ -812,7 +802,7 @@ class TestSessionRunner:
                 scheduler_calls.append(1)
                 if len(scheduler_calls) >= 2:
                     raise SchedulerStopRequested()
-                ctx.next_target_name = "TestStar"
+                ctx.scheduler_data["target"] = Target(name="TestStar", ra=0.0, dec=0.0)
                 return ctx
 
         class FakeSequencer:

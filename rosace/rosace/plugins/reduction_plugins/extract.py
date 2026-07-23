@@ -9,6 +9,7 @@ import asyncio
 import logging
 from pathlib import Path
 
+from ...models import Observation
 from ..sub_plugin_base import SubPlugin
 
 log = logging.getLogger("spectro.subplugin.extract")
@@ -19,16 +20,16 @@ class ExtractPlugin(SubPlugin):
 
     CONFIG_FILE = "config.yaml"
 
-    async def execute(self, context: dict) -> dict:
+    async def execute(self, obs: Observation) -> Observation:
         # Prend les fichiers les plus avancés dans la chaîne
         input_files: list[str] = (
-            context.get("flat_corrected_files")
-            or context.get("dark_corrected_files")
-            or context.get("bias_corrected_files")
-            or context.get("raw_files", [])
+            obs.reduction_data.get("flat_corrected_files")
+            or obs.reduction_data.get("dark_corrected_files")
+            or obs.reduction_data.get("bias_corrected_files")
+            or obs.sequencer_data.get("raw_files", [])
         )
         if not input_files:
-            raise RuntimeError("EXTRACT : aucun fichier calibré disponible dans le contexte")
+            raise RuntimeError("EXTRACT : aucun fichier calibré disponible")
 
         method = self.config.get("method", "sum")
         aperture_px = self.config.get("aperture_px", 10)
@@ -64,7 +65,7 @@ class ExtractPlugin(SubPlugin):
                 await asyncio.sleep(0.1)
             reduced_files.append(out)
 
-        context["reduced_files"] = reduced_files
-        context["extract_done"] = True
+        obs.reduction_data["reduced_files"] = reduced_files
+        obs.reduction_data["extract_done"] = True
         log.info(f"[EXTRACT] Extraction terminée — {len(reduced_files)} spectre(s) produit(s)")
-        return context
+        return obs

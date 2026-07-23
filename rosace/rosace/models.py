@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional, Protocol, runtime_checkable
+from typing import Any, Optional, Protocol, runtime_checkable
 import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -47,17 +47,36 @@ class ExposureConfig(BaseModel):
     central_wavelength: float = Field(default=6563.0, description="Longueur d'onde centrale en Å")
 
 
-class ObservationRequest(BaseModel):
-    target: Target
-    exposure: ExposureConfig
-    notes: Optional[str] = None
-
+# ─────────────────────────────────────────────────────────────
+# Dossier d'observation
+# Créé vide par l'orchestrateur (id, created_at, session_id), puis
+# rempli progressivement par les plugins de stage (SCHEDULER → ARCHIVE),
+# chacun dans son propre casier. C'est CET objet qui circule de plugin
+# en plugin, et qui est sérialisé tel quel dans le fichier YAML sur
+# disque après chaque étape — le fichier est la mémoire exhaustive de
+# l'observation.
+#
+# L'orchestrateur ne connaît que les champs ci-dessous ; le contenu de
+# chaque casier <stage>_data est une affaire interne au plugin (et à
+# ses sous-plugins) qui le possède — l'orchestrateur ne le lit jamais.
+# ─────────────────────────────────────────────────────────────
 
 class Observation(BaseModel):
     id: str
-    request: ObservationRequest
     created_at: datetime
-    files: list[str] = []
+    session_id: str  # traçabilité : dans quelle session cette observation a été réalisée
+    obs_dir: Optional[str] = None
+    yaml_file: Optional[str] = None
+
+    # Un casier par plugin de stage connu — contenu libre, géré par le plugin
+    # et ses sous-plugins (ex. sequencer_data["raw_files"], posé par ExposePlugin).
+    scheduler_data: dict[str, Any] = {}
+    sequencer_data: dict[str, Any] = {}
+    reduction_data: dict[str, Any] = {}
+    sharing_data: dict[str, Any] = {}
+    archive_data: dict[str, Any] = {}
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -72,25 +91,6 @@ class SessionContext(BaseModel):
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     site_name: str = "St-Pancrasse"
     session_dir: Optional[str] = None
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-# ─────────────────────────────────────────────────────────────
-# Contexte d'observation
-# Transmis de stage en stage, de SCHEDULER à ARCHIVE ; chaque plugin
-# peut l'enrichir. Un nouvel objet est créé pour chaque observation.
-# ─────────────────────────────────────────────────────────────
-
-class ObservationContext(BaseModel):
-    session_id: str  # traçabilité : dans quelle session cette observation a été réalisée
-    current_observation: Optional[Observation] = None
-    yaml_file: Optional[str] = None
-    obs_dir: Optional[str] = None
-    next_target_name: Optional[str] = None
-    # Fichiers produits par SEQUENCER, consommés par REDUCTION puis SHARING/ARCHIVE
-    raw_files: list[str] = []
-    reduced_files: list[str] = []
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -116,10 +116,11 @@ class SessionStagePlugin(Protocol):
 class ObservationStagePlugin(Protocol):
     """Interface des plugins rattachés à une observation (SCHEDULER → ARCHIVE)."""
 
-    async def run(self, ctx: ObservationContext) -> ObservationContext:
+    async def run(self, obs: Observation) -> Observation:
         """
         Exécute la logique du stage.
-        Reçoit le contexte d'observation courant, retourne le contexte enrichi.
+        Reçoit le dossier d'observation courant, retourne le dossier enrichi
+        (le plugin n'écrit que dans son propre casier <stage>_data).
         Toute exception remonte à l'orchestrateur qui gère le fallback.
         """
         ...

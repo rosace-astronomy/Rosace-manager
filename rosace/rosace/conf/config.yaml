@@ -1,5 +1,4 @@
 base_data_dir: ~/.rosace
 databases_dir: databases
 site_name: St-Pancrasse
-active_programme: etoiles_be
 active_hardware: hardware_simu

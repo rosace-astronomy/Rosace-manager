@@ -9,6 +9,7 @@ import asyncio
 import logging
 from pathlib import Path
 
+from ...models import Observation
 from ..sub_plugin_base import SubPlugin
 
 log = logging.getLogger("spectro.subplugin.dark")
@@ -19,10 +20,10 @@ class DarkPlugin(SubPlugin):
 
     CONFIG_FILE = "config.yaml"
 
-    async def execute(self, context: dict) -> dict:
+    async def execute(self, obs: Observation) -> Observation:
         # Travaille sur les fichiers corrigés du biais, sinon les bruts
-        input_files: list[str] = context.get(
-            "bias_corrected_files", context.get("raw_files", [])
+        input_files: list[str] = obs.reduction_data.get(
+            "bias_corrected_files", obs.sequencer_data.get("raw_files", [])
         )
         if not input_files:
             raise RuntimeError("DARK : aucun fichier d'entrée (bias_corrected_files ou raw_files vide)")
@@ -33,13 +34,13 @@ class DarkPlugin(SubPlugin):
         skip_if_temp_below = self.config.get("skip_if_ccd_temp_below_celsius", None)
 
         # Vérification température CCD
-        ccd_temp = context.get("ccd_temp_celsius")
+        ccd_temp = obs.reduction_data.get("ccd_temp_celsius")
         if skip_if_temp_below is not None and ccd_temp is not None:
             if ccd_temp < skip_if_temp_below:
                 log.info(f"[DARK] Température CCD {ccd_temp}°C < seuil {skip_if_temp_below}°C — dark ignoré")
-                context["dark_skipped"] = True
-                context["dark_corrected_files"] = input_files
-                return context
+                obs.reduction_data["dark_skipped"] = True
+                obs.reduction_data["dark_corrected_files"] = input_files
+                return obs
 
         log.info(f"[DARK] Soustraction dark sur {len(input_files)} fichier(s) — scale={scale_to_exposure}")
 
@@ -59,7 +60,7 @@ class DarkPlugin(SubPlugin):
                 await asyncio.sleep(0.05)
             dark_corrected.append(out)
 
-        context["dark_corrected_files"] = dark_corrected
-        context["dark_done"] = True
+        obs.reduction_data["dark_corrected_files"] = dark_corrected
+        obs.reduction_data["dark_done"] = True
         log.info(f"[DARK] Correction terminée — {len(dark_corrected)} fichier(s)")
-        return context
+        return obs

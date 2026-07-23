@@ -64,26 +64,30 @@ On any plugin error in the observation loop, the error is recorded in the DB, an
 
 ### Plugin system (two levels)
 
-**Stage plugins** (`plugins/__init__.py` registry) — one per `OrchestratorStage` enum value. Two interfaces (`models.py`): `SessionStagePlugin` for `INIT_SESSION`/`CLOSE_SESSION` (`run(self, ctx: SessionContext) -> SessionContext`), and `ObservationStagePlugin` for `SCHEDULER` → `ARCHIVE` (`run(self, ctx: ObservationContext) -> ObservationContext`).
+**Stage plugins** (`plugins/__init__.py` registry) — one per `OrchestratorStage` enum value. Two interfaces (`models.py`): `SessionStagePlugin` for `INIT_SESSION`/`CLOSE_SESSION` (`run(self, ctx: SessionContext) -> SessionContext`), and `ObservationStagePlugin` for `SCHEDULER` → `ARCHIVE` (`run(self, obs: Observation) -> Observation`).
 
-**Sub-plugins** — loaded dynamically by `pipeline_loader.py` at runtime from a YAML programme file. The active programme is set by `ACTIVE_PROGRAMME` in `config.py`.
+**Sub-plugins** — loaded dynamically by `pipeline_loader.py` at runtime from a YAML programme file, one reload per observation (`obs.scheduler_data["programme"]`, set by `SchedulerPlugin` — there is no global "active programme" setting). Sub-plugins share the same interface as stage plugins: `execute(self, obs: Observation) -> Observation` (`sub_plugin_base.py`). Each sub-plugin reads/writes its parent stage's casier on `obs` (see below), and may read a previous stage's casier as input (e.g. `extract` reads `obs.sequencer_data["raw_files"]`).
 
-- Sequencer sub-plugins: `plugins/sequencer_plugins/` (`slew`, `focus`, `expose`)
-- Reduction sub-plugins: `plugins/reduction_plugins/` (`bias`, `dark`, `flat`, `extract`)
+- Sequencer sub-plugins: `plugins/sequencer_plugins/` (`slew`, `focus`, `expose`) — read/write `obs.sequencer_data`, read `obs.scheduler_data` for target/exposure.
+- Reduction sub-plugins: `plugins/reduction_plugins/` (`bias`, `dark`, `flat`, `extract`) — read/write `obs.reduction_data`, read `obs.sequencer_data["raw_files"]` as their initial input.
 - Programme definitions: `rosace/programmes/*.yaml` — declare which sub-plugins run in order
 
 Note: the `sequencer-plugins/` and `reduction-plugins/` hyphenated directories contain standalone numbered sub-packages (each with their own test file) and are **not** imported by `pipeline_loader.py`. The underscore variants (`sequencer_plugins/`, `reduction_plugins/`) are the importable packages.
 
 To add a new sub-plugin: create the class in the appropriate `*_plugins/` package, register it in `pipeline_loader.py`'s `_build_registry()`, and add its name to the relevant programme YAML.
 
-### Session & observation context (`SessionContext`, `ObservationContext`)
+### Session context and the observation dossier (`SessionContext`, `Observation`)
 
 Two separate Pydantic objects (`models.py`), deliberately not merged:
 
 - **`SessionContext`** — passed only to `INIT_SESSION`/`CLOSE_SESSION`. Minimal and stable for the whole night: `session_id`, `started_at`, `site_name`, `session_dir`. Recorded once in the `sessions` table.
-- **`ObservationContext`** — passed from `SCHEDULER` through `ARCHIVE`. `main.py`'s `session_runner()` creates a fresh instance for each observation, carrying forward only `session_id` (for traceability — every observation row references its session, never the reverse). Holds `current_observation`, `obs_dir`, `yaml_file`, `next_target_name`, `raw_files`, `reduced_files`. After SCHEDULER runs, the orchestrator creates the `Observation` object and populates these fields before the next stage.
+- **`Observation`** — passed from `SCHEDULER` through `ARCHIVE`, unwrapped (no `ObservationContext` wrapper — it was removed; the dossier *is* what flows). `main.py`'s `session_runner()` creates a fresh, empty instance for each observation (`id`, `created_at`, `session_id`, `obs_dir` — the only fields the orchestrator itself knows or sets) right before calling `SchedulerPlugin`, which fills it in.
 
-Naming convention: the local variable holding an `ObservationContext` is `obs_ctx`, a `SessionContext` is `session`. Plain `ctx` is reserved for the few genuinely generic spots (e.g. `run_stage()`) that accept either type.
+  The orchestrator never reads or writes business data — each stage plugin (and its sub-plugins) owns one casier, free-form (`dict[str, Any]`), that only it writes to: `scheduler_data`, `sequencer_data`, `reduction_data`, `sharing_data`, `archive_data`. `models.py` only declares that these casiers exist, never what's inside them. The one deliberate exception: `main.py::create_observation_file()` reads `obs.scheduler_data["target"].name` purely to build a human-readable filename — a conscious, minimal, cosmetic exception to "the orchestrator has no business knowledge," not a precedent for the rest of `main.py`.
+
+  `Observation` is also serialized as-is to the observation's YAML file (`obs.yaml_file`) after **every** stage (`write_observation_file()`, called from both the foreground loop and `run_post_obs()`) — the file only grows, becoming the complete, self-contained record of the observation by the time ARCHIVE finishes. Useful for crash diagnosis: whatever was last written on disk shows exactly how far the observation got.
+
+Naming convention: the local variable holding an `Observation` is `obs`, a `SessionContext` is `session`. Plain `ctx` is reserved for the few genuinely generic spots (e.g. `run_stage()`) that accept either type.
 
 ### Two SQLite databases
 
@@ -118,7 +122,6 @@ Note: `programmes/*.yaml` (scientific programme definitions) intentionally live 
 | `DATABASES_DIR` | `databases_dir` | `~/.rosace/databases` | Subdirectory holding both SQLite databases |
 | `DB_PATH` | *(derived)* | `~/.rosace/databases/rosace.db` | Sessions + observations DB |
 | `SITE_NAME` | `site_name` | `"St-Pancrasse"` | Used to name session directories |
-| `ACTIVE_PROGRAMME` | `active_programme` | `"etoiles_be"` | YAML programme to load at session start (⚠️ misplaced here — this is per-observation, not global deployment config; slated to move out of `config.yaml`, see project memory) |
 | `ACTIVE_HARDWARE` | `active_hardware` | `"hardware_simu"` | Name (no extension) of the hardware YAML file to use |
 | `HARDWARE_CONFIG_PATH` | *(derived)* | `conf/hardware_simu.yaml` | Full path to the active hardware YAML — resolved but not yet loaded/parsed anywhere |
 
@@ -155,6 +158,6 @@ The control interface is a single-page application built **exclusively with [X4 
 │   └── rosace.log
 └── observations/
     └── <date>_<site_name>/
-        ├── <datetime>_<target>.yaml
+        ├── <datetime>_<target>.yaml   # full Observation dossier, rewritten after every stage
         └── spectrum_0001.fits
 ```

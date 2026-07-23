@@ -1,7 +1,9 @@
 """
 Plugin SEQUENCER — Orchestrateur d'acquisition.
 Le pipeline (liste de sous-plugins) est chargé dynamiquement depuis le YAML
-du programme scientifique actif défini dans config.py (ACTIVE_PROGRAMME).
+du programme scientifique de l'observation (obs.scheduler_data["programme"]),
+posé par SCHEDULER — donc rechargé à chaque observation, pas une fois pour
+toutes au démarrage.
 
 Structure :
     programmes/<programme>.yaml  →  pipeline_loader  →  [Slew, Focus, Expose, …]
@@ -9,8 +11,7 @@ Structure :
 
 import logging
 
-from ..config import ACTIVE_PROGRAMME
-from ..models import ObservationContext
+from ..models import Observation
 from .pipeline_loader import load_pipelines
 
 log = logging.getLogger("spectro.plugin.sequencer")
@@ -19,52 +20,35 @@ log = logging.getLogger("spectro.plugin.sequencer")
 class SequencerPlugin:
     """
     Orchestre la séquence d'acquisition en enchaînant les sous-plugins
-    déclarés dans le YAML du programme actif.
+    déclarés dans le YAML du programme de l'observation en cours.
     """
 
-    def __init__(self):
-        seq_pipeline, _ = load_pipelines(ACTIVE_PROGRAMME)
-        self.pipeline = seq_pipeline
-        steps = [s.__class__.__name__ for s in self.pipeline]
-        log.info(f"[SEQUENCER] Programme '{ACTIVE_PROGRAMME}' — pipeline : {steps}")
-
-    async def run(self, obs_ctx: ObservationContext) -> ObservationContext:
-        obs = obs_ctx.current_observation
-        if not obs:
-            raise RuntimeError("SEQUENCER : aucune observation dans le contexte")
-        if not obs_ctx.obs_dir:
+    async def run(self, obs: Observation) -> Observation:
+        programme = obs.scheduler_data.get("programme")
+        if not programme or "target" not in obs.scheduler_data:
+            raise RuntimeError("SEQUENCER : scheduler_data incomplet (target/programme)")
+        if not obs.obs_dir:
             raise RuntimeError("SEQUENCER : répertoire d'observation (obs_dir) non défini")
 
-        steps = [s.__class__.__name__ for s in self.pipeline]
+        seq_pipeline, _ = load_pipelines(programme)
+        steps = [s.__class__.__name__ for s in seq_pipeline]
         log.info(
-            f"[SEQUENCER] Début séquence '{ACTIVE_PROGRAMME}' pour {obs.request.target.name} "
+            f"[SEQUENCER] Début séquence '{programme}' pour {obs.scheduler_data['target'].name} "
             f"— étapes : {steps}"
         )
 
-        # Contexte de travail local transmis d'un sous-plugin à l'autre
-        work_ctx: dict = {
-            "target_name":   obs.request.target.name,
-            "ra":            obs.request.target.ra,
-            "dec":           obs.request.target.dec,
-            "obs_dir":       obs_ctx.obs_dir,
-            "observation":   obs,
-            "exposure_time": obs.request.exposure.exposure_time,
-            "num_exposures": obs.request.exposure.num_exposures,
-            "binning":       obs.request.exposure.binning,
-            "grating":       obs.request.exposure.grating,
-        }
-
-        # Exécution séquentielle
-        for sub in self.pipeline:
+        # Chaque sous-plugin lit/écrit directement dans obs.sequencer_data
+        for sub in seq_pipeline:
             step = sub.__class__.__name__
             log.info(f"[SEQUENCER] → {step}")
             try:
-                work_ctx = await sub.execute(work_ctx)
+                obs = await sub.execute(obs)
             except Exception as e:
                 log.error(f"[SEQUENCER] Échec à l'étape {step} : {e}")
                 raise
 
-        # Propagation des résultats vers l'ObservationContext
-        obs_ctx.raw_files = work_ctx.get("raw_files", [])
-        log.info(f"[SEQUENCER] Séquence terminée — {len(obs_ctx.raw_files)} fichier(s) brut(s)")
-        return obs_ctx
+        log.info(
+            f"[SEQUENCER] Séquence terminée — "
+            f"{len(obs.sequencer_data.get('raw_files', []))} fichier(s) brut(s)"
+        )
+        return obs

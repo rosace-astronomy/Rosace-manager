@@ -9,6 +9,7 @@ import asyncio
 import logging
 from pathlib import Path
 
+from ...models import Observation
 from ..sub_plugin_base import SubPlugin
 
 log = logging.getLogger("spectro.subplugin.focus")
@@ -19,8 +20,8 @@ class FocusPlugin(SubPlugin):
 
     CONFIG_FILE = "config.yaml"
 
-    async def execute(self, context: dict) -> dict:
-        if not context.get("slew_done"):
+    async def execute(self, obs: Observation) -> Observation:
+        if not obs.sequencer_data.get("slew_done"):
             raise RuntimeError("FOCUS : le télescope n'est pas encore pointé (slew_done manquant)")
 
         method = self.config.get("method", "v_curve")
@@ -30,12 +31,12 @@ class FocusPlugin(SubPlugin):
         skip_if_recent_sec = self.config.get("skip_if_recent_sec", 0)
 
         # Vérification : mise au point récente ?
-        last_focus_age = context.get("last_focus_age_sec")
+        last_focus_age = obs.sequencer_data.get("last_focus_age_sec")
         if skip_if_recent_sec and last_focus_age is not None:
             if last_focus_age < skip_if_recent_sec:
                 log.info(f"[FOCUS] Mise au point récente ({last_focus_age}s < {skip_if_recent_sec}s) — ignorée")
-                context["focus_skipped"] = True
-                return context
+                obs.sequencer_data["focus_skipped"] = True
+                return obs
 
         log.info(f"[FOCUS] Méthode={method}, pas={step_size}µm, n={n_steps}")
 
@@ -52,9 +53,9 @@ class FocusPlugin(SubPlugin):
             fwhm = None
             await asyncio.sleep(0.1)
 
-        context["focus_done"] = True
-        context["focus_position_um"] = best_position
-        context["focus_fwhm_px"] = fwhm
-        context["last_focus_age_sec"] = 0  # réinitialise le compteur
+        obs.sequencer_data["focus_done"] = True
+        obs.sequencer_data["focus_position_um"] = best_position
+        obs.sequencer_data["focus_fwhm_px"] = fwhm
+        obs.sequencer_data["last_focus_age_sec"] = 0  # réinitialise le compteur
         log.info(f"[FOCUS] Mise au point terminée")
-        return context
+        return obs

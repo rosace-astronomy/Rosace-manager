@@ -25,12 +25,6 @@ DB_PATH       = DATABASES_DIR / "rosace.db"
 # Nom générique utilisé pour nommer les répertoires de session.
 SITE_NAME = _cfg["site_name"]
 
-# ── Programme scientifique actif ──────────────────────────────
-# Nom du fichier YAML dans le répertoire programmes/ (sans extension).
-# Ce programme définit les pipelines séquenceur et réduction de la session.
-# Valeurs disponibles : etoiles_be | etoiles_brillantes | nova_monitoring
-ACTIVE_PROGRAMME = _cfg["active_programme"]
-
 # ── Configuration matérielle active ────────────────────────────
 # Nom du fichier YAML dans conf/ (sans extension) décrivant le hardware à utiliser.
 # Permet de basculer entre plusieurs configurations (simulateur, observatoire réel…)

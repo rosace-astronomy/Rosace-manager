@@ -37,8 +37,7 @@ from .log_config import configure_logging
 configure_logging()
 
 from .models   import (
-    OrchestratorStage, Observation, ObservationRequest,
-    Target, ExposureConfig, SessionContext, ObservationContext,
+    OrchestratorStage, Observation, SessionContext,
 )
 from .database import (
     db_init, db_insert_session, db_close_session,
@@ -93,33 +92,38 @@ state = SystemState()
 # Fichier d'observation YAML
 # ─────────────────────────────────────────────────────────────
 
-def create_observation_file(obs_ctx: ObservationContext, target_dir: Path) -> Path:
+def create_observation_file(obs: Observation, target_dir: Path) -> Path:
     """
-    Crée un fichier YAML pour l'observation courante.
-    Nom : <datetime_iso>_<target_name>.yaml
-    Emplacement : target_dir (répertoire d'observation)
-    Retourne le chemin du fichier créé.
+    Détermine le nom de fichier YAML de l'observation et l'enregistre sur
+    obs.yaml_file. Appelée juste après SCHEDULER, une fois scheduler_data
+    rempli — seule concession business de l'orchestrateur : lire le nom de
+    la cible pour un nom de fichier lisible (repli sur "target" si absent).
+    Le contenu est écrit par write_observation_file(), juste après.
+    Nom : <datetime_iso>_<target_name>.yaml — dans target_dir.
     """
-    obs = obs_ctx.current_observation
-    target_name = obs.request.target.name if obs else "target"
-    now = datetime.now(timezone.utc)
-
-    iso_str = now.strftime("%Y%m%dT%H%M%S")
+    target = obs.scheduler_data.get("target")
+    target_name = target.name if target else "target"
+    iso_str = obs.created_at.strftime("%Y%m%dT%H%M%S")
     safe_target = target_name.replace(" ", "_").replace("/", "-")
-    filename = f"{iso_str}_{safe_target}.yaml"
+    filepath = target_dir / f"{iso_str}_{safe_target}.yaml"
 
-    content = {
-        "id": now.isoformat(),
-        "target": target_name,
-        "created_at": now.isoformat(),
-    }
-
-    filepath = target_dir / filename
-    with open(filepath, "w", encoding="utf-8") as f:
-        yaml.dump(content, f, allow_unicode=True, default_flow_style=False)
-
+    obs.yaml_file = str(filepath)
     log.info(f"[ORCHESTRATOR] Fichier d'observation créé : {filepath}")
     return filepath
+
+
+def write_observation_file(obs: Observation) -> None:
+    """
+    Réécrit le fichier YAML de l'observation avec son état courant complet.
+    Appelée après chaque étape (SCHEDULER → ARCHIVE) : le fichier ne fait que
+    grandir/se compléter, jusqu'à devenir la mémoire exhaustive de
+    l'observation — utile en cas de plantage pour savoir où ça a coincé.
+    """
+    if not obs.yaml_file:
+        return
+    content = obs.model_dump(mode="json")
+    with open(obs.yaml_file, "w", encoding="utf-8") as f:
+        yaml.dump(content, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
 # ─────────────────────────────────────────────────────────────
 # Machine à états
@@ -137,29 +141,28 @@ POST_OBS_STAGES: list[OrchestratorStage] = [
 ]
 
 async def run_stage(
-    stage: OrchestratorStage, ctx: SessionContext | ObservationContext
-) -> SessionContext | ObservationContext:
+    stage: OrchestratorStage, ctx: SessionContext | Observation
+) -> SessionContext | Observation:
     """Executes a stage via its plugin and updates the global state."""
     state.stage = stage
     return await plugins[stage].run(ctx)
 
 
-async def run_post_obs(obs_ctx: ObservationContext) -> None:
+async def run_post_obs(obs: Observation) -> None:
     """Runs REDUCTION → SHARING → ARCHIVE in the background for a completed observation."""
     state.pending_post_obs += 1
     try:
         for stage in POST_OBS_STAGES:
-            obs_id = obs_ctx.current_observation.id if obs_ctx.current_observation else None
             try:
-                if obs_id:
-                    await db_set_stage_status(obs_id, stage, "running")
-                obs_ctx = await plugins[stage].run(obs_ctx)
-                await db_stamp_stage(obs_id, stage)  # sets done timestamp + status='done'
+                await db_set_stage_status(obs.id, stage, "running")
+                obs = await plugins[stage].run(obs)
+                await db_stamp_stage(obs.id, stage)  # sets done timestamp + status='done'
+                write_observation_file(obs)
             except Exception as e:
                 log.error(f"[{stage.value.upper()}] Background error: {e}")
-                if obs_id:
-                    await db_set_stage_status(obs_id, stage, "error")
-                    await db_set_error(obs_id, str(e))
+                await db_set_stage_status(obs.id, stage, "error")
+                await db_set_error(obs.id, str(e))
+                write_observation_file(obs)
                 break
     finally:
         state.pending_post_obs -= 1
@@ -192,40 +195,34 @@ async def session_runner():
         return
 
     post_obs_tasks: list[asyncio.Task] = []
-    obs_ctx = ObservationContext(session_id=session.session_id)
+    obs: Observation | None = None
 
     while state.is_running:
         for stage in OBS_STAGES:
             if not state.is_running:
                 break
             try:
-                # Mark SEQUENCER as running before starting (obs exists at that point)
-                if stage == OrchestratorStage.SEQUENCER and obs_ctx.current_observation:
-                    await db_set_stage_status(obs_ctx.current_observation.id, stage, "running")
-
-                obs_ctx = await run_stage(stage, obs_ctx)
-
                 if stage == OrchestratorStage.SCHEDULER:
+                    # L'orchestrateur crée le dossier vide ; SCHEDULER le remplit.
                     obs = Observation(
                         id=str(uuid.uuid4())[:8],
                         created_at=datetime.now(timezone.utc),
-                        request=ObservationRequest(
-                            target=Target(
-                                name=obs_ctx.next_target_name or "target",
-                                ra=0.0,
-                                dec=0.0,
-                            ),
-                            exposure=ExposureConfig(exposure_time=300.0),
-                        )
+                        session_id=session.session_id,
+                        obs_dir=str(session_dir),
                     )
-                    obs_ctx.current_observation = obs
-                    await db_insert_observation(obs, obs_ctx.session_id)
-                    obs_ctx.obs_dir = str(session_dir)
-                    yaml_path = create_observation_file(obs_ctx, session_dir)
-                    obs_ctx.yaml_file = str(yaml_path)
-                    await db_set_yaml_file(obs.id, obs_ctx.yaml_file)
                 else:
-                    await db_stamp_stage(obs_ctx.current_observation.id, stage)
+                    await db_set_stage_status(obs.id, stage, "running")
+
+                obs = await run_stage(stage, obs)
+
+                if stage == OrchestratorStage.SCHEDULER:
+                    await db_insert_observation(obs, session.session_id)
+                    yaml_path = create_observation_file(obs, session_dir)
+                    await db_set_yaml_file(obs.id, str(yaml_path))
+                else:
+                    await db_stamp_stage(obs.id, stage)
+
+                write_observation_file(obs)
 
             except SchedulerStopRequested:
                 log.info("[SCHEDULER] Clean stop requested")
@@ -233,18 +230,18 @@ async def session_runner():
                 break
             except Exception as e:
                 log.error(f"[{stage.value.upper()}] Error: {e} — restarting from SCHEDULER")
-                if obs_ctx.current_observation:
-                    await db_set_stage_status(obs_ctx.current_observation.id, stage, "error")
-                    await db_set_error(obs_ctx.current_observation.id, str(e))
-                obs_ctx = ObservationContext(session_id=obs_ctx.session_id)
+                if obs:
+                    await db_set_stage_status(obs.id, stage, "error")
+                    await db_set_error(obs.id, str(e))
+                    write_observation_file(obs)
+                obs = None
                 break
         else:
             # SEQUENCER succeeded: record observation and launch post-obs in background
-            if obs_ctx.current_observation:
-                state.completed.append(obs_ctx.current_observation)
-            task = asyncio.create_task(run_post_obs(obs_ctx.model_copy(deep=True)))
+            state.completed.append(obs)
+            task = asyncio.create_task(run_post_obs(obs.model_copy(deep=True)))
             post_obs_tasks.append(task)
-            obs_ctx = ObservationContext(session_id=obs_ctx.session_id)
+            obs = None
 
     # Wait for all background post-obs tasks before closing the session
     if post_obs_tasks:

@@ -9,6 +9,7 @@ import asyncio
 import logging
 from pathlib import Path
 
+from ...models import Observation
 from ..sub_plugin_base import SubPlugin
 
 log = logging.getLogger("spectro.subplugin.bias")
@@ -19,10 +20,10 @@ class BiasPlugin(SubPlugin):
 
     CONFIG_FILE = "config.yaml"
 
-    async def execute(self, context: dict) -> dict:
-        raw_files: list[str] = context.get("raw_files", [])
+    async def execute(self, obs: Observation) -> Observation:
+        raw_files: list[str] = obs.sequencer_data.get("raw_files", [])
         if not raw_files:
-            raise RuntimeError("BIAS : aucun fichier brut dans le contexte (raw_files vide)")
+            raise RuntimeError("BIAS : aucun fichier brut dans sequencer_data (raw_files vide)")
 
         master_bias = self.config.get("master_bias_path", "")
         simulate = self.config.get("simulate", True)
@@ -46,7 +47,7 @@ class BiasPlugin(SubPlugin):
                 await asyncio.sleep(0.05)
             bias_corrected.append(out)
 
-        context["bias_corrected_files"] = bias_corrected
-        context["bias_done"] = True
+        obs.reduction_data["bias_corrected_files"] = bias_corrected
+        obs.reduction_data["bias_done"] = True
         log.info(f"[BIAS] Correction terminée — {len(bias_corrected)} fichier(s)")
-        return context
+        return obs

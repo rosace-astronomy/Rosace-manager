@@ -9,6 +9,7 @@ import asyncio
 import logging
 from pathlib import Path
 
+from ...models import Observation
 from ..sub_plugin_base import SubPlugin
 
 log = logging.getLogger("spectro.subplugin.expose")
@@ -19,32 +20,28 @@ class ExposePlugin(SubPlugin):
 
     CONFIG_FILE = "config.yaml"
 
-    async def execute(self, context: dict) -> dict:
-        if not context.get("slew_done"):
+    async def execute(self, obs: Observation) -> Observation:
+        if not obs.sequencer_data.get("slew_done"):
             raise RuntimeError("EXPOSE : télescope non pointé (slew_done manquant)")
 
-        obs = context.get("observation")
-        obs_dir = context.get("obs_dir")
-        if not obs_dir:
+        if not obs.obs_dir:
             raise RuntimeError("EXPOSE : répertoire d'observation (obs_dir) non défini")
 
-        # Paramètres d'exposition depuis l'observation ou la config par défaut
-        if obs and hasattr(obs, "request"):
-            exposure_time = obs.request.exposure.exposure_time
-            num_exposures = obs.request.exposure.num_exposures
-            binning = obs.request.exposure.binning
-            grating = obs.request.exposure.grating
-        else:
-            exposure_time = context.get("exposure_time", self.config.get("default_exposure_sec", 300.0))
-            num_exposures = context.get("num_exposures", self.config.get("default_num_exposures", 1))
-            binning = context.get("binning", self.config.get("default_binning", 1))
-            grating = context.get("grating", self.config.get("default_grating", "R1200"))
+        target_obj = obs.scheduler_data.get("target")
+        exposure = obs.scheduler_data.get("exposure")
+        if not exposure:
+            raise RuntimeError("EXPOSE : exposure manquant dans scheduler_data")
+
+        exposure_time = exposure.exposure_time
+        num_exposures = exposure.num_exposures
+        binning = exposure.binning
+        grating = exposure.grating
 
         simulate = self.config.get("simulate", True)
         fits_prefix = self.config.get("fits_prefix", "spectrum")
         simulate_speed = self.config.get("simulate_speed_factor", 0.05)
 
-        target = context.get("target_name", "target")
+        target = target_obj.name if target_obj else "target"
         raw_files: list[str] = []
 
         log.info(
@@ -53,7 +50,7 @@ class ExposePlugin(SubPlugin):
         )
 
         for i in range(1, num_exposures + 1):
-            filename = str(Path(obs_dir) / f"{fits_prefix}_{i:04d}.fits")
+            filename = str(Path(obs.obs_dir) / f"{fits_prefix}_{i:04d}.fits")
             log.info(f"[EXPOSE] Exposition {i}/{num_exposures} → {filename}")
 
             if simulate:
@@ -70,13 +67,9 @@ class ExposePlugin(SubPlugin):
 
             raw_files.append(filename)
 
-        # Mise à jour de l'observation et du contexte
-        if obs and hasattr(obs, "files"):
-            obs.files.extend(raw_files)
-
-        context["raw_files"] = context.get("raw_files", []) + raw_files
-        context["expose_done"] = True
-        context["expose_count"] = num_exposures
+        obs.sequencer_data["raw_files"] = obs.sequencer_data.get("raw_files", []) + raw_files
+        obs.sequencer_data["expose_done"] = True
+        obs.sequencer_data["expose_count"] = num_exposures
 
         log.info(f"[EXPOSE] {num_exposures} exposition(s) terminée(s) — {len(raw_files)} fichier(s) produit(s)")
-        return context
+        return obs
