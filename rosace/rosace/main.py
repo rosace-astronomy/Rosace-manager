@@ -22,7 +22,6 @@ Machine d'état : INIT_SESSION → SCHEDULER → SEQUENCER → REDUCTION → SHA
 import asyncio
 import logging
 import uuid
-import yaml
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -45,6 +44,7 @@ from .database import (
     db_stamp_stage, db_set_error,
     db_set_stage_status, db_get_recent_observations,
 )
+from .observation_file import create_observation_file, write_observation_file
 from .plugins  import plugins
 from .simbad   import simbad_search, SimbadNotFoundError, SimbadQueryError
 from .plugins.scheduler import SchedulerStopRequested
@@ -87,43 +87,6 @@ class SystemState:
         self.pending_post_obs: int = 0
 
 state = SystemState()
-
-# ─────────────────────────────────────────────────────────────
-# Fichier d'observation YAML
-# ─────────────────────────────────────────────────────────────
-
-def create_observation_file(obs: Observation, target_dir: Path) -> Path:
-    """
-    Détermine le nom de fichier YAML de l'observation et l'enregistre sur
-    obs.yaml_file. Appelée juste après SCHEDULER, une fois scheduler_data
-    rempli — seule concession business de l'orchestrateur : lire le nom de
-    la cible pour un nom de fichier lisible (repli sur "target" si absent).
-    Le contenu est écrit par write_observation_file(), juste après.
-    Nom : <datetime_iso>_<target_name>.yaml — dans target_dir.
-    """
-    target = obs.scheduler_data.get("target")
-    target_name = target.name if target else "target"
-    iso_str = obs.created_at.strftime("%Y%m%dT%H%M%S")
-    safe_target = target_name.replace(" ", "_").replace("/", "-")
-    filepath = target_dir / f"{iso_str}_{safe_target}.yaml"
-
-    obs.yaml_file = str(filepath)
-    log.info(f"[ORCHESTRATOR] Fichier d'observation créé : {filepath}")
-    return filepath
-
-
-def write_observation_file(obs: Observation) -> None:
-    """
-    Réécrit le fichier YAML de l'observation avec son état courant complet.
-    Appelée après chaque étape (SCHEDULER → ARCHIVE) : le fichier ne fait que
-    grandir/se compléter, jusqu'à devenir la mémoire exhaustive de
-    l'observation — utile en cas de plantage pour savoir où ça a coincé.
-    """
-    if not obs.yaml_file:
-        return
-    content = obs.model_dump(mode="json")
-    with open(obs.yaml_file, "w", encoding="utf-8") as f:
-        yaml.dump(content, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
 # ─────────────────────────────────────────────────────────────
 # Machine à états

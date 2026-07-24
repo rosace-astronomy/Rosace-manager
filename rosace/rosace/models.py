@@ -78,6 +78,21 @@ class Observation(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+    @property
+    def suggested_filename(self) -> str:
+        """
+        Nom de fichier suggéré pour le YAML de cette observation :
+        <datetime_iso>_<target_name>.yaml (repli sur "target" si la cible
+        n'est pas encore connue, ex. avant que SCHEDULER n'ait tourné).
+        Seule concession business du modèle : lire son propre
+        scheduler_data pour se donner un nom lisible.
+        """
+        target = self.scheduler_data.get("target")
+        target_name = target.name if target else "target"
+        iso_str = self.created_at.strftime("%Y%m%dT%H%M%S")
+        safe_target = target_name.replace(" ", "_").replace("/", "-")
+        return f"{iso_str}_{safe_target}.yaml"
+
 
 # ─────────────────────────────────────────────────────────────
 # Contexte de session

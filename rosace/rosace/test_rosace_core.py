@@ -203,6 +203,27 @@ class TestObservation:
         obs1.sequencer_data["raw_files"] = ["a.fits"]
         assert obs2.sequencer_data == {}
 
+    def test_suggested_filename_uses_target_name(self):
+        obs = self._make()
+        assert obs.suggested_filename.endswith("_Altair.yaml")
+
+    def test_suggested_filename_falls_back_when_no_target(self):
+        obs = Observation(id="x", created_at=datetime.now(timezone.utc), session_id="sess1234")
+        assert obs.suggested_filename.endswith("_target.yaml")
+
+    def test_suggested_filename_sanitizes_special_characters(self):
+        obs = Observation(id="x", created_at=datetime.now(timezone.utc), session_id="sess1234")
+        obs.scheduler_data["target"] = Target(name="V/380 Cyg", ra=1.0, dec=1.0)
+        assert "/" not in obs.suggested_filename
+        assert " " not in obs.suggested_filename
+
+    def test_suggested_filename_reflects_current_scheduler_data(self):
+        """La propriété se recalcule à chaque lecture — pas figée à la création."""
+        obs = Observation(id="x", created_at=datetime.now(timezone.utc), session_id="sess1234")
+        assert obs.suggested_filename.endswith("_target.yaml")
+        obs.scheduler_data["target"] = Target(name="Deneb", ra=1.0, dec=1.0)
+        assert obs.suggested_filename.endswith("_Deneb.yaml")
+
 
 class TestSessionContext:
     """Contexte de session transmis entre les stages."""

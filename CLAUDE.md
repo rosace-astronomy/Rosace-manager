@@ -53,7 +53,7 @@ Tests patch `BASE_DATA_DIR`, `DB_PATH`, and `TARGETS_DB_PATH` via a session-scop
 
 ### Test layout
 
-`test_rosace_core.py` covers models, config, database, targets, and Simbad. Each plugin and sub-plugin has its own dedicated test file, next to the source it tests (mirroring the pre-existing `plugins/test_pipeline_loader.py` convention):
+`test_rosace_core.py` covers models, config, database, targets, and Simbad. `test_observation_file.py` covers `observation_file.py` (YAML persistence) on its own, next to it. Each plugin and sub-plugin has its own dedicated test file, next to the source it tests (mirroring the pre-existing `plugins/test_pipeline_loader.py` convention):
 
 - Stage plugins: `plugins/test_<stage>.py` (e.g. `plugins/test_scheduler.py`), one per `OrchestratorStage`.
 - Sequencer sub-plugins: `plugins/sequencer_plugins/test_<name>.py`.
@@ -96,9 +96,9 @@ Two separate Pydantic objects (`models.py`), deliberately not merged:
 - **`SessionContext`** — passed only to `INIT_SESSION`/`CLOSE_SESSION`. Minimal and stable for the whole night: `session_id`, `started_at`, `site_name`, `session_dir`. Recorded once in the `sessions` table.
 - **`Observation`** — passed from `SCHEDULER` through `ARCHIVE`, unwrapped (no `ObservationContext` wrapper — it was removed; the dossier *is* what flows). `main.py`'s `session_runner()` creates a fresh, empty instance for each observation (`id`, `created_at`, `session_id`, `obs_dir` — the only fields the orchestrator itself knows or sets) right before calling `SchedulerPlugin`, which fills it in.
 
-  The orchestrator never reads or writes business data — each stage plugin (and its sub-plugins) owns one casier, free-form (`dict[str, Any]`), that only it writes to: `scheduler_data`, `sequencer_data`, `reduction_data`, `sharing_data`, `archive_data`. `models.py` only declares that these casiers exist, never what's inside them. The one deliberate exception: `main.py::create_observation_file()` reads `obs.scheduler_data["target"].name` purely to build a human-readable filename — a conscious, minimal, cosmetic exception to "the orchestrator has no business knowledge," not a precedent for the rest of `main.py`.
+  The orchestrator never reads or writes business data — each stage plugin (and its sub-plugins) owns one casier, free-form (`dict[str, Any]`), that only it writes to: `scheduler_data`, `sequencer_data`, `reduction_data`, `sharing_data`, `archive_data`. `models.py` only declares that these casiers exist, never what's inside them. The one deliberate exception: `Observation.suggested_filename` (a `@property` on the model itself) reads `self.scheduler_data["target"].name` purely to build a human-readable filename — a conscious, minimal, cosmetic exception, kept on the model (not in `main.py` or a stage plugin) precisely so `main.py` and the plugins never need to know it exists. Computed lazily on every access, not cached — reflects whatever `scheduler_data` currently holds (falls back to `"target"` before `SchedulerPlugin` has run).
 
-  `Observation` is also serialized as-is to the observation's YAML file (`obs.yaml_file`) after **every** stage (`write_observation_file()`, called from both the foreground loop and `run_post_obs()`) — the file only grows, becoming the complete, self-contained record of the observation by the time ARCHIVE finishes. Useful for crash diagnosis: whatever was last written on disk shows exactly how far the observation got.
+  `Observation` is also serialized as-is to the observation's YAML file (`obs.yaml_file`) after **every** stage (`observation_file.py::write_observation_file()`, called from both the foreground loop and `run_post_obs()`) — the file only grows, becoming the complete, self-contained record of the observation by the time ARCHIVE finishes. Useful for crash diagnosis: whatever was last written on disk shows exactly how far the observation got.
 
 Naming convention: the local variable holding an `Observation` is `obs`, a `SessionContext` is `session`. Plain `ctx` is reserved for the few genuinely generic spots (e.g. `run_stage()`) that accept either type.
 
@@ -108,6 +108,10 @@ Naming convention: the local variable holding an `Observation` is `obs`, a `Sess
 - **`targets.db`** (`targets.py`) — stars catalogue and scientific programs (N-N via `program_stars`). CRUD functions follow the pattern `star_*` / `program_*`.
 
 Default path is `~/.rosace/databases/` (`config.py`). Both databases are created automatically on startup.
+
+### Observation YAML persistence (`observation_file.py`)
+
+Plays the same role for the observation's YAML file that `database.py` plays for SQLite: a dedicated persistence module, kept separate from both the orchestrator (`main.py`) and the pure data model (`models.py`). `create_observation_file(obs, target_dir)` fixes `obs.yaml_file` (using `obs.suggested_filename`) without writing anything; `write_observation_file(obs)` serializes the current full state (`obs.model_dump(mode="json")`) to that path — a no-op until `create_observation_file` has run. `main.py` only ever calls these two functions, the same way it calls `db_insert_session` — it never touches YAML or filesystem details directly.
 
 ### Simbad client (`simbad.py`)
 
