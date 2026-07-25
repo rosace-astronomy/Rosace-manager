@@ -11,7 +11,8 @@ Dépendances :
     pip install pytest pytest-asyncio aiosqlite pydantic httpx
 """
 
-from datetime import datetime, timezone
+import logging
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -44,6 +45,7 @@ from rosace.database import (
     db_set_error,
     db_set_stage_status,
     db_get_recent_observations,
+    _astronomical_day_start_utc,
 )
 from rosace.targets import (
     targets_db_init,
@@ -271,11 +273,11 @@ class TestDatabase:
     def _make_ctx(self) -> SessionContext:
         return SessionContext(site_name="St-Pancrasse")
 
-    def _make_obs(self, session_id: str) -> Observation:
+    def _make_obs(self, session_id: str, created_at: datetime | None = None) -> Observation:
         import uuid
         obs = Observation(
             id=str(uuid.uuid4())[:8],
-            created_at=datetime.now(timezone.utc),
+            created_at=created_at or datetime.now(timezone.utc),
             session_id=session_id,
         )
         obs.scheduler_data["target"] = Target(name="Vega", ra=279.23, dec=38.78)
@@ -383,6 +385,37 @@ class TestDatabase:
         # Both observations are present (order by created_at DESC)
         ids = [r["id"] for r in rows]
         assert obs1.id in ids and obs2.id in ids
+
+    async def test_get_recent_observations_excludes_previous_astronomical_day(self):
+        """Une observation d'avant-hier n'apparaît pas dans la liste du jour astronomique en cours."""
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+
+        old_obs = self._make_obs(ctx.session_id, created_at=datetime.now(timezone.utc) - timedelta(days=2))
+        today_obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(old_obs, ctx.session_id)
+        await db_insert_observation(today_obs, ctx.session_id)
+
+        rows = await db_get_recent_observations(limit=20)
+        ids = [r["id"] for r in rows]
+        assert today_obs.id in ids
+        assert old_obs.id not in ids
+
+    def test_astronomical_day_start_utc_spans_local_noon(self):
+        """La frontière est le midi local précédent — robuste au fuseau de la machine de test."""
+        system_tz = datetime.now().astimezone().tzinfo
+        local_date = datetime.now(system_tz).date()
+        just_after_noon = datetime(local_date.year, local_date.month, local_date.day, 12, 30, tzinfo=system_tz)
+        just_before_noon = just_after_noon.replace(hour=11, minute=30)
+
+        boundary_after  = datetime.fromisoformat(_astronomical_day_start_utc(just_after_noon))
+        boundary_before = datetime.fromisoformat(_astronomical_day_start_utc(just_before_noon))
+
+        # crossing noon shifts the boundary by exactly one calendar day
+        assert boundary_after - boundary_before == timedelta(days=1)
+        # the boundary is always the most recent noon at or before `now`
+        assert boundary_after <= just_after_noon.astimezone(timezone.utc)
+        assert boundary_before <= just_before_noon.astimezone(timezone.utc)
 
 
 # ═════════════════════════════════════════════════════════════
@@ -985,3 +1018,21 @@ class TestApiEndpoints:
             res = client.get("/observations/recent?limit=5")
         assert res.status_code == 200
         assert isinstance(res.json(), list)
+
+    def test_ws_logs_streams_log_records(self, monkeypatch):
+        """End-to-end: a spectro.* log record reaches a connected /ws client as log.create."""
+        import rosace.log_broadcast as log_broadcast_mod
+
+        monkeypatch.setattr(log_broadcast_mod, "FLUSH_INTERVAL", 0.02)
+        # the handler is a module-level singleton — start from a clean slate
+        log_broadcast_mod.ws_log_handler._buffer.clear()
+        log_broadcast_mod.ws_log_handler._dropped = 0
+
+        with self._client() as client:
+            with client.websocket_connect("/ws", subprotocols=["messaging"]) as ws:
+                logging.getLogger("spectro.test.ws").info("hello over websocket")
+                message = ws.receive_json()
+
+        assert message["msg"] == "log.create"
+        texts = [line["text"] for line in message["params"]["lines"]]
+        assert any("hello over websocket" in t for t in texts)

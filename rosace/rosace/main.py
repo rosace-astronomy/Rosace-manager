@@ -5,18 +5,13 @@ Machine d'état : INIT_SESSION → SCHEDULER → SEQUENCER → REDUCTION → SHA
 
 #─────────────────────────────────────────────────────────────
 # Quelques TODO...
-# Je crois que je vais devoir repartir de l'ancienne version... en pensant à y recopier cette liste de todo
 # Mettre en contener (docker) ?
 # Mettre en place les plugins pour chaque étape d'observation et de
 # réduction de données
-# Mettre en place une architecture de test pour chaque plugin
 # Faire une version 0.0.1, qui permette de faire une démonstration 
 # Faire un chargement dynamique des plugis (sequencer et réduction)
-# Déplacer les deux bases de données dans un endroit persistant
 # Créer un fichier YAML pour une démo
-# Dans un premier temps, chaque sous-plugin ne fait qu'une tempo de X secondes
 # Faire une séquence d'observations à partir d'une liste d'étoiles en fichier texte
-# Le fichier d'observation doit passer d'étapes en étapes
 #─────────────────────────────────────────────────────────────
 
 import asyncio
@@ -27,13 +22,15 @@ from pathlib import Path
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi import FastAPI, BackgroundTasks, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
 from .config     import SITE_NAME
 from .log_config import configure_logging
 
 configure_logging()
+
+from .log_broadcast import ws_log_handler
 
 from .models   import (
     OrchestratorStage, Observation, SessionContext,
@@ -66,6 +63,8 @@ log = logging.getLogger("spectro.main")
 async def lifespan(_app: FastAPI):
     await db_init()
     await targets_db_init()
+    ws_log_handler.bind_loop(asyncio.get_running_loop())
+    logging.getLogger("spectro").addHandler(ws_log_handler)
     yield
 
 app = FastAPI(
@@ -262,6 +261,25 @@ async def stop_session():
     state.is_running = False
     log.info("[ORCHESTRATOR] Arrêt demandé — CLOSE_SESSION sera exécuté en fin de cycle")
     return {"message": "Arrêt demandé — CLOSE_SESSION sera exécuté en fin de cycle"}
+
+
+WS_PING_INTERVAL = 30  # seconds — matches the 'ping' heartbeat convention of x4js's setupSocketMessaging()
+
+@app.websocket("/ws")
+async def ws_logs(websocket: WebSocket):
+    """Streams spectro logger records (INFO+) to connected GUI clients, X4 'messaging' protocol."""
+    await websocket.accept(subprotocol="messaging")
+    ws_log_handler.add_client(websocket)
+    try:
+        while True:
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=WS_PING_INTERVAL)
+            except asyncio.TimeoutError:
+                await websocket.send_text("ping")
+    except WebSocketDisconnect:
+        pass
+    finally:
+        ws_log_handler.remove_client(websocket)
 
 
 # ─────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@ SQLite access layer (aiosqlite) — sessions, observations, and per-stage status
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import aiosqlite
 
@@ -174,8 +174,23 @@ async def db_set_error(obs_id: str, message: str) -> None:
     log.info(f"[DB] Error recorded for {obs_id}")
 
 
+def _astronomical_day_start_utc(now: datetime | None = None) -> str:
+    """
+    Start of the current astronomical day (local noon at or before `now`), as a UTC
+    timestamp string in the same format as the created_at column, for a direct
+    lexicographic comparison. Assumes the server runs in the site's own local
+    timezone — there is no explicit site timezone setting in conf/config.yaml.
+    """
+    local_now = (now or datetime.now(timezone.utc)).astimezone()
+    local_noon = local_now.replace(hour=12, minute=0, second=0, microsecond=0)
+    if local_now < local_noon:
+        local_noon -= timedelta(days=1)
+    return local_noon.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
+
+
 async def db_get_recent_observations(limit: int = 20) -> list[dict]:
-    """Returns the most recent observations with per-stage statuses and timestamps."""
+    """Returns observations from the current astronomical day (local noon to noon), newest first."""
+    since = _astronomical_day_start_utc()
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -185,9 +200,10 @@ async def db_get_recent_observations(limit: int = 20) -> list[dict]:
                       scheduler_status, sequencer_status, reduction_status,
                       sharing_status, archive_status
                FROM observations
+               WHERE created_at >= ?
                ORDER BY created_at DESC
                LIMIT ?""",
-            (limit,)
+            (since, limit)
         ) as cursor:
             rows = await cursor.fetchall()
     return [

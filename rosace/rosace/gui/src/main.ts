@@ -1,5 +1,5 @@
-import { VBox, HBox, Button, Label, Application, BoxProps, Image, Listbox, ListItem, 
-	SimpleText, SimpleTextArea, Notification, Tag, initTooltips, makeState, asap,
+import { VBox, HBox, Button, Label, Application, BoxProps, Image, Listbox, ListItem,
+	SimpleText, SimpleTextArea, Notification, Tag, initTooltips, makeState, asap, EvMessage,
 	} from "x4js";
 
 import "./main.scss";
@@ -107,13 +107,16 @@ const API = "";
 
 const OBS_FETCH_TIME = 10000;
 const STATUS_FETCH_TIME = 5000;
+const WS_RETRY_DELAY = 5000;
+
+const LOG_CREATE_MSG = "log.create";
 
 const STAGE_LABEL: Record<StageType, { text: string, icon: string }> = {	//allow only a value of stages in stage_label
-    scheduler: { text: "SCHED", icon: null },
-    sequencer: { text: "SEQ", icon: null },
-    reduction: { text: "RED", icon: null },
-    sharing:   { text: "SHARE", icon: null },
-    archive:   { text: "ARC", icon: null },
+    scheduler: { text: "SCHEDULER", icon: null },
+    sequencer: { text: "SEQUENCER", icon: null },
+    reduction: { text: "REDUCTION", icon: null },
+    sharing:   { text: "SHARING", icon: null },
+    archive:   { text: "ARCHIVE", icon: null },
 };
 
 
@@ -215,6 +218,14 @@ class MainView extends VBox {
 
 		this.log( "application started" )
 
+		// backend log records, pushed over the WebSocket log channel in periodic batches
+		this.onGlobalEvent( ( ev: EvMessage ) => {
+			if( ev.msg === LOG_CREATE_MSG ) {
+				const lines = ev.params.lines as { level: string, text: string }[];
+				this.logMany( lines.map( l => `[${l.level}] ${l.text}` ) );
+			}
+		} );
+
 		// watch observations
 		app_data.watch( "observations", e => {
 			this.renderObs( e.value );
@@ -315,17 +326,28 @@ class MainView extends VBox {
         });
     }
 
-	private log(msg: string) {
+	/**
+	 * appends several lines in one shot: a single setText() for the whole batch,
+	 * so a burst of incoming messages doesn't trigger one DOM redraw per line
+	 */
+
+	private logMany(msgs: string[]) {
         const ts = new Date().toLocaleTimeString("fr-FR");
 
-		const l = this.query<SimpleTextArea>( "#logger" );
-        this.log_lines.push(`[${ts}]\t${msg}`);
+        for( const msg of msgs ) {
+            this.log_lines.push(`[${ts}]\t${msg}`);
+        }
 
         if (this.log_lines.length > 100) {
-			this.log_lines.shift();
+			this.log_lines.splice( 0, this.log_lines.length - 100 );
 		}
 
+		const l = this.query<SimpleTextArea>( "#logger" );
         l.setText( this.log_lines.join('\n' ) );
+    }
+
+	private log(msg: string) {
+        this.logMany( [ msg ] );
     }
 
 	private async fetchStatus() {
@@ -459,9 +481,11 @@ class RosaceApp extends Application {
 		super( );
 
 		initTooltips( );
-		this.setMainView( 
+		this.setMainView(
 			new MainView( { } )
 		)
+
+		this.connectWebSocket( );
 
 		/*
 		if( __debug ) {
@@ -492,6 +516,24 @@ class RosaceApp extends Application {
 			})
 		});
     }
+
+	/**
+	 * opens the log WebSocket channel; on unexpected loss, warns visibly (not silently)
+	 * and retries after WS_RETRY_DELAY — setupSocketMessaging() has no built-in reconnect
+	 */
+
+	private connectWebSocket( ) {
+		this.setupSocketMessaging( undefined, ( ) => {
+			new Notification( {
+				title: "WebSocket déconnecté",
+				text: `Reconnexion dans ${WS_RETRY_DELAY / 1000}s...`,
+				mode: "danger",
+				closable: true,
+			} ).display( 8 );
+
+			this.setTimeout( "ws-retry", WS_RETRY_DELAY, ( ) => this.connectWebSocket( ) );
+		} );
+	}
 }
 
 window.onload = ( ) => {

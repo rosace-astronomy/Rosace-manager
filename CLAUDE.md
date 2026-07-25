@@ -61,6 +61,8 @@ Tests patch `BASE_DATA_DIR`, `DB_PATH`, and `TARGETS_DB_PATH` via a session-scop
 
 `SequencerPlugin`/`ReductionPlugin` tests mock `pipeline_loader.load_pipelines` — they cover orchestration (order, error propagation, which programme gets loaded), not real sub-plugin behavior, which is covered by the sub-plugin test files themselves.
 
+`test_log_broadcast.py` covers `log_broadcast.py` (WebSocket log streaming) on its own, next to it — same convention as `test_observation_file.py`. The `/ws` route itself is exercised end-to-end in `test_rosace_core.py`'s `TestApiEndpoints` group, via `TestClient.websocket_connect()`.
+
 ## Architecture
 
 ### State machine (`main.py`)
@@ -104,7 +106,7 @@ Naming convention: the local variable holding an `Observation` is `obs`, a `Sess
 
 ### Two SQLite databases
 
-- **`rosace.db`** (`database.py`) — sessions and observations. Functions: `db_init`, `db_insert_session`, `db_close_session`, `db_insert_observation`, `db_stamp_stage`, `db_set_error`, `db_set_yaml_file`.
+- **`rosace.db`** (`database.py`) — sessions and observations. Functions: `db_init`, `db_insert_session`, `db_close_session`, `db_insert_observation`, `db_stamp_stage`, `db_set_error`, `db_set_yaml_file`, `db_get_recent_observations`. The latter only returns observations from the current *astronomical day* (local noon to noon, via `_astronomical_day_start_utc()`) — assumes the server runs in the site's own local timezone, since there is no explicit site timezone setting anywhere in `conf/`.
 - **`targets.db`** (`targets.py`) — stars catalogue and scientific programs (N-N via `program_stars`). CRUD functions follow the pattern `star_*` / `program_*`.
 
 Default path is `~/.rosace/databases/` (`config.py`). Both databases are created automatically on startup.
@@ -150,8 +152,9 @@ Centralized logging, configured once via `configure_logging()`, called at the ve
 
 - Config format: classic `fileConfig` ini file (`conf/logging.cfg`), not `dictConfig`.
 - Logger hierarchy: everything under the `spectro` logger (`spectro.main`, `spectro.plugin.*`, `spectro.subplugin.*`) propagates to a single `spectro` handler set — no per-module setup needed.
-- Two handlers: console (`StreamHandler`, INFO+) and rotating file (`RotatingFileHandler`, DEBUG+, 1 MB × 9 backups) at `~/.rosace/log/rosace.log`.
+- Two handlers configured via `logging.cfg`: console (`StreamHandler`, INFO+) and rotating file (`RotatingFileHandler`, DEBUG+, 1 MB × 9 backups) at `~/.rosace/log/rosace.log`.
 - `root` logger stays at WARNING to silence FastAPI/uvicorn/httpx noise.
+- A third handler, `WebSocketLogHandler` (`log_broadcast.py`), is attached to the `spectro` logger **programmatically** (not via `logging.cfg` — it needs a live asyncio loop and the set of connected GUI clients), in `main.py`'s `lifespan` startup. It buffers INFO+ records and flushes them in periodic batches (every `FLUSH_INTERVAL`, capped at `MAX_BUFFERED` with a dropped-count warning) over the `/ws` route to the GUI's Journal panel — see GUI section below.
 
 ### GUI (`rosace/rosace/gui/`)
 
@@ -163,6 +166,8 @@ The control interface is a single-page application built **exclusively with [X4 
 - Serve: FastAPI mounts `gui/bin/` as static files directly (`main.py`, end of file) — same process, same port as the API, no separate GUI server
 - x4js is a regular npm dependency (`package.json`, `devDependencies.x4js`), installed under `node_modules/x4js`. TypeScript decorators are compiled correctly by `x4build` even from `node_modules`, so no local vendoring is needed.
 - After editing `package.json` (e.g. bumping x4js), always run a full `npm install` and confirm `node_modules/` matches `package-lock.json` before rebuilding — a partial/interrupted install here has caused the built app to silently fail to render (blank page, no build error).
+- `bin/main.js` has no version hash in its filename — after `npm run build`, a hard browser refresh (cache bypass) may be needed to actually load the new bundle; a stale cached bundle fails silently (no console error, feature just isn't there).
+- Live log streaming: `RosaceApp` opens the `/ws` WebSocket via X4's built-in `Application.setupSocketMessaging()` (no custom WebSocket code — see `connectWebSocket()` in `main.ts`), subprotocol `"messaging"`. Backend batches are delivered as global events `{msg: "log.create", params: {lines: [{level, text}, ...]}}`; `MainView` picks them up via `this.onGlobalEvent(...)` and appends them to the existing Journal panel (`logMany()`). `setupSocketMessaging()` has no built-in reconnect, so `main.ts` owns retry-with-visible-`Notification` on disconnect — never silent.
 
 ### On-disk layout
 
