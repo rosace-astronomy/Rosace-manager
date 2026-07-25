@@ -31,3 +31,9 @@ SITE_NAME = _cfg["site_name"]
 # en changeant uniquement cette valeur.
 ACTIVE_HARDWARE = _cfg["active_hardware"]
 HARDWARE_CONFIG_PATH = Path(__file__).parent / "conf" / f"{ACTIVE_HARDWARE}.yaml"
+
+# ── Ordonnancement ──────────────────────────────────────────────
+# Délai avant de redemander une cible à SCHEDULER quand il n'y a rien à
+# observer dans l'immédiat (SCHEDULER répond toujours vite, il ne bloque
+# jamais en interne — c'est l'orchestrateur qui gère l'attente).
+SCHEDULER_RETRY_SECONDS = _cfg["scheduler_retry_seconds"]

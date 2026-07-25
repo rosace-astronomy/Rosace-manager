@@ -11,7 +11,9 @@ Dépendances :
     pip install pytest pytest-asyncio aiosqlite pydantic httpx
 """
 
+import asyncio
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -775,8 +777,9 @@ class TestSessionRunner:
     """
     Teste la boucle session_runner() de main.py avec des plugins factices
     (monkeypatch de rosace.main.plugins) pour contrôler précisément le
-    déroulement sans dépendre des vrais sous-plugins (qui ne s'arrêtent
-    jamais tout seuls — cf. SchedulerPlugin).
+    déroulement. Un "arrêt propre" se simule simplement en mettant
+    state.is_running à False depuis un plugin factice — pas besoin d'une
+    exception dédiée, la boucle vérifie déjà is_running avant chaque stage.
     """
 
     @pytest.fixture(autouse=True)
@@ -790,9 +793,8 @@ class TestSessionRunner:
         main_mod.state.stage = OrchestratorStage.IDLE
 
     async def test_clean_stop_calls_close_session(self, monkeypatch):
-        """Un SchedulerStopRequested déclenche CLOSE_SESSION puis repasse à IDLE."""
+        """is_running=False pendant SCHEDULER déclenche quand même CLOSE_SESSION puis IDLE."""
         import rosace.main as main_mod
-        from rosace.plugins.scheduler import SchedulerStopRequested
 
         close_called = []
 
@@ -803,8 +805,10 @@ class TestSessionRunner:
                 return ctx
 
         class FakeScheduler:
-            async def run(self, ctx):
-                raise SchedulerStopRequested()
+            async def run(self, obs):
+                main_mod.state.is_running = False  # simule un /control/stop concurrent
+                obs.scheduler_data["target"] = Target(name="TestStar", ra=0.0, dec=0.0)
+                return obs
 
         class FakeClose:
             async def run(self, ctx):
@@ -821,10 +825,101 @@ class TestSessionRunner:
         assert close_called == [True]
         assert main_mod.state.stage == OrchestratorStage.IDLE
 
+    async def test_scheduler_nothing_to_observe_retries_without_error(self, monkeypatch):
+        """target=None n'est pas une erreur : pas de db_set_error, juste une nouvelle tentative."""
+        import rosace.main as main_mod
+
+        scheduler_calls = []
+
+        class FakeInit:
+            async def run(self, ctx):
+                Path("/tmp/fake_session_dir").mkdir(parents=True, exist_ok=True)
+                ctx.session_dir = "/tmp/fake_session_dir"
+                return ctx
+
+        class FakeScheduler:
+            async def run(self, obs):
+                scheduler_calls.append(1)
+                if len(scheduler_calls) >= 2:
+                    main_mod.state.is_running = False
+                    return obs  # target reste None -> plus rien à faire, on arrête proprement
+                return obs  # target=None : "rien à observer" au premier appel
+
+        class FakeClose:
+            async def run(self, ctx): return ctx
+
+        monkeypatch.setattr(main_mod, "SCHEDULER_RETRY_SECONDS", 0)
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.INIT_SESSION, FakeInit())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SCHEDULER, FakeScheduler())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.CLOSE_SESSION, FakeClose())
+
+        main_mod.state.is_running = True
+        await main_mod.session_runner()
+
+        assert len(scheduler_calls) == 2   # SCHEDULER redemandé, pas d'erreur enregistrée
+        assert main_mod.state.completed == []
+
+    async def test_interruptible_sleep_stops_early_when_is_running_false(self, monkeypatch):
+        """Un stop pendant l'attente y met fin bien avant le délai complet (pas juste après)."""
+        import rosace.main as main_mod
+
+        monkeypatch.setattr(main_mod, "SLEEP_STEP_SECONDS", 0.05)
+        main_mod.state.is_running = True
+
+        async def stop_soon():
+            await asyncio.sleep(0.12)
+            main_mod.state.is_running = False
+
+        start = time.monotonic()
+        await asyncio.gather(main_mod._interruptible_sleep(5.0), stop_soon())
+        elapsed = time.monotonic() - start
+
+        assert elapsed < 0.5   # très en dessous des 5s demandées
+
+    async def test_stop_during_scheduler_retry_wait_is_honored_promptly(self, monkeypatch):
+        """Un STOP cliqué pendant l'attente 'rien à observer' interrompt la session sans
+        attendre la fin des SCHEDULER_RETRY_SECONDS."""
+        import rosace.main as main_mod
+
+        close_called = []
+
+        class FakeInit:
+            async def run(self, ctx):
+                Path("/tmp/fake_session_dir").mkdir(parents=True, exist_ok=True)
+                ctx.session_dir = "/tmp/fake_session_dir"
+                return ctx
+
+        class FakeScheduler:
+            async def run(self, obs):
+                return obs  # target=None à chaque appel : jamais rien à observer
+
+        class FakeClose:
+            async def run(self, ctx):
+                close_called.append(True)
+                return ctx
+
+        monkeypatch.setattr(main_mod, "SCHEDULER_RETRY_SECONDS", 5.0)
+        monkeypatch.setattr(main_mod, "SLEEP_STEP_SECONDS", 0.05)
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.INIT_SESSION, FakeInit())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SCHEDULER, FakeScheduler())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.CLOSE_SESSION, FakeClose())
+
+        main_mod.state.is_running = True
+
+        async def click_stop_soon():
+            await asyncio.sleep(0.12)
+            main_mod.state.is_running = False  # simule POST /control/stop
+
+        start = time.monotonic()
+        await asyncio.gather(main_mod.session_runner(), click_stop_soon())
+        elapsed = time.monotonic() - start
+
+        assert close_called == [True]
+        assert elapsed < 1.0   # très en dessous des 5s de SCHEDULER_RETRY_SECONDS
+
     async def test_error_restarts_from_scheduler_not_init(self, monkeypatch):
         """Une erreur dans SEQUENCER relance depuis SCHEDULER, pas depuis INIT_SESSION."""
         import rosace.main as main_mod
-        from rosace.plugins.scheduler import SchedulerStopRequested
 
         init_calls = []
         scheduler_calls = []
@@ -840,7 +935,8 @@ class TestSessionRunner:
             async def run(self, ctx):
                 scheduler_calls.append(1)
                 if len(scheduler_calls) >= 2:
-                    raise SchedulerStopRequested()
+                    main_mod.state.is_running = False
+                    return ctx
                 ctx.scheduler_data["target"] = Target(name="TestStar", ra=0.0, dec=0.0)
                 return ctx
 
@@ -865,7 +961,6 @@ class TestSessionRunner:
     async def test_close_session_error_still_reaches_idle(self, monkeypatch):
         """Si CLOSE_SESSION lève une exception, l'état repasse quand même à IDLE."""
         import rosace.main as main_mod
-        from rosace.plugins.scheduler import SchedulerStopRequested
 
         class FakeInit:
             async def run(self, ctx):
@@ -874,8 +969,10 @@ class TestSessionRunner:
                 return ctx
 
         class FakeScheduler:
-            async def run(self, ctx):
-                raise SchedulerStopRequested()
+            async def run(self, obs):
+                main_mod.state.is_running = False
+                obs.scheduler_data["target"] = Target(name="TestStar", ra=0.0, dec=0.0)
+                return obs
 
         class FakeClose:
             async def run(self, ctx):

@@ -25,7 +25,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, BackgroundTasks, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
-from .config     import SITE_NAME
+from .config     import SITE_NAME, SCHEDULER_RETRY_SECONDS
 from .log_config import configure_logging
 
 configure_logging()
@@ -44,7 +44,6 @@ from .database import (
 from .observation_file import create_observation_file, write_observation_file
 from .plugins  import plugins
 from .simbad   import simbad_search, SimbadNotFoundError, SimbadQueryError
-from .plugins.scheduler import SchedulerStopRequested
 from .targets  import (
     targets_db_init,
     Star, StarCreate, Program, ProgramCreate,
@@ -129,6 +128,18 @@ async def run_post_obs(obs: Observation) -> None:
     finally:
         state.pending_post_obs -= 1
 
+
+SLEEP_STEP_SECONDS = 1.0  # polling granularity for _interruptible_sleep()
+
+async def _interruptible_sleep(seconds: float) -> None:
+    """Sleeps in small steps, re-checking state.is_running — a stop request takes effect
+    promptly (within one SLEEP_STEP_SECONDS step) instead of only after the full delay."""
+    elapsed = 0.0
+    while elapsed < seconds and state.is_running:
+        await asyncio.sleep(min(SLEEP_STEP_SECONDS, seconds - elapsed))
+        elapsed += SLEEP_STEP_SECONDS
+
+
 async def session_runner():
     """
     Main session loop.
@@ -171,6 +182,12 @@ async def session_runner():
 
                 obs = await run_stage(stage, obs)
 
+                if stage == OrchestratorStage.SCHEDULER and obs.scheduler_data.get("target") is None:
+                    log.info(f"[SCHEDULER] Nothing to observe — retrying in {SCHEDULER_RETRY_SECONDS}s")
+                    obs = None
+                    await _interruptible_sleep(SCHEDULER_RETRY_SECONDS)
+                    break
+
                 if stage == OrchestratorStage.SCHEDULER:
                     await db_insert_observation(obs, session.session_id)
                     yaml_path = create_observation_file(obs, session_dir)
@@ -180,10 +197,6 @@ async def session_runner():
 
                 write_observation_file(obs)
 
-            except SchedulerStopRequested:
-                log.info("[SCHEDULER] Clean stop requested")
-                state.is_running = False
-                break
             except Exception as e:
                 log.error(f"[{stage.value.upper()}] Error: {e} — restarting from SCHEDULER")
                 if obs:

@@ -73,9 +73,11 @@ The global singleton `state` (a `SystemState` instance) drives the orchestration
 IDLE → INIT_SESSION → [SCHEDULER → SEQUENCER → REDUCTION → SHARING → ARCHIVE] × N → CLOSE_SESSION → IDLE
 ```
 
-The session runs as a FastAPI background task. `POST /control/start` starts it; `POST /control/stop` sets `state.is_running = False`, which causes the scheduler to raise `SchedulerStopRequested` and triggers a clean `CLOSE_SESSION`.
+The session runs as a FastAPI background task. `POST /control/start` starts it; `POST /control/stop` sets `state.is_running = False`. No plugin needs to know about this flag: `session_runner()`'s own loop checks `state.is_running` before every stage call, so a stop request is picked up between stages and reaches `CLOSE_SESSION` cleanly — no exception involved.
 
 On any plugin error in the observation loop, the error is recorded in the DB, and the loop restarts from **SCHEDULER** (not from INIT_SESSION).
+
+**Plugins never block waiting on external conditions.** `SchedulerPlugin` is the one plugin that could, in principle, need to wait (for a target to become observable) — but it must still answer within a few seconds: if nothing is observable right now, it sets `obs.scheduler_data["target"] = None` and returns immediately, rather than sleeping internally. `session_runner()` treats `target is None` as "nothing to do yet" (not an error — no `db_set_error`, no restart-from-SCHEDULER log): it waits `SCHEDULER_RETRY_SECONDS` (`config.py`, in small interruptible steps via `_interruptible_sleep()` so a stop request during the wait still takes effect promptly) and asks SCHEDULER again. This is why no plugin — including `SchedulerPlugin` — imports `main.py` or touches `state`: earlier, `SchedulerPlugin` used to poll `state.is_running` in its own internal wait loop, which required a late/deferred `from .. import main` (a top-level `from ..main import state` fails at import time with a circular-import error, since `main.py` imports the plugin registry before defining `state`). Removing the internal wait removed the need for that coupling entirely.
 
 ### Plugin system (two levels)
 
@@ -143,6 +145,7 @@ Note: `programmes/*.yaml` (scientific programme definitions) intentionally live 
 | `SITE_NAME` | `site_name` | `"St-Pancrasse"` | Used to name session directories |
 | `ACTIVE_HARDWARE` | `active_hardware` | `"hardware_simu"` | Name (no extension) of the hardware YAML file to use |
 | `HARDWARE_CONFIG_PATH` | *(derived)* | `conf/hardware_simu.yaml` | Full path to the active hardware YAML — resolved but not yet loaded/parsed anywhere |
+| `SCHEDULER_RETRY_SECONDS` | `scheduler_retry_seconds` | `60` | Delay before `main.py` asks SCHEDULER again after it reports nothing to observe (`target=None`) |
 
 `TARGETS_DB_PATH` is defined in `targets.py` as `DATABASES_DIR / "targets.db"`.
 

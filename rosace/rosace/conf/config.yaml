@@ -2,3 +2,4 @@ base_data_dir: ~/.rosace
 databases_dir: databases
 site_name: St-Pancrasse
 active_hardware: hardware_simu
+scheduler_retry_seconds: 60
