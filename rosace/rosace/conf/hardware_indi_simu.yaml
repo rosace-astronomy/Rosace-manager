@@ -1,50 +1,67 @@
-science_camera:
-    module: IndiCamera
-    module_dir: IndiDevices.Camera
-    camera_name: CCD Simulator
-    class_name: IndiCamera
-    indi_client:
-        indi_host: localhost
-        indi_port: 7624
-    cooling: true
-    cooling_capability: -20
+# Configuration for all the INDI devices
+INDI_drivers:
+    guiding_camera:
+        module: camera
+        module_dir: rosace.indi_hardware.devices
+        camera_name : CCD Simulator
+        class_name : IndiCamera
+        indi_client :
+            indi_host : localhost
+            indi_port : 7624
+        cooling : true
+        cooling_capability : -20
+        sampling_arcsec : 2.55
 
-guiding_camera:
-    module: IndiCamera
-    module_dir: IndiDevices.Camera
-    camera_name: CCD Simulator
-    class_name: IndiCamera
-    indi_client:
-        indi_host: localhost
-        indi_port: 7624
-    cooling: true
-    cooling_capability: -20
+    science_camera:
+        module: camera
+        module_dir: rosace.indi_hardware.devices
+        camera_name : CCD Simulator
+        class_name : IndiCamera
+        indi_client :
+            indi_host : localhost
+            indi_port : 7624
+        cooling : true
+        cooling_capability : -20
 
-mount:
-    module: IndiMount
-    module_dir: IndiDevices.Mount
-    mount_name: Telescope Simulator
-    class_name: IndiMount
-    indi_client:
-        indi_host: localhost
-        indi_port: 7624
-    equatorial_eod: J2000
+    mount:
+        module: mount
+        module_dir: rosace.indi_hardware.devices
+        mount_name : Telescope Simulator
+        class_name : IndiMount
+        indi_client :
+            indi_host : localhost
+            indi_port : 7624
+        equatorial_eod: J2000 # (or JNOW)
 
-focuser:
-    module: IndiFocuser
-    module_dir: IndiDevices.Focuser
-    focuser_name: Focuser Simulator
-    class_name: IndiFocuser
-    port: /dev/ttyUSB0
-    indi_client:
-        indi_host: localhost
-        indi_port: 7624
-    focus_range:
-        min: 10200
-        max: 11400
-    autofocus_step:
-        fine: 300
-        coarse: 300
-    autofocus_range:
-        fine: 2000
-        coarse: 2000
+    focuser:
+        module: focuser
+        module_dir: rosace.indi_hardware.devices
+        focuser_name: Focuser Simulator
+        class_name : IndiFocuser
+        port: /dev/ttyUSB0
+        indi_client:
+            indi_host: localhost
+            indi_port: 7624
+        focus_range:
+            min: 10200
+            max: 11400
+        autofocus_step:
+            fine: 300
+            coarse: 300
+        autofocus_range:
+            fine: 2000
+            coarse: 2000
+
+PHD2_config:
+    # host: 192.168.144.32
+    host: 127.0.0.1 # localhost (but integers expected)
+    port: 4400
+    do_calibration: False
+    # profile_name: St-Pancrasse
+    # profile_name: Nomade 72ED Alpy
+    profile_name: Simulators
+    exposure_time_sec: 0.3
+    settle:
+        pixels: 7
+        time: 3
+        timeout: 120  

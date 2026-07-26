@@ -15,13 +15,19 @@ def tmp_data_dir(tmp_path_factory):
     tmp = tmp_path_factory.mktemp("rosace_test_data")
     # Patch avant le premier import du package rosace
     import rosace.config as cfg
-    cfg.BASE_DATA_DIR = tmp
-    cfg.DATABASES_DIR = tmp
-    cfg.DB_PATH       = tmp / "rosace.db"
+    cfg.BASE_DATA_DIR      = tmp
+    cfg.DATABASES_DIR      = tmp
+    cfg.DB_PATH            = tmp / "rosace.db"
+    cfg.LOG_DIR            = tmp
+    cfg.OBSERVATIONS_DIR   = tmp / "observations"
     import rosace.targets as tgt
     tgt.DATABASES_DIR   = tmp
     tgt.TARGETS_DB_PATH = tmp / "targets.db"
     import rosace.database as db_mod
     db_mod.DATABASES_DIR = tmp
     db_mod.DB_PATH        = tmp / "rosace.db"
+    import rosace.log_config as log_cfg_mod
+    log_cfg_mod.LOG_DIR = tmp
+    import rosace.plugins.init_session as init_session_mod
+    init_session_mod.OBSERVATIONS_DIR = tmp / "observations"
     return tmp

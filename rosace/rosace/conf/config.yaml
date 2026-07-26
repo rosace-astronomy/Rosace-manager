@@ -1,6 +1,80 @@
+# ─────────────────────────────────────────────────────────────
+# Rosace — core application configuration.
+# Loaded once, at import time, by config.py (see rosace/config.py) — every
+# key below is exposed there as a plain Python constant that the rest of
+# the codebase imports (e.g. `from .config import SITE_NAME`).
+# ─────────────────────────────────────────────────────────────
+
+# Root directory for all persistent data Rosace produces: databases, logs,
+# and observation dossiers. databases_dir/log_dir/observations_dir below
+# are each a subdirectory of this one.
+# Exposed as BASE_DATA_DIR in config.py.
 base_data_dir: ~/.rosace
+
+# Subdirectory (under base_data_dir) holding both SQLite databases:
+# rosace.db (sessions + observations, see database.py) and targets.db
+# (star catalogue + scientific programmes, see targets.py).
+# Exposed as DATABASES_DIR in config.py.
 databases_dir: databases
+
+# Subdirectory (under base_data_dir) holding the rotating log file
+# (rosace.log) written by the centralized logging system (log_config.py,
+# conf/logging.cfg). The same file also receives a live copy of every
+# spectro.* log record streamed to the web GUI's Journal panel.
+# Exposed as LOG_DIR in config.py.
+log_dir: log
+
+# Subdirectory (under base_data_dir) holding one folder per observation
+# night (<date>_<site_name>/, created by INIT_SESSION), each containing
+# the full observation YAML dossiers (rewritten after every stage) and
+# the FITS spectra produced during that session.
+# Exposed as OBSERVATIONS_DIR in config.py.
+observations_dir: observations
+
+# Human-readable site name, used to name session directories
+# (<date>_<site_name>/) and recorded in the sessions table (rosace.db).
+# Exposed as SITE_NAME in config.py.
 site_name: St-Pancrasse
+
+# Name (without .yaml extension) of the hardware profile file in conf/
+# describing the currently active instrument set: which INDI devices are
+# declared (camera, mount, focuser...) and how to reach PHD2. Switching
+# between hardware setups (simulator, a given observatory's real gear...)
+# only requires changing this one value — see conf/hardware_<variant>.yaml.
+# Only actually consulted when sequencer_backend (below) is 'indi'.
+# Exposed as ACTIVE_HARDWARE / HARDWARE_CONFIG_PATH in config.py.
 active_hardware: hardware_indi_simu
-scheduler_retry_seconds: 60
-sequencer_backend: internal   # Must be 'internal' (for basic demo) or 'indi' (for real world)
+
+# Delay, in seconds, before main.py asks SCHEDULER again after it reports
+# there is nothing to observe right now (it sets
+# obs.scheduler_data["target"] = None). SCHEDULER itself never blocks or
+# sleeps internally — it always answers within a few seconds — this wait
+# is entirely owned by the orchestrator, and is interruptible: a stop
+# request during the wait takes effect promptly instead of only after the
+# full delay.
+# Exposed as SCHEDULER_RETRY_SECONDS in config.py.
+scheduler_retry_seconds: 60 # If the scheduler replies that no star is to be observed, we try again after this duration
+
+# Which SEQUENCER sub-plugin family (slew/focus/expose) pipeline_loader.py
+# loads. Must be one of:
+#   'internal' - self-contained simulation, no external dependency at all.
+#                The default demonstrator: no INDI server, no PHD2, no
+#                real or simulated hardware needed to run a full session.
+#   'indi'     - the real INDI protocol, talking to whatever devices are
+#                declared in the active_hardware profile above, guarded by
+#                the connectivity check below (hardware_connect_timeout_seconds).
+# Only affects SEQUENCER: REDUCTION (bias/dark/flat/extract) processes
+# already-acquired files and has no hardware dependency either way.
+# Exposed as SEQUENCER_BACKEND in config.py.
+sequencer_backend: indi   # Must be 'internal' (for basic demo) or 'indi' (for real world)
+
+# INIT_SESSION, sequencer_backend=indi only: maximum time, in seconds,
+# granted to each INDI device *and* to PHD2 to answer during the hardware
+# connectivity check performed once at the very start of a session (see
+# plugins/hardware_connectivity.py) — a single connection attempt per
+# device, no retry. INDI/PHD2 servers are assumed to already be running
+# (started outside of Rosace, possibly on a remote machine); if any device
+# or PHD2 doesn't answer within this delay, the connectivity check fails
+# and the whole session is cancelled before INIT_SESSION even completes.
+# Exposed as HARDWARE_CONNECT_TIMEOUT_SECONDS in config.py.
+hardware_connect_timeout_seconds: 5 # INIT_SESSION: max time to wait for each INDI device / PHD2 to answer (sequencer_backend=indi only)

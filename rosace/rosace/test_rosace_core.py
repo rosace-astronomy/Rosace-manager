@@ -85,8 +85,10 @@ class TestHardwareConfig:
 class TestSequencerBackend:
     """Backend d'exécution SEQUENCER (internal/indi), défaut au démarrage."""
 
-    def test_default_backend_is_internal(self):
-        assert SEQUENCER_BACKEND == "internal"
+    def test_backend_loaded_from_config_is_valid(self):
+        """conf/config.yaml choisit librement 'internal' ou 'indi' — pas de valeur figée à tester ici,
+        juste que ce que config.py a chargé et validé est bien l'une des deux."""
+        assert SEQUENCER_BACKEND in ("internal", "indi")
 
     def test_validate_accepts_known_values(self):
         from rosace.config import _validate_sequencer_backend

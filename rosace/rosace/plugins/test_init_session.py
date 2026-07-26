@@ -21,15 +21,26 @@ def fast_sleep(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def mock_hardware_check(monkeypatch):
+    """Par défaut, le check de connectivité matérielle réussit instantanément —
+    les tests qui portent sur autre chose n'ont pas à parler à du vrai matériel INDI."""
+    mock = AsyncMock(return_value=None)
+    monkeypatch.setattr("rosace.plugins.init_session.check_hardware_connectivity", mock)
+    return mock
+
+
 class TestInitSessionPlugin:
 
-    async def test_creates_session_directory(self):
+    async def test_creates_session_directory(self, tmp_data_dir):
         ctx = SessionContext(site_name="St-Pancrasse")
         result = await InitSessionPlugin().run(ctx)
 
         assert result is ctx  # même objet, enrichi
         assert ctx.session_dir is not None
         assert Path(ctx.session_dir).is_dir()
+        # Isolation : on écrit bien sous le répertoire temporaire du test, jamais sous le vrai ~/.rosace.
+        assert Path(ctx.session_dir).is_relative_to(tmp_data_dir)
 
     async def test_directory_name_contains_date_and_site(self):
         ctx = SessionContext(site_name="St-Pancrasse")
@@ -54,3 +65,31 @@ class TestInitSessionPlugin:
         original_id = ctx.session_id
         await InitSessionPlugin().run(ctx)
         assert ctx.session_id == original_id
+
+
+class TestHardwareConnectivityDispatch:
+    """Le check de connectivité matérielle n'est déclenché que si sequencer_backend=indi."""
+
+    async def test_calls_check_when_backend_is_indi(self, monkeypatch, mock_hardware_check):
+        monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "indi")
+        ctx = SessionContext(site_name="St-Pancrasse")
+
+        await InitSessionPlugin().run(ctx)
+
+        mock_hardware_check.assert_awaited_once()
+
+    async def test_skips_check_when_backend_is_internal(self, monkeypatch, mock_hardware_check):
+        monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "internal")
+        ctx = SessionContext(site_name="St-Pancrasse")
+
+        await InitSessionPlugin().run(ctx)
+
+        mock_hardware_check.assert_not_awaited()
+
+    async def test_propagates_hardware_connectivity_failure(self, monkeypatch, mock_hardware_check):
+        monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "indi")
+        mock_hardware_check.side_effect = RuntimeError("device 'mount': timeout")
+        ctx = SessionContext(site_name="St-Pancrasse")
+
+        with pytest.raises(RuntimeError, match="mount"):
+            await InitSessionPlugin().run(ctx)

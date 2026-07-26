@@ -22,6 +22,8 @@ _cfg = _load_config()
 BASE_DATA_DIR = Path(_cfg["base_data_dir"]).expanduser()
 DATABASES_DIR = BASE_DATA_DIR / _cfg["databases_dir"]
 DB_PATH       = DATABASES_DIR / "rosace.db"
+LOG_DIR          = BASE_DATA_DIR / _cfg["log_dir"]
+OBSERVATIONS_DIR = BASE_DATA_DIR / _cfg["observations_dir"]
 
 # ── Site d'observation ─────────────────────────────────────────
 # Nom générique utilisé pour nommer les répertoires de session.
@@ -39,6 +41,11 @@ HARDWARE_CONFIG_PATH = Path(__file__).parent / "conf" / f"{ACTIVE_HARDWARE}.yaml
 # observer dans l'immédiat (SCHEDULER répond toujours vite, il ne bloque
 # jamais en interne — c'est l'orchestrateur qui gère l'attente).
 SCHEDULER_RETRY_SECONDS = _cfg["scheduler_retry_seconds"]
+
+# ── Connectivité matérielle (INIT_SESSION, sequencer_backend=indi) ──────
+# Délai maximum accordé à chaque device INDI / à PHD2 pour répondre, lors de
+# la vérification de connectivité en début de session (voir hardware_connectivity.py).
+HARDWARE_CONNECT_TIMEOUT_SECONDS = _cfg["hardware_connect_timeout_seconds"]
 
 # ── Backend d'exécution SEQUENCER ────────────────────────────────
 # "internal" : simulation interne, sans dépendance externe (démonstrateur niveau 1).
@@ -69,7 +76,9 @@ def _log_fatal_startup_error(message: str) -> None:
     circulaire (log_config.py fait `from .config import BASE_DATA_DIR`).
     """
     try:
-        log_dir = BASE_DATA_DIR / "log"
+        # Recomputed from BASE_DATA_DIR (not the frozen LOG_DIR constant above) so that
+        # monkeypatching BASE_DATA_DIR alone (as tests do) is enough to redirect this too.
+        log_dir = BASE_DATA_DIR / _cfg["log_dir"]
         log_dir.mkdir(parents=True, exist_ok=True)
         logging.config.fileConfig(
             _LOGGING_CFG_PATH,

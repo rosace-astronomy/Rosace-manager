@@ -63,6 +63,8 @@ Tests patch `BASE_DATA_DIR`, `DB_PATH`, and `TARGETS_DB_PATH` via a session-scop
 
 `test_log_broadcast.py` covers `log_broadcast.py` (WebSocket log streaming) on its own, next to it — same convention as `test_observation_file.py`. The `/ws` route itself is exercised end-to-end in `test_rosace_core.py`'s `TestApiEndpoints` group, via `TestClient.websocket_connect()`.
 
+`plugins/test_hardware_connectivity.py` covers `plugins/hardware_connectivity.py` the same way, next to it.
+
 ## Architecture
 
 ### State machine (`main.py`)
@@ -87,7 +89,7 @@ On any plugin error in the observation loop, the error is recorded in the DB, an
 
 - Sequencer sub-plugins: `plugins/sequencer_plugins/` (`slew`, `focus`, `expose`) — read/write `obs.sequencer_data`, read `obs.scheduler_data` for target/exposure. **Two parallel implementations**, chosen by `SEQUENCER_BACKEND` (`config.py`):
   - `sequencer_plugins/internal/` — simulation interne, aucune dépendance externe (démonstrateur niveau 1, "internal" backend). Fonctionnellement stable — c'est celle qui tourne aujourd'hui par défaut.
-  - `sequencer_plugins/indi/` — protocole INDI/PHD2 réel ("indi" backend, démonstrateurs niveaux 2/3). **Placeholder pour l'instant** : même contrat exact (mêmes clés posées dans `sequencer_data`) que `internal/`, mais action minimale (`sleep(1)`) — à implémenter lors du prochain chantier.
+  - `sequencer_plugins/indi/` — protocole INDI/PHD2 réel ("indi" backend, démonstrateurs niveaux 2/3). **Placeholder pour l'instant** : même contrat exact (mêmes clés posées dans `sequencer_data`) que `internal/`, mais action minimale (`sleep(1)`) — à implémenter lors du prochain chantier. Les vraies classes de pilotage device (voir `indi_hardware/` ci-dessous) existent déjà et sont utilisées par le check de connectivité d'`INIT_SESSION`, mais ne sont pas encore appelées depuis ces sous-plugins SEQUENCER.
   - `pipeline_loader.py::_build_registry()` fait le dispatch selon `SEQUENCER_BACKEND` ; `SequencerPlugin.run()` lui-même reste agnostique du backend.
 - Reduction sub-plugins: `plugins/reduction_plugins/` (`bias`, `dark`, `flat`, `extract`) — read/write `obs.reduction_data`, read `obs.sequencer_data["raw_files"]` as their initial input. Pas de split par backend : ces étapes traitent des fichiers déjà acquis, sans dépendance matérielle — l'axe INDI/ASCOM ne les concerne pas.
 - Programme definitions: `rosace/programmes/*.yaml` — declare which sub-plugins run in order. `demo.yaml` is a minimal, backend-agnostic programme (same step names as any other) used as the default for a fresh install and for quick end-to-end verification; `etoiles_be.yaml` and others remain on disk for later use once real target/programme selection exists.
@@ -120,6 +122,14 @@ Default path is `~/.rosace/databases/` (`config.py`). Both databases are created
 
 Plays the same role for the observation's YAML file that `database.py` plays for SQLite: a dedicated persistence module, kept separate from both the orchestrator (`main.py`) and the pure data model (`models.py`). `create_observation_file(obs, target_dir)` fixes `obs.yaml_file` (using `obs.suggested_filename`) without writing anything; `write_observation_file(obs)` serializes the current full state (`obs.model_dump(mode="json")`) to that path — a no-op until `create_observation_file` has run. `main.py` only ever calls these two functions, the same way it calls `db_insert_session` — it never touches YAML or filesystem details directly.
 
+### INDI hardware drivers (`indi_hardware/`) and connectivity check (`plugins/hardware_connectivity.py`)
+
+`indi_hardware/` (`wrapper/` + `devices/`) holds the real, blocking (non-asyncio) Python classes that talk to an INDI server — one class per device type (`devices/camera.py::IndiCamera`, `devices/mount.py::IndiMount`, `devices/focuser.py::IndiFocuser`, etc.), all built on `wrapper/indi_device.py::IndiDevice` and `wrapper/indi_client.py::IndiClient`. Distant heritage: adapted from the PANOPTES/POCS observatory control software — the POCS-specific config loader and MongoDB-backed database layer that the original `Base` class used to pull in on every instantiation have been stripped out (`wrapper/base.py` is now just a logger), since Rosace has its own config/databases that have nothing to do with POCS's. Devices sharing the same INDI server (`indi_host`/`indi_port`) share a single `IndiClient` instance under the hood (`SingletonIndiClientHolder`), whose setup is not thread-safe.
+
+Each device's class is declared in the active hardware YAML (`HARDWARE_CONFIG_PATH`, e.g. `conf/hardware_indi_simu.yaml`) via `module`/`module_dir`/`class_name` fields and loaded **dynamically** (`importlib`) rather than imported directly — this is what lets the set of devices vary freely per hardware profile (a camera here, an ASI camera there, an extra `pointing_camera` in one profile but not another) without any Python code change.
+
+`plugins/hardware_connectivity.py::check_hardware_connectivity()` is called from `INIT_SESSION` (`init_session.py`), **only when `SEQUENCER_BACKEND == "indi"`**: it reads the hardware YAML into a plain dict, dynamically loads and connects every declared `INDI_drivers` device plus PHD2 (plain TCP check — no PHD2 client library yet, that's a future chantier), each bounded by `HARDWARE_CONNECT_TIMEOUT_SECONDS` (single attempt, no retry). Because of the shared-`IndiClient` thread-safety concern above, devices are checked **one at a time** (not concurrently); PHD2, an independent plain `asyncio` TCP connection, runs concurrently with the device checks. Each blocking device connect runs in a worker thread (`asyncio.to_thread`) so it never blocks the FastAPI event loop. A successful device check disconnects again right away — this only verifies reachability, it doesn't keep connections open for the rest of the session (SEQUENCER's own connection lifecycle, once `sequencer_plugins/indi/` stops being a placeholder, is a separate concern). Any failure (timeout or exception, on any device or PHD2) raises a single aggregated `RuntimeError`, which `INIT_SESSION` lets propagate — `session_runner()` already treats an `INIT_SESSION` exception as a critical, session-cancelling failure, so no extra error handling is needed there.
+
 ### Simbad client (`simbad.py`)
 
 Queries CDS TAP via ADQL over HTTPS. Returns `StarCreate`. Raises `SimbadNotFoundError` (404) or `SimbadQueryError` (network/HTTP errors). In tests, mock `rosace.simbad.httpx.AsyncClient` as an async context manager.
@@ -132,7 +142,7 @@ All application configuration lives in `conf/` — one predictable place to look
 |---|---|
 | `config.yaml` | Core application settings (data paths, site name, active programme) |
 | `logging.cfg` | Logging setup (`fileConfig` ini format — see below) |
-| `hardware_<variant>.yaml` | Hardware/instrument definitions, one file per variant (e.g. `hardware_indi_simu.yaml` for the INDI simulators, a future `hardware_obs.yaml` for the real observatory). Which variant is active is selected via `active_hardware` in `config.yaml` (resolved to `HARDWARE_CONFIG_PATH` in `config.py`); the file itself is not yet parsed/consumed by any Python code — real hardware integration is still a TODO, this is only a template so far. |
+| `hardware_<variant>.yaml` | Hardware/instrument definitions, one file per variant (e.g. `hardware_indi_simu.yaml` for the INDI simulators, `hardware_indi_72ED.yaml` for a real telescope). Which variant is active is selected via `active_hardware` in `config.yaml` (resolved to `HARDWARE_CONFIG_PATH` in `config.py`). Declares, under `INDI_drivers`, one entry per device (`module`/`module_dir`/`class_name` for dynamic loading, plus device-specific fields incl. `indi_client: {indi_host, indi_port}`), and a `PHD2_config` section (`host`/`port`/...) — parsed by `plugins/hardware_connectivity.py` when `sequencer_backend=indi`. |
 
 Note: `programmes/*.yaml` (scientific programme definitions) intentionally live outside `conf/` — they're a catalogue of interchangeable observation plans, not app configuration.
 
@@ -145,11 +155,14 @@ Note: `programmes/*.yaml` (scientific programme definitions) intentionally live 
 | `BASE_DATA_DIR` | `base_data_dir` | `~/.rosace` | Root for all persistent data (databases, log, session directories) |
 | `DATABASES_DIR` | `databases_dir` | `~/.rosace/databases` | Subdirectory holding both SQLite databases |
 | `DB_PATH` | *(derived)* | `~/.rosace/databases/rosace.db` | Sessions + observations DB |
+| `LOG_DIR` | `log_dir` | `~/.rosace/log` | Subdirectory holding the rotating log file (`log_config.py`) |
+| `OBSERVATIONS_DIR` | `observations_dir` | `~/.rosace/observations` | Subdirectory holding one folder per observation night (`INIT_SESSION`) |
 | `SITE_NAME` | `site_name` | `"St-Pancrasse"` | Used to name session directories |
 | `ACTIVE_HARDWARE` | `active_hardware` | `"hardware_indi_simu"` | Name (no extension) of the hardware YAML file to use |
-| `HARDWARE_CONFIG_PATH` | *(derived)* | `conf/hardware_indi_simu.yaml` | Full path to the active hardware YAML — resolved but not yet loaded/parsed anywhere |
+| `HARDWARE_CONFIG_PATH` | *(derived)* | `conf/hardware_indi_simu.yaml` | Full path to the active hardware YAML, parsed by `plugins/hardware_connectivity.py` (`sequencer_backend=indi` only) |
 | `SCHEDULER_RETRY_SECONDS` | `scheduler_retry_seconds` | `60` | Delay before `main.py` asks SCHEDULER again after it reports nothing to observe (`target=None`) |
 | `SEQUENCER_BACKEND` | `sequencer_backend` | `"internal"` | Which SEQUENCER sub-plugin family to load: `"internal"` (simulation, no external dependency) or `"indi"` (real INDI/PHD2 protocol, placeholder for now) |
+| `HARDWARE_CONNECT_TIMEOUT_SECONDS` | `hardware_connect_timeout_seconds` | `5` | `INIT_SESSION` (`sequencer_backend=indi` only): max time to wait for each INDI device / PHD2 to answer |
 
 `TARGETS_DB_PATH` is defined in `targets.py` as `DATABASES_DIR / "targets.db"`.
 
