@@ -86,6 +86,24 @@ class TestHardwareConnectivityDispatch:
 
         mock_hardware_check.assert_not_awaited()
 
+    async def test_logs_demo_mode_when_backend_is_internal(self, monkeypatch, mock_hardware_check, caplog):
+        monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "internal")
+        ctx = SessionContext(site_name="St-Pancrasse")
+
+        with caplog.at_level("INFO", logger="spectro.plugin.init_session"):
+            await InitSessionPlugin().run(ctx)
+
+        assert any("DEMO mode" in record.message for record in caplog.records)
+
+    async def test_no_demo_mode_log_when_backend_is_indi(self, monkeypatch, mock_hardware_check, caplog):
+        monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "indi")
+        ctx = SessionContext(site_name="St-Pancrasse")
+
+        with caplog.at_level("INFO", logger="spectro.plugin.init_session"):
+            await InitSessionPlugin().run(ctx)
+
+        assert not any("DEMO mode" in record.message for record in caplog.records)
+
     async def test_propagates_hardware_connectivity_failure(self, monkeypatch, mock_hardware_check):
         monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "indi")
         mock_hardware_check.side_effect = RuntimeError("device 'mount': timeout")

@@ -247,8 +247,9 @@ async def list_completed():
 
 
 @app.get("/observations/recent")
-async def list_recent_observations(limit: int = 20):
-    """Returns recent observations with per-stage statuses and timestamps from the database."""
+async def list_recent_observations(limit: int | None = None):
+    """Returns observations from the current astronomical day, with per-stage statuses and
+    timestamps from the database. No limit by default — see db_get_recent_observations()."""
     return await db_get_recent_observations(limit)
 
 @app.get("/observations/{obs_id}")

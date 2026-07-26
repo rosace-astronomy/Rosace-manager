@@ -188,23 +188,26 @@ def _astronomical_day_start_utc(now: datetime | None = None) -> str:
     return local_noon.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
 
 
-async def db_get_recent_observations(limit: int = 20) -> list[dict]:
-    """Returns observations from the current astronomical day (local noon to noon), newest first."""
+async def db_get_recent_observations(limit: int | None = None) -> list[dict]:
+    """Returns observations from the current astronomical day (local noon to noon), newest first.
+    No limit by default: the astronomical-day filter alone already bounds the result set to one night.
+    An explicit limit is still accepted (used by tests to isolate their own rows in the shared DB)."""
     since = _astronomical_day_start_utc()
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """SELECT id, target_name, created_at, error_message,
+    query = """SELECT id, target_name, created_at, error_message,
                       scheduler_done, sequencer_done, reduction_done,
                       sharing_done, archive_done,
                       scheduler_status, sequencer_status, reduction_status,
                       sharing_status, archive_status
                FROM observations
                WHERE created_at >= ?
-               ORDER BY created_at DESC
-               LIMIT ?""",
-            (since, limit)
-        ) as cursor:
+               ORDER BY created_at DESC"""
+    params: list = [since]
+    if limit is not None:
+        query += " LIMIT ?"
+        params.append(limit)
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()
     return [
         {

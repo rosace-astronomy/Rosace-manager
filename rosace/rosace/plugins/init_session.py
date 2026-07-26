@@ -26,6 +26,8 @@ class InitSessionPlugin:
             log.info("[INIT_SESSION] Checking hardware connectivity (INDI devices + PHD2)…")
             await check_hardware_connectivity()
             log.info("[INIT_SESSION] Hardware connectivity check passed")
+        else:
+            log.info("[INIT_SESSION] Running in DEMO mode (sequencer_backend=internal) — no hardware involved")
 
         # TODO : vérification météo, mise en température CCD…
         await asyncio.sleep(1.0)

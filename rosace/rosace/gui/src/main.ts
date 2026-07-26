@@ -399,7 +399,7 @@ class MainView extends VBox {
 
 	private async fetchObs() {
         try {
-			const res = await fetch(`${API}/observations/recent?limit=20`, { signal: AbortSignal.timeout(5000) });
+			const res = await fetch(`${API}/observations/recent`, { signal: AbortSignal.timeout(5000) });
 			if (!res.ok) {
 				throw new Error( res.statusText );
 			}
