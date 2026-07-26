@@ -1,6 +1,7 @@
 """
-Tests du sous-plugin SLEW (SlewPlugin).
-Lancement : pytest plugins/sequencer_plugins/test_slew.py -v
+Tests du sous-plugin SLEW (SlewPlugin), backend indi — placeholder.
+Vérifie uniquement la structure (clés posées), pas de comportement matériel réel.
+Lancement : pytest plugins/sequencer_plugins/indi/test_slew.py -v
 """
 
 from datetime import datetime, timezone
@@ -9,7 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from rosace.models import Observation, Target
-from rosace.plugins.sequencer_plugins.slew import SlewPlugin
+from rosace.plugins.sequencer_plugins.indi.slew import SlewPlugin
 
 
 def _make_obs(target=None) -> Observation:
@@ -22,7 +23,7 @@ def _make_obs(target=None) -> Observation:
 @pytest.fixture(autouse=True)
 def fast_sleep(monkeypatch):
     monkeypatch.setattr(
-        "rosace.plugins.sequencer_plugins.slew.asyncio.sleep", AsyncMock(return_value=None)
+        "rosace.plugins.sequencer_plugins.indi.slew.asyncio.sleep", AsyncMock(return_value=None)
     )
 
 

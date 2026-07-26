@@ -16,7 +16,7 @@ class SchedulerPlugin:
     interne — c'est à l'orchestrateur de décider du délai avant de redemander
     (voir SCHEDULER_RETRY_SECONDS dans config.py).
 
-    Version minimale : retourne toujours "Vega" sur le programme etoiles_be.
+    Version minimale : retourne toujours "Vega" sur le programme demo.
     Version future : interrogera targets.db (le programme sera alors dérivé
     de la cible choisie via program_stars), et pourra retourner target=None.
     """
@@ -27,7 +27,7 @@ class SchedulerPlugin:
         # TODO : interroger la base de données des cibles (targets.db)
         obs.scheduler_data["target"] = Target(name="Vega", ra=0.0, dec=0.0)
         obs.scheduler_data["exposure"] = ExposureConfig(exposure_time=300.0)
-        obs.scheduler_data["programme"] = "etoiles_be"
+        obs.scheduler_data["programme"] = "demo"
         log.info(
             f"[SCHEDULER] Cible sélectionnée : {obs.scheduler_data['target'].name} "
             f"— programme : {obs.scheduler_data['programme']}"

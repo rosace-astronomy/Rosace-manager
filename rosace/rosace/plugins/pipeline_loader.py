@@ -29,6 +29,8 @@ from typing import Any
 
 import yaml
 
+from ..config import SEQUENCER_BACKEND
+
 log = logging.getLogger("spectro.pipeline_loader")
 
 # ── Répertoire contenant les fichiers de programme ────────────────────────────
@@ -37,12 +39,25 @@ PROGRAMMES_DIR = Path(__file__).parents[1] / "programmes"
 # ── Registre de tous les sous-plugins disponibles ─────────────────────────────
 # Clé : nom déclaré dans le YAML  →  Valeur : classe du sous-plugin
 # Ajouter ici tout nouveau sous-plugin pour le rendre utilisable depuis un YAML.
+# Les sous-plugins SEQUENCER ont deux implémentations (internal/indi), choisies
+# selon SEQUENCER_BACKEND — REDUCTION n'a pas de dépendance matérielle, une
+# seule implémentation.
 
 def _build_registry() -> dict[str, Any]:
     """Construit le registre en important les classes à la demande."""
-    from .sequencer_plugins.slew    import SlewPlugin
-    from .sequencer_plugins.focus   import FocusPlugin
-    from .sequencer_plugins.expose  import ExposePlugin
+    if SEQUENCER_BACKEND == "internal":
+        from .sequencer_plugins.internal.slew   import SlewPlugin
+        from .sequencer_plugins.internal.focus  import FocusPlugin
+        from .sequencer_plugins.internal.expose import ExposePlugin
+    elif SEQUENCER_BACKEND == "indi":
+        from .sequencer_plugins.indi.slew   import SlewPlugin
+        from .sequencer_plugins.indi.focus  import FocusPlugin
+        from .sequencer_plugins.indi.expose import ExposePlugin
+    else:
+        raise ValueError(
+            f"sequencer_backend={SEQUENCER_BACKEND!r} inconnu (attendu : 'internal' ou 'indi')"
+        )
+
     from .reduction_plugins.bias    import BiasPlugin
     from .reduction_plugins.dark    import DarkPlugin
     from .reduction_plugins.flat    import FlatPlugin

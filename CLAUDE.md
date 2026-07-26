@@ -56,7 +56,7 @@ Tests patch `BASE_DATA_DIR`, `DB_PATH`, and `TARGETS_DB_PATH` via a session-scop
 `test_rosace_core.py` covers models, config, database, targets, and Simbad. `test_observation_file.py` covers `observation_file.py` (YAML persistence) on its own, next to it. Each plugin and sub-plugin has its own dedicated test file, next to the source it tests (mirroring the pre-existing `plugins/test_pipeline_loader.py` convention):
 
 - Stage plugins: `plugins/test_<stage>.py` (e.g. `plugins/test_scheduler.py`), one per `OrchestratorStage`.
-- Sequencer sub-plugins: `plugins/sequencer_plugins/test_<name>.py`.
+- Sequencer sub-plugins: `plugins/sequencer_plugins/<backend>/test_<name>.py` — one copy per backend (`internal/`, `indi/`), see below.
 - Reduction sub-plugins: `plugins/reduction_plugins/test_<name>.py`.
 
 `SequencerPlugin`/`ReductionPlugin` tests mock `pipeline_loader.load_pipelines` — they cover orchestration (order, error propagation, which programme gets loaded), not real sub-plugin behavior, which is covered by the sub-plugin test files themselves.
@@ -83,11 +83,14 @@ On any plugin error in the observation loop, the error is recorded in the DB, an
 
 **Stage plugins** (`plugins/__init__.py` registry) — one per `OrchestratorStage` enum value. Two interfaces (`models.py`): `SessionStagePlugin` for `INIT_SESSION`/`CLOSE_SESSION` (`run(self, ctx: SessionContext) -> SessionContext`), and `ObservationStagePlugin` for `SCHEDULER` → `ARCHIVE` (`run(self, obs: Observation) -> Observation`).
 
-**Sub-plugins** — loaded dynamically by `pipeline_loader.py` at runtime from a YAML programme file, one reload per observation (`obs.scheduler_data["programme"]`, set by `SchedulerPlugin` — there is no global "active programme" setting). Sub-plugins share the same interface as stage plugins: `execute(self, obs: Observation) -> Observation` (`sub_plugin_base.py`). Each sub-plugin reads/writes its parent stage's casier on `obs` (see below), and may read a previous stage's casier as input (e.g. `extract` reads `obs.sequencer_data["raw_files"]`).
+**Sub-plugins** — loaded dynamically by `pipeline_loader.py` at runtime from a YAML programme file, one reload per observation (`obs.scheduler_data["programme"]`, set by `SchedulerPlugin` — there is no global "active programme" setting). Sub-plugins share the same interface as stage plugins: `execute(self, obs: Observation) -> Observation` (`sub_plugin_base.py`). Each sub-plugin reads/writes its parent stage's casier on `obs` (see below), and may read a previous stage's casier as input (e.g. `extract` reads `obs.sequencer_data["raw_files"]`). Sub-plugins have no config of their own — all configuration lives in `conf/` (see below), consistent with the rest of the app.
 
-- Sequencer sub-plugins: `plugins/sequencer_plugins/` (`slew`, `focus`, `expose`) — read/write `obs.sequencer_data`, read `obs.scheduler_data` for target/exposure.
-- Reduction sub-plugins: `plugins/reduction_plugins/` (`bias`, `dark`, `flat`, `extract`) — read/write `obs.reduction_data`, read `obs.sequencer_data["raw_files"]` as their initial input.
-- Programme definitions: `rosace/programmes/*.yaml` — declare which sub-plugins run in order
+- Sequencer sub-plugins: `plugins/sequencer_plugins/` (`slew`, `focus`, `expose`) — read/write `obs.sequencer_data`, read `obs.scheduler_data` for target/exposure. **Two parallel implementations**, chosen by `SEQUENCER_BACKEND` (`config.py`):
+  - `sequencer_plugins/internal/` — simulation interne, aucune dépendance externe (démonstrateur niveau 1, "internal" backend). Fonctionnellement stable — c'est celle qui tourne aujourd'hui par défaut.
+  - `sequencer_plugins/indi/` — protocole INDI/PHD2 réel ("indi" backend, démonstrateurs niveaux 2/3). **Placeholder pour l'instant** : même contrat exact (mêmes clés posées dans `sequencer_data`) que `internal/`, mais action minimale (`sleep(1)`) — à implémenter lors du prochain chantier.
+  - `pipeline_loader.py::_build_registry()` fait le dispatch selon `SEQUENCER_BACKEND` ; `SequencerPlugin.run()` lui-même reste agnostique du backend.
+- Reduction sub-plugins: `plugins/reduction_plugins/` (`bias`, `dark`, `flat`, `extract`) — read/write `obs.reduction_data`, read `obs.sequencer_data["raw_files"]` as their initial input. Pas de split par backend : ces étapes traitent des fichiers déjà acquis, sans dépendance matérielle — l'axe INDI/ASCOM ne les concerne pas.
+- Programme definitions: `rosace/programmes/*.yaml` — declare which sub-plugins run in order. `demo.yaml` is a minimal, backend-agnostic programme (same step names as any other) used as the default for a fresh install and for quick end-to-end verification; `etoiles_be.yaml` and others remain on disk for later use once real target/programme selection exists.
 
 Note: the `sequencer-plugins/` and `reduction-plugins/` hyphenated directories contain standalone numbered sub-packages (each with their own test file) and are **not** imported by `pipeline_loader.py`. The underscore variants (`sequencer_plugins/`, `reduction_plugins/`) are the importable packages.
 
@@ -129,7 +132,7 @@ All application configuration lives in `conf/` — one predictable place to look
 |---|---|
 | `config.yaml` | Core application settings (data paths, site name, active programme) |
 | `logging.cfg` | Logging setup (`fileConfig` ini format — see below) |
-| `hardware_<variant>.yaml` | Hardware/instrument definitions, one file per variant (e.g. `hardware_simu.yaml` for the INDI simulators, a future `hardware_obs.yaml` for the real observatory). Which variant is active is selected via `active_hardware` in `config.yaml` (resolved to `HARDWARE_CONFIG_PATH` in `config.py`); the file itself is not yet parsed/consumed by any Python code — real hardware integration is still a TODO, this is only a template so far. |
+| `hardware_<variant>.yaml` | Hardware/instrument definitions, one file per variant (e.g. `hardware_indi_simu.yaml` for the INDI simulators, a future `hardware_obs.yaml` for the real observatory). Which variant is active is selected via `active_hardware` in `config.yaml` (resolved to `HARDWARE_CONFIG_PATH` in `config.py`); the file itself is not yet parsed/consumed by any Python code — real hardware integration is still a TODO, this is only a template so far. |
 
 Note: `programmes/*.yaml` (scientific programme definitions) intentionally live outside `conf/` — they're a catalogue of interchangeable observation plans, not app configuration.
 
@@ -143,9 +146,10 @@ Note: `programmes/*.yaml` (scientific programme definitions) intentionally live 
 | `DATABASES_DIR` | `databases_dir` | `~/.rosace/databases` | Subdirectory holding both SQLite databases |
 | `DB_PATH` | *(derived)* | `~/.rosace/databases/rosace.db` | Sessions + observations DB |
 | `SITE_NAME` | `site_name` | `"St-Pancrasse"` | Used to name session directories |
-| `ACTIVE_HARDWARE` | `active_hardware` | `"hardware_simu"` | Name (no extension) of the hardware YAML file to use |
-| `HARDWARE_CONFIG_PATH` | *(derived)* | `conf/hardware_simu.yaml` | Full path to the active hardware YAML — resolved but not yet loaded/parsed anywhere |
+| `ACTIVE_HARDWARE` | `active_hardware` | `"hardware_indi_simu"` | Name (no extension) of the hardware YAML file to use |
+| `HARDWARE_CONFIG_PATH` | *(derived)* | `conf/hardware_indi_simu.yaml` | Full path to the active hardware YAML — resolved but not yet loaded/parsed anywhere |
 | `SCHEDULER_RETRY_SECONDS` | `scheduler_retry_seconds` | `60` | Delay before `main.py` asks SCHEDULER again after it reports nothing to observe (`target=None`) |
+| `SEQUENCER_BACKEND` | `sequencer_backend` | `"internal"` | Which SEQUENCER sub-plugin family to load: `"internal"` (simulation, no external dependency) or `"indi"` (real INDI/PHD2 protocol, placeholder for now) |
 
 `TARGETS_DB_PATH` is defined in `targets.py` as `DATABASES_DIR / "targets.db"`.
 

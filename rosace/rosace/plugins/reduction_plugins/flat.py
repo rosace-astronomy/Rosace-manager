@@ -16,9 +16,7 @@ log = logging.getLogger("spectro.subplugin.flat")
 
 
 class FlatPlugin(SubPlugin):
-    """Division par le flat-field (correction de réponse spectrale)."""
-
-    CONFIG_FILE = "config.yaml"
+    """Division par le flat-field (correction de réponse spectrale) — simulation interne."""
 
     async def execute(self, obs: Observation) -> Observation:
         # Chaîne de traitement : dark_corrected → bias_corrected → raw
@@ -30,9 +28,7 @@ class FlatPlugin(SubPlugin):
         if not input_files:
             raise RuntimeError("FLAT : aucun fichier d'entrée disponible")
 
-        master_flat = self.config.get("master_flat_path", "")
-        simulate = self.config.get("simulate", True)
-        normalize = self.config.get("normalize", True)
+        normalize = True
 
         log.info(f"[FLAT] Division flat sur {len(input_files)} fichier(s) — normalize={normalize}")
 
@@ -46,19 +42,10 @@ class FlatPlugin(SubPlugin):
                     break
             out = base + "_f.fits"
 
-            if simulate:
-                await asyncio.sleep(0.05)
-                Path(out).parent.mkdir(parents=True, exist_ok=True)
-                Path(out).touch()
-                log.info(f"[FLAT] Simulation : {Path(f).name} → {Path(out).name}")
-            else:
-                # TODO : division flat réelle
-                # ccd = CCDData.read(f, unit='adu')
-                # if normalize:
-                #     master_flat_norm = master_flat.data / np.median(master_flat.data)
-                # ccd = ccdp.flat_correct(ccd, master_flat_norm)
-                # ccd.write(out, overwrite=True)
-                await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)
+            Path(out).parent.mkdir(parents=True, exist_ok=True)
+            Path(out).touch()
+            log.info(f"[FLAT] Simulation : {Path(f).name} → {Path(out).name}")
             flat_corrected.append(out)
 
         obs.reduction_data["flat_corrected_files"] = flat_corrected

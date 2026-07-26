@@ -1,0 +1,17 @@
+# ── Programme : Démonstration ──────────────────────────────────────────────
+# Programme minimal et rapide, indépendant du backend actif (internal/indi) —
+# sert de vitrine niveau 1 et de vérification bout-en-bout du pipeline.
+
+programme: demo
+description: "Programme minimal pour démonstration et vérification rapide du pipeline"
+
+sequencer:
+  - slew
+  - focus
+  - expose
+
+reduction:
+  - bias
+  - dark
+  - flat
+  - extract

@@ -16,9 +16,7 @@ log = logging.getLogger("spectro.subplugin.extract")
 
 
 class ExtractPlugin(SubPlugin):
-    """Extraction du spectre 1D depuis l'image spectrale 2D calibrée."""
-
-    CONFIG_FILE = "config.yaml"
+    """Extraction du spectre 1D depuis l'image spectrale 2D calibrée — simulation interne."""
 
     async def execute(self, obs: Observation) -> Observation:
         # Prend les fichiers les plus avancés dans la chaîne
@@ -31,11 +29,9 @@ class ExtractPlugin(SubPlugin):
         if not input_files:
             raise RuntimeError("EXTRACT : aucun fichier calibré disponible")
 
-        method = self.config.get("method", "sum")
-        aperture_px = self.config.get("aperture_px", 10)
-        wavelength_calib = self.config.get("wavelength_calibration", False)
-        output_format = self.config.get("output_format", "fits")
-        simulate = self.config.get("simulate", True)
+        method = "sum"
+        aperture_px = 10
+        wavelength_calib = False
 
         log.info(
             f"[EXTRACT] Extraction spectrale — méthode={method}, "
@@ -52,17 +48,10 @@ class ExtractPlugin(SubPlugin):
                     break
             out = base + "_reduced.fits"
 
-            if simulate:
-                await asyncio.sleep(0.1)
-                Path(out).parent.mkdir(parents=True, exist_ok=True)
-                Path(out).touch()
-                log.info(f"[EXTRACT] Simulation : {Path(f).name} → {Path(out).name}")
-            else:
-                # TODO : extraction réelle (ex: specreduce, PySpectrograph, ReSpefo)
-                # spectrum = Spectrum1D.read(f)
-                # extracted = extract_optimal(spectrum, aperture=aperture_px)
-                # extracted.write(out, overwrite=True)
-                await asyncio.sleep(0.1)
+            await asyncio.sleep(0.1)
+            Path(out).parent.mkdir(parents=True, exist_ok=True)
+            Path(out).touch()
+            log.info(f"[EXTRACT] Simulation : {Path(f).name} → {Path(out).name}")
             reduced_files.append(out)
 
         obs.reduction_data["reduced_files"] = reduced_files

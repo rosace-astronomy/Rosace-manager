@@ -1,12 +1,8 @@
 """
 Package des sous-plugins du SEQUENCER.
-Le pipeline est chargé dynamiquement depuis le YAML du programme actif.
-Ce module n'expose que les classes individuelles ; c'est pipeline_loader
-qui construit la liste ordonnée selon la configuration du programme.
+Deux implémentations parallèles selon SEQUENCER_BACKEND (config.py) :
+- internal/ : simulation interne, sans dépendance externe.
+- indi/     : protocole INDI/PHD2 réel (placeholder, chantier suivant).
+pipeline_loader._build_registry() choisit laquelle importer ; ce module
+n'expose donc aucune classe concrète lui-même.
 """
-
-from .slew    import SlewPlugin
-from .focus   import FocusPlugin
-from .expose  import ExposePlugin
-
-__all__ = ["SlewPlugin", "FocusPlugin", "ExposePlugin"]

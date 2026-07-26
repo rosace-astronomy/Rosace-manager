@@ -1,6 +1,7 @@
 """
 Sous-plugin SEQUENCER — Étape 3 : Exposition CCD
 Déclenche les expositions et collecte les fichiers FITS produits.
+Backend "internal" — simulation interne, sans dépendance externe.
 """
 
 from __future__ import annotations
@@ -9,16 +10,14 @@ import asyncio
 import logging
 from pathlib import Path
 
-from ...models import Observation
-from ..sub_plugin_base import SubPlugin
+from ....models import Observation
+from ...sub_plugin_base import SubPlugin
 
 log = logging.getLogger("spectro.subplugin.expose")
 
 
 class ExposePlugin(SubPlugin):
-    """Réalise les expositions spectrales et produit les fichiers FITS bruts."""
-
-    CONFIG_FILE = "config.yaml"
+    """Réalise les expositions spectrales et produit les fichiers FITS bruts — simulation interne."""
 
     async def execute(self, obs: Observation) -> Observation:
         if not obs.sequencer_data.get("slew_done"):
@@ -37,9 +36,8 @@ class ExposePlugin(SubPlugin):
         binning = exposure.binning
         grating = exposure.grating
 
-        simulate = self.config.get("simulate", True)
-        fits_prefix = self.config.get("fits_prefix", "spectrum")
-        simulate_speed = self.config.get("simulate_speed_factor", 0.05)
+        fits_prefix = "spectrum"
+        simulate_speed = 0.05
 
         target = target_obj.name if target_obj else "target"
         raw_files: list[str] = []
@@ -53,17 +51,10 @@ class ExposePlugin(SubPlugin):
             filename = str(Path(obs.obs_dir) / f"{fits_prefix}_{i:04d}.fits")
             log.info(f"[EXPOSE] Exposition {i}/{num_exposures} → {filename}")
 
-            if simulate:
-                await asyncio.sleep(exposure_time * simulate_speed)
-                # Créer un fichier placeholder en simulation
-                Path(filename).parent.mkdir(parents=True, exist_ok=True)
-                Path(filename).touch()
-                log.info(f"[EXPOSE] Simulation — fichier créé : {filename}")
-            else:
-                # TODO : driver CCD réel (INDI/ASCOM)
-                # await ccd.expose(duration=exposure_time, binning=binning)
-                # fits_path = await ccd.save_image(filename)
-                await asyncio.sleep(exposure_time * simulate_speed)
+            await asyncio.sleep(exposure_time * simulate_speed)
+            Path(filename).parent.mkdir(parents=True, exist_ok=True)
+            Path(filename).touch()
+            log.info(f"[EXPOSE] Simulation — fichier créé : {filename}")
 
             raw_files.append(filename)
 

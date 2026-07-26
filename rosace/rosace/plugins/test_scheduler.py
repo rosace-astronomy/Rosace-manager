@@ -23,4 +23,4 @@ class TestSchedulerPlugin:
         assert result is obs
         assert obs.scheduler_data["target"].name == "Vega"
         assert obs.scheduler_data["exposure"].exposure_time == 300.0
-        assert obs.scheduler_data["programme"] == "etoiles_be"
+        assert obs.scheduler_data["programme"] == "demo"

@@ -52,28 +52,3 @@ class TestDarkPlugin:
         result = await DarkPlugin().execute(obs)
 
         assert result.reduction_data["dark_corrected_files"] == [str(tmp_path / "spectrum_0001_bd.fits")]
-
-    async def test_skips_when_ccd_too_cold(self, tmp_path):
-        bias_corrected = str(tmp_path / "spectrum_0001_b.fits")
-        obs = _make_obs(bias_corrected_files=[bias_corrected])
-        obs.reduction_data["ccd_temp_celsius"] = -25.0
-        plugin = DarkPlugin()
-        plugin._config = {"skip_if_ccd_temp_below_celsius": -20.0}
-
-        result = await plugin.execute(obs)
-
-        assert result.reduction_data["dark_skipped"] is True
-        assert result.reduction_data["dark_corrected_files"] == [bias_corrected]  # inchangé
-        assert "dark_done" not in result.reduction_data
-
-    async def test_does_not_skip_when_ccd_warm_enough(self, tmp_path):
-        bias_corrected = str(tmp_path / "spectrum_0001_b.fits")
-        obs = _make_obs(bias_corrected_files=[bias_corrected])
-        obs.reduction_data["ccd_temp_celsius"] = -15.0
-        plugin = DarkPlugin()
-        plugin._config = {"skip_if_ccd_temp_below_celsius": -20.0}
-
-        result = await plugin.execute(obs)
-
-        assert result.reduction_data["dark_done"] is True
-        assert "dark_skipped" not in result.reduction_data

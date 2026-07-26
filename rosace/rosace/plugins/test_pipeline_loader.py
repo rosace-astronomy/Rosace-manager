@@ -4,7 +4,6 @@ Vérifie le chargement dynamique des pipelines depuis les fichiers YAML de progr
 Lancez avec : pytest plugins/test_pipeline_loader.py -v
 """
 
-import inspect
 import pytest
 import tempfile
 from pathlib import Path
@@ -18,8 +17,6 @@ from rosace.plugins.pipeline_loader import (
     list_programmes,
     _build_registry,
 )
-from rosace.plugins.sequencer_plugins.slew import SlewPlugin
-from rosace.plugins.reduction_plugins.bias import BiasPlugin
 
 
 class TestListProgrammes:
@@ -33,6 +30,7 @@ class TestListProgrammes:
         assert "etoiles_be" in result
         assert "etoiles_brillantes" in result
         assert "nova_monitoring" in result
+        assert "demo" in result
 
     def test_sorted_alphabetically(self):
         result = list_programmes()
@@ -130,6 +128,13 @@ class TestLoadPipelines:
         assert len(seq) == 2
         assert len(red) == 2
 
+    def test_demo_full_pipeline(self):
+        seq, red = load_pipelines("demo")
+        seq_names = [p.__class__.__name__ for p in seq]
+        red_names = [p.__class__.__name__ for p in red]
+        assert seq_names == ["SlewPlugin", "FocusPlugin", "ExposePlugin"]
+        assert red_names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
+
     def test_raises_on_unknown_programme(self):
         with pytest.raises(FileNotFoundError):
             load_pipelines("programme_inexistant")
@@ -174,58 +179,42 @@ class TestLoadPipelines:
             load_pipelines("bad2")
 
 
-class TestSubPluginConfigPath:
-    """
-    Régression : la configuration d'un sous-plugin doit être résolue à côté
-    du fichier de la SOUS-CLASSE réelle (via inspect.getfile(type(self))),
-    pas à côté de sub_plugin_base.py.
-    """
+class TestSequencerBackendDispatch:
+    """_build_registry() choisit la famille de sous-plugins SEQUENCER selon SEQUENCER_BACKEND
+    (config.py) — REDUCTION n'a pas de dépendance matérielle, une seule implémentation."""
 
-    def test_config_dir_matches_subclass_own_directory(self):
-        plugin = SlewPlugin()
-        own_dir = Path(inspect.getfile(SlewPlugin)).parent
-        assert own_dir.name == "sequencer_plugins"
-        assert "plugins/plugins" not in str(own_dir)
+    def test_internal_backend_loads_internal_classes(self, monkeypatch):
+        from rosace.plugins import pipeline_loader
+        monkeypatch.setattr(pipeline_loader, "SEQUENCER_BACKEND", "internal")
 
-    def test_different_subplugins_resolve_different_directories(self):
-        seq_plugin = SlewPlugin()
-        red_plugin = BiasPlugin()
-        seq_dir = Path(inspect.getfile(type(seq_plugin))).parent
-        red_dir = Path(inspect.getfile(type(red_plugin))).parent
-        assert seq_dir != red_dir
-        assert seq_dir.name == "sequencer_plugins"
-        assert red_dir.name == "reduction_plugins"
+        registry = pipeline_loader._build_registry()
 
-    def test_missing_config_returns_empty_dict(self):
-        """Aucun config.yaml n'est présent par défaut dans le dépôt."""
-        plugin = SlewPlugin()
-        assert plugin.config == {}
+        assert registry["slew"].__module__ == "rosace.plugins.sequencer_plugins.internal.slew"
+        assert registry["focus"].__module__ == "rosace.plugins.sequencer_plugins.internal.focus"
+        assert registry["expose"].__module__ == "rosace.plugins.sequencer_plugins.internal.expose"
 
-    def test_config_is_lazy_not_loaded_before_access(self, monkeypatch):
-        called = []
-        monkeypatch.setattr(SlewPlugin, "_load_config", lambda self: called.append(1) or {})
-        plugin = SlewPlugin()
-        assert called == []          # pas chargé à l'instanciation
-        _ = plugin.config
-        assert called == [1]         # chargé au premier accès
+    def test_indi_backend_loads_indi_classes(self, monkeypatch):
+        from rosace.plugins import pipeline_loader
+        monkeypatch.setattr(pipeline_loader, "SEQUENCER_BACKEND", "indi")
 
-    def test_config_is_cached_after_first_access(self, monkeypatch):
-        calls = []
-        monkeypatch.setattr(SlewPlugin, "_load_config", lambda self: calls.append(1) or {})
-        plugin = SlewPlugin()
-        _ = plugin.config
-        _ = plugin.config
-        assert len(calls) == 1       # pas rechargé au second accès
+        registry = pipeline_loader._build_registry()
 
-    def test_real_config_file_is_loaded_next_to_subclass(self):
-        """Un vrai config.yaml écrit à côté de slew.py est bien lu et parsé."""
-        import yaml as _yaml
+        assert registry["slew"].__module__ == "rosace.plugins.sequencer_plugins.indi.slew"
+        assert registry["focus"].__module__ == "rosace.plugins.sequencer_plugins.indi.focus"
+        assert registry["expose"].__module__ == "rosace.plugins.sequencer_plugins.indi.expose"
 
-        real_dir = Path(inspect.getfile(SlewPlugin)).parent
-        config_path = real_dir / "config.yaml"
-        config_path.write_text(_yaml.dump({"slew_speed_deg_per_sec": 9.9}))
-        try:
-            plugin = SlewPlugin()
-            assert plugin.config.get("slew_speed_deg_per_sec") == pytest.approx(9.9)
-        finally:
-            config_path.unlink()
+    def test_reduction_classes_unaffected_by_backend(self, monkeypatch):
+        from rosace.plugins import pipeline_loader
+        monkeypatch.setattr(pipeline_loader, "SEQUENCER_BACKEND", "indi")
+
+        registry = pipeline_loader._build_registry()
+
+        assert registry["bias"].__module__ == "rosace.plugins.reduction_plugins.bias"
+        assert registry["dark"].__module__ == "rosace.plugins.reduction_plugins.dark"
+
+    def test_unknown_backend_raises_value_error(self, monkeypatch):
+        from rosace.plugins import pipeline_loader
+        monkeypatch.setattr(pipeline_loader, "SEQUENCER_BACKEND", "bogus")
+
+        with pytest.raises(ValueError, match="bogus"):
+            pipeline_loader._build_registry()

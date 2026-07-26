@@ -252,7 +252,7 @@ body {
 
 						&.running {
 							border-color: var(--amber);
-							color: var(--text-dk);
+							--label-color: var(--text-dk);
 							background: var(--amber);
 							animation: stage-pulse 1.6s ease-in-out infinite;
 						}
@@ -264,8 +264,8 @@ body {
 
 						&.error {
 							border-color: var(--red);
-							color: var(--red);
-							background: hsl( from var(--red) h s 92% );
+							--label-color: white;
+							background: var(--red);
 						}
 
 						&.unknown {

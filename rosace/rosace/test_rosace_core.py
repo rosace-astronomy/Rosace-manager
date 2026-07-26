@@ -65,7 +65,7 @@ from rosace.simbad import (
     SimbadQueryError,
 )
 
-from rosace.config import ACTIVE_HARDWARE, HARDWARE_CONFIG_PATH
+from rosace.config import ACTIVE_HARDWARE, HARDWARE_CONFIG_PATH, SEQUENCER_BACKEND
 
 
 # ═════════════════════════════════════════════════════════════
@@ -80,6 +80,43 @@ class TestHardwareConfig:
 
     def test_default_hardware_config_file_exists(self):
         assert HARDWARE_CONFIG_PATH.exists()
+
+
+class TestSequencerBackend:
+    """Backend d'exécution SEQUENCER (internal/indi), défaut au démarrage."""
+
+    def test_default_backend_is_internal(self):
+        assert SEQUENCER_BACKEND == "internal"
+
+    def test_validate_accepts_known_values(self):
+        from rosace.config import _validate_sequencer_backend
+        assert _validate_sequencer_backend("internal") == "internal"
+        assert _validate_sequencer_backend("indi") == "indi"
+
+    def test_validate_rejects_unknown_value(self):
+        from rosace.config import _validate_sequencer_backend
+        with pytest.raises(ValueError, match="inte"):
+            _validate_sequencer_backend("inte")
+
+    def test_fatal_startup_error_reaches_log_file(self, tmp_path, monkeypatch):
+        """Filet de secours : le message atterrit dans rosace.log même sans configure_logging()."""
+        import rosace.config as config_module
+
+        monkeypatch.setattr(config_module, "BASE_DATA_DIR", tmp_path)
+        config_module._log_fatal_startup_error("boom de test")
+
+        log_content = (tmp_path / "log" / "rosace.log").read_text()
+        assert "boom de test" in log_content
+        assert "ERROR" in log_content
+        assert "spectro.config" in log_content
+
+    def test_fatal_startup_error_never_raises_even_if_logging_broken(self, monkeypatch):
+        """Best-effort : une erreur pendant la journalisation de secours ne doit jamais
+        masquer/remplacer l'erreur d'origine — elle est juste avalée silencieusement."""
+        import rosace.config as config_module
+
+        monkeypatch.setattr(config_module, "BASE_DATA_DIR", "/chemin/inexistant/impossible")
+        config_module._log_fatal_startup_error("ne doit pas lever")  # ne doit pas lever
 
 
 # ═════════════════════════════════════════════════════════════

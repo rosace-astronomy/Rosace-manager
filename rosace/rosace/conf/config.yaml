@@ -1,5 +1,6 @@
 base_data_dir: ~/.rosace
 databases_dir: databases
 site_name: St-Pancrasse
-active_hardware: hardware_simu
+active_hardware: hardware_indi_simu
 scheduler_retry_seconds: 60
+sequencer_backend: internal   # Must be 'internal' (for basic demo) or 'indi' (for real world)
