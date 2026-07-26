@@ -26,7 +26,7 @@ class WebSocketLogHandler(logging.Handler):
 
     def __init__(self, level: int = logging.INFO):
         super().__init__(level)
-        self.setFormatter(logging.Formatter("%(name)s: %(message)s"))
+        self.setFormatter(logging.Formatter("%(message)s"))
         self._clients: set[WebSocket] = set()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._buffer: list[dict] = []

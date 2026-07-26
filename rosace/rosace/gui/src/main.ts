@@ -335,7 +335,7 @@ class MainView extends VBox {
         const ts = new Date().toLocaleTimeString("fr-FR");
 
         for( const msg of msgs ) {
-            this.log_lines.push(`[${ts}]\t${msg}`);
+            this.log_lines.push(`[${ts}] ${msg}`);
         }
 
         if (this.log_lines.length > 100) {

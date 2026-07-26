@@ -76,7 +76,7 @@ def _log_fatal_startup_error(message: str) -> None:
             disable_existing_loggers=False,
             defaults={"logfilename": str(log_dir / "rosace.log")},
         )
-        logging.getLogger("spectro.config").error(message)
+        logging.getLogger("spectro.config").error(f"[CONFIG] {message}")
     except Exception:
         pass  # best effort — ne jamais masquer l'erreur d'origine
 

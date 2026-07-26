@@ -108,7 +108,7 @@ class TestSequencerBackend:
         log_content = (tmp_path / "log" / "rosace.log").read_text()
         assert "boom de test" in log_content
         assert "ERROR" in log_content
-        assert "spectro.config" in log_content
+        assert "[CONFIG]" in log_content
 
     def test_fatal_startup_error_never_raises_even_if_logging_broken(self, monkeypatch):
         """Best-effort : une erreur pendant la journalisation de secours ne doit jamais
