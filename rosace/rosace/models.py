@@ -36,7 +36,7 @@ class Target(BaseModel):
     name: str
     ra: float = Field(..., ge=0, lt=360, description="Ascension droite en degrés")
     dec: float = Field(..., ge=-90, le=90, description="Déclinaison en degrés")
-    magnitude: Optional[float] = None
+    magnitude_v: Optional[float] = None
 
 
 class ExposureConfig(BaseModel):

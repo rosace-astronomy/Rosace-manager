@@ -19,10 +19,11 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
 from .config     import SITE_NAME, SCHEDULER_RETRY_SECONDS
@@ -46,9 +47,10 @@ from .plugins  import plugins
 from .simbad   import simbad_search, SimbadNotFoundError, SimbadQueryError
 from .targets  import (
     targets_db_init,
-    Star, StarCreate, Program, ProgramCreate,
+    Star, StarCreate, StarLookup, StarInProgram, Program, ProgramCreate,
     star_insert, star_get, star_get_by_name, star_list, star_update, star_delete,
-    program_insert, program_get, program_list, program_delete,
+    star_add_alias, star_list_aliases,
+    program_insert, program_get, program_get_by_name, program_list, program_delete,
     program_add_star, program_remove_star, program_get_stars, star_get_programs,
 )
 
@@ -314,12 +316,27 @@ async def simbad_search_endpoint(name: str):
         raise HTTPException(status_code=502, detail=str(e))
 
 
-@app.post("/simbad/import", response_model=Star, status_code=201)
-async def simbad_import_endpoint(name: str):
+@app.post("/simbad/import", response_model=Star)
+async def simbad_import_endpoint(name: str, response: Response):
     """
-    Interroge Simbad et insère l'étoile en base.
-    Retourne une erreur 409 si l'étoile existe déjà.
+    Ajoute une étoile à la base, identifiée par un nom quelconque — pas besoin
+    de connaître son nom canonique Simbad. Recherche d'abord si une étoile
+    correspondant à `name` (nom canonique ou alias) existe déjà :
+    - si oui, enregistre `name` comme alias si nouveau, renvoie l'étoile
+      existante (200) plutôt que d'en créer un doublon ;
+    - sinon, interroge Simbad pour les données astrométriques, insère
+      l'étoile (nom canonique = celui retourné par Simbad), enregistre
+      `name` comme alias si différent du nom canonique, renvoie la
+      nouvelle étoile (201).
     """
+    existing = await star_get_by_name(name)
+    if existing:
+        known_names = {existing.name.lower()} | {a.lower() for a in await star_list_aliases(existing.id)}
+        if name.lower() not in known_names:
+            await star_add_alias(existing.id, name)
+        response.status_code = 200
+        return existing
+
     try:
         star_create = await simbad_search(name)
     except SimbadNotFoundError as e:
@@ -327,15 +344,11 @@ async def simbad_import_endpoint(name: str):
     except SimbadQueryError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    # Vérification doublon (par nom principal retourné par Simbad)
-    existing = await star_get_by_name(star_create.name)
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"L'étoile '{star_create.name}' existe déjà en base (id={existing.id})"
-        )
-
     star_id = await star_insert(star_create)
+    if name.lower() != star_create.name.lower():
+        await star_add_alias(star_id, name)
+
+    response.status_code = 201
     return await star_get(star_id)
 
 # ─────────────────────────────────────────────────────────────
@@ -349,45 +362,52 @@ if __name__ == "__main__":
 # ─────────────────────────────────────────────────────────────
 # Endpoints — Étoiles
 # ─────────────────────────────────────────────────────────────
-
-@app.post("/stars", response_model=Star, status_code=201)
-async def create_star(star: StarCreate):
-    """Ajoute une étoile à la base de cibles."""
-    star_id = await star_insert(star)
-    return await star_get(star_id)
+# Adressées par nom, jamais par id : l'id SQLite est un détail d'implémentation
+# qui ne concerne pas l'utilisateur (voir star_get_by_name : nom canonique
+# puis, en repli, table d'alias).
 
 @app.get("/stars", response_model=list[Star])
 async def list_stars():
     """Liste toutes les étoiles."""
     return await star_list()
 
-@app.get("/stars/{star_id}", response_model=Star)
-async def get_star(star_id: int):
-    """Récupère une étoile par son id."""
-    star = await star_get(star_id)
+@app.get("/stars/{name}", response_model=StarLookup)
+async def get_star(name: str):
+    """Recherche une étoile par son nom (canonique ou alias)."""
+    star = await star_get_by_name(name)
     if not star:
         raise HTTPException(status_code=404, detail="Étoile non trouvée")
-    return star
+    return StarLookup(**star.model_dump(), queried_name=name)
 
-@app.put("/stars/{star_id}", response_model=Star)
-async def update_star(star_id: int, star: StarCreate):
-    """Met à jour une étoile."""
-    await star_update(star_id, star)
-    return await star_get(star_id)
+@app.put("/stars/{name}", response_model=Star)
+async def update_star(name: str, star: StarCreate):
+    """Met à jour une étoile, recherchée par son nom (canonique ou alias)."""
+    existing = await star_get_by_name(name)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Étoile non trouvée")
+    await star_update(existing.id, star)
+    return await star_get(existing.id)
 
-@app.delete("/stars/{star_id}", status_code=204)
-async def delete_star(star_id: int):
-    """Supprime une étoile."""
-    await star_delete(star_id)
+@app.delete("/stars/{name}", status_code=204)
+async def delete_star(name: str):
+    """Supprime une étoile, recherchée par son nom (canonique ou alias)."""
+    existing = await star_get_by_name(name)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Étoile non trouvée")
+    await star_delete(existing.id)
 
-@app.get("/stars/{star_id}/programs", response_model=list[Program])
-async def get_star_programs(star_id: int):
+@app.get("/stars/{name}/programs", response_model=list[Program])
+async def get_star_programs(name: str):
     """Retourne les programmes auxquels appartient une étoile."""
-    return await star_get_programs(star_id)
+    existing = await star_get_by_name(name)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Étoile non trouvée")
+    return await star_get_programs(existing.id)
 
 # ─────────────────────────────────────────────────────────────
 # Endpoints — Programmes scientifiques
 # ─────────────────────────────────────────────────────────────
+# Adressées par nom, jamais par id — même principe que pour les étoiles.
 
 @app.post("/programs", response_model=Program, status_code=201)
 async def create_program(program: ProgramCreate):
@@ -400,33 +420,52 @@ async def list_programs():
     """Liste tous les programmes."""
     return await program_list()
 
-@app.get("/programs/{program_id}", response_model=Program)
-async def get_program(program_id: int):
-    """Récupère un programme par son id."""
-    program = await program_get(program_id)
+@app.get("/programs/{name}", response_model=Program)
+async def get_program(name: str):
+    """Récupère un programme par son nom."""
+    program = await program_get_by_name(name)
     if not program:
         raise HTTPException(status_code=404, detail="Programme non trouvé")
     return program
 
-@app.delete("/programs/{program_id}", status_code=204)
-async def delete_program(program_id: int):
-    """Supprime un programme."""
-    await program_delete(program_id)
+@app.delete("/programs/{name}", status_code=204)
+async def delete_program(name: str):
+    """Supprime un programme, recherché par son nom."""
+    program = await program_get_by_name(name)
+    if not program:
+        raise HTTPException(status_code=404, detail="Programme non trouvé")
+    await program_delete(program.id)
 
-@app.get("/programs/{program_id}/stars", response_model=list[Star])
-async def get_program_stars(program_id: int):
-    """Retourne les étoiles d'un programme."""
-    return await program_get_stars(program_id)
+@app.get("/programs/{name}/stars", response_model=list[StarInProgram])
+async def get_program_stars(name: str):
+    """Retourne les étoiles d'un programme, avec leur temps de pose éventuel."""
+    program = await program_get_by_name(name)
+    if not program:
+        raise HTTPException(status_code=404, detail="Programme non trouvé")
+    return await program_get_stars(program.id)
 
-@app.post("/programs/{program_id}/stars/{star_id}", status_code=204)
-async def add_star_to_program(program_id: int, star_id: int):
-    """Associe une étoile à un programme."""
-    await program_add_star(program_id, star_id)
+@app.post("/programs/{name}/stars/{star_name}", status_code=204)
+async def add_star_to_program(name: str, star_name: str, exposure_time: Optional[float] = None):
+    """Associe une étoile à un programme, avec un temps de pose optionnel
+    spécifique à ce couple programme/étoile."""
+    program = await program_get_by_name(name)
+    if not program:
+        raise HTTPException(status_code=404, detail="Programme non trouvé")
+    star = await star_get_by_name(star_name)
+    if not star:
+        raise HTTPException(status_code=404, detail="Étoile non trouvée")
+    await program_add_star(program.id, star.id, exposure_time)
 
-@app.delete("/programs/{program_id}/stars/{star_id}", status_code=204)
-async def remove_star_from_program(program_id: int, star_id: int):
+@app.delete("/programs/{name}/stars/{star_name}", status_code=204)
+async def remove_star_from_program(name: str, star_name: str):
     """Retire une étoile d'un programme."""
-    await program_remove_star(program_id, star_id)
+    program = await program_get_by_name(name)
+    if not program:
+        raise HTTPException(status_code=404, detail="Programme non trouvé")
+    star = await star_get_by_name(star_name)
+    if not star:
+        raise HTTPException(status_code=404, detail="Étoile non trouvée")
+    await program_remove_star(program.id, star.id)
 
 # ─────────────────────────────────────────────────────────────
 # Interface web (fichiers statiques du GUI)

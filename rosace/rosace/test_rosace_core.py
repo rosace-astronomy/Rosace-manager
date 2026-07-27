@@ -51,11 +51,12 @@ from rosace.database import (
 )
 from rosace.targets import (
     targets_db_init,
-    StarCreate, Star,
+    StarCreate, Star, StarInProgram, StarLookup,
     ProgramCreate, Program,
     star_insert, star_get, star_get_by_name, star_list,
     star_update, star_delete,
-    program_insert, program_get, program_list, program_delete,
+    star_add_alias, star_remove_alias, star_list_aliases,
+    program_insert, program_get, program_get_by_name, program_list, program_delete,
     program_add_star, program_remove_star,
     program_get_stars, star_get_programs,
 )
@@ -154,11 +155,11 @@ class TestTargetModel:
         assert t.name == "Vega"
         assert t.ra == 279.23
         assert t.dec == 38.78
-        assert t.magnitude is None
+        assert t.magnitude_v is None
 
     def test_target_with_magnitude(self):
-        t = Target(name="Sirius", ra=101.28, dec=-16.71, magnitude=-1.46)
-        assert t.magnitude == pytest.approx(-1.46)
+        t = Target(name="Sirius", ra=101.28, dec=-16.71, magnitude_v=-1.46)
+        assert t.magnitude_v == pytest.approx(-1.46)
 
     def test_ra_lower_bound(self):
         t = Target(name="Test", ra=0.0, dec=0.0)
@@ -471,8 +472,8 @@ class TestTargetsDB:
         await targets_db_init()
 
     def _star(self, name="Altair", ra=297.69, dec=8.87) -> StarCreate:
-        return StarCreate(name=name, ra=ra, dec=dec, magnitude=0.76,
-                          spectral_type="A7V", exposure_time=120.0)
+        return StarCreate(name=name, ra=ra, dec=dec, magnitude_v=0.76,
+                          spectral_type="A7V")
 
     def _program(self, name="Programme A") -> ProgramCreate:
         return ProgramCreate(name=name, description="Test programme")
@@ -524,14 +525,52 @@ class TestTargetsDB:
     async def test_star_fields_roundtrip(self):
         """Tous les champs facultatifs survivent un aller-retour en base."""
         sc = StarCreate(name="Rigel", ra=78.63, dec=-8.20,
-                        magnitude=0.13, spectral_type="B8Ia",
-                        exposure_time=600.0, notes="Belle étoile")
+                        magnitude_v=0.13, spectral_type="B8Ia",
+                        notes="Belle étoile")
         sid = await star_insert(sc)
         star = await star_get(sid)
-        assert star.magnitude     == pytest.approx(0.13)
+        assert star.magnitude_v   == pytest.approx(0.13)
         assert star.spectral_type == "B8Ia"
-        assert star.exposure_time == pytest.approx(600.0)
         assert star.notes         == "Belle étoile"
+
+    # ── Alias ────────────────────────────────────────────────
+
+    async def test_star_get_by_name_falls_back_to_alias(self):
+        sid = await star_insert(self._star("AlphaLyrTest1"))
+        await star_add_alias(sid, "VegaAliasTest1")
+        star = await star_get_by_name("VegaAliasTest1")
+        assert star is not None
+        assert star.id == sid
+        assert star.name == "AlphaLyrTest1"  # nom canonique, pas l'alias
+
+    async def test_star_get_by_name_prefers_canonical_over_alias(self):
+        """Si le terme cherché est à la fois nom canonique d'une étoile ET alias
+        d'une autre, le nom canonique gagne (recherche à deux niveaux)."""
+        sid1 = await star_insert(self._star("PreferCanonicalTestName", ra=1.0, dec=1.0))
+        sid2 = await star_insert(self._star("AutreEtoileTest2", ra=10.0, dec=10.0))
+        await star_add_alias(sid2, "PreferCanonicalTestName-alias-piege")
+        star = await star_get_by_name("PreferCanonicalTestName")
+        assert star.id == sid1
+
+    async def test_star_list_aliases(self):
+        sid = await star_insert(self._star("AlphaLyrTest3"))
+        await star_add_alias(sid, "VegaAliasTest3")
+        await star_add_alias(sid, "HD172167Test3")
+        aliases = await star_list_aliases(sid)
+        assert set(aliases) == {"VegaAliasTest3", "HD172167Test3"}
+
+    async def test_star_remove_alias(self):
+        sid = await star_insert(self._star("AlphaLyrTest4"))
+        alias_id = await star_add_alias(sid, "VegaAliasTest4")
+        await star_remove_alias(alias_id)
+        assert await star_list_aliases(sid) == []
+        assert await star_get_by_name("VegaAliasTest4") is None
+
+    async def test_delete_star_cleans_aliases(self):
+        sid = await star_insert(self._star("AlphaLyrTest5"))
+        await star_add_alias(sid, "VegaAliasTest5")
+        await star_delete(sid)
+        assert await star_get_by_name("VegaAliasTest5") is None
 
     # ── Programmes ───────────────────────────────────────────
 
@@ -544,6 +583,15 @@ class TestTargetsDB:
     async def test_program_get_nonexistent(self):
         prog = await program_get(999999)
         assert prog is None
+
+    async def test_program_get_by_name(self):
+        await program_insert(self._program("Prog-ByName"))
+        prog = await program_get_by_name("Prog-ByName")
+        assert prog is not None
+        assert prog.name == "Prog-ByName"
+
+    async def test_program_get_by_name_missing(self):
+        assert await program_get_by_name("PasDansLaBase") is None
 
     async def test_program_list(self):
         await program_insert(self._program("ListA"))
@@ -578,6 +626,31 @@ class TestTargetsDB:
         await program_add_star(pid, sid)
         stars = await program_get_stars(pid)
         assert len(stars) == 1
+
+    async def test_program_add_star_with_exposure_time(self):
+        sid = await star_insert(self._star("SExp", ra=35.0, dec=5.0))
+        pid = await program_insert(self._program("P-Exp"))
+        await program_add_star(pid, sid, exposure_time=90.0)
+        stars = await program_get_stars(pid)
+        assert isinstance(stars[0], StarInProgram)
+        assert stars[0].exposure_time == pytest.approx(90.0)
+
+    async def test_program_add_star_without_exposure_time_is_none(self):
+        sid = await star_insert(self._star("SNoExp", ra=36.0, dec=5.0))
+        pid = await program_insert(self._program("P-NoExp"))
+        await program_add_star(pid, sid)
+        stars = await program_get_stars(pid)
+        assert stars[0].exposure_time is None
+
+    async def test_program_add_star_upserts_exposure_time(self):
+        """Un second appel sur le même couple programme/étoile met à jour le temps de pose."""
+        sid = await star_insert(self._star("SUpsert", ra=37.0, dec=5.0))
+        pid = await program_insert(self._program("P-Upsert"))
+        await program_add_star(pid, sid, exposure_time=60.0)
+        await program_add_star(pid, sid, exposure_time=120.0)
+        stars = await program_get_stars(pid)
+        assert len(stars) == 1
+        assert stars[0].exposure_time == pytest.approx(120.0)
 
     async def test_program_remove_star(self):
         sid = await star_insert(self._star("SRemove", ra=40.0, dec=5.0))
@@ -682,7 +755,7 @@ class TestSimbad:
         assert result.ra   == pytest.approx(279.23473)
         assert result.dec  == pytest.approx(38.78369)
         assert result.spectral_type == "A0Va"
-        assert result.magnitude == pytest.approx(0.03)
+        assert result.magnitude_v == pytest.approx(0.03)
 
     async def test_simbad_not_found(self):
         """Lève SimbadNotFoundError si data est vide."""
@@ -699,7 +772,7 @@ class TestSimbad:
                 await simbad_search("PasUnEtoile")
 
     async def test_simbad_magnitude_none(self):
-        """magnitude est None quand vmag est NULL dans Simbad."""
+        """magnitude_v est None quand vmag est NULL dans Simbad."""
         mock_resp = _mock_httpx_response(SIMBAD_RESPONSE_NO_MAG)
 
         with patch("rosace.simbad.httpx.AsyncClient") as MockClient:
@@ -711,7 +784,7 @@ class TestSimbad:
 
             result = await simbad_search("Sirius")
 
-        assert result.magnitude is None
+        assert result.magnitude_v is None
 
     async def test_simbad_network_error(self):
         """Lève SimbadQueryError en cas d'erreur réseau."""
@@ -1118,22 +1191,31 @@ class TestApiEndpoints:
 
     def test_get_star_404_when_missing(self):
         with self._client() as client:
-            res = client.get("/stars/999999")
+            res = client.get("/stars/PasDansLaBase")
         assert res.status_code == 404
 
-    def test_create_and_get_star_via_api(self):
+    def test_get_star_via_api(self):
+        """POST /stars n'existe pas (toute création passe par Simbad) — l'étoile
+        est insérée directement en base, l'API n'est exercée que côté lecture."""
+        from rosace.targets import StarCreate, star_insert
+
+        async def _insert():
+            return await star_insert(StarCreate(name="ApiTestStar", ra=100.0, dec=20.0))
+
+        star_id = asyncio.run(_insert())
+
         with self._client() as client:
-            create_res = client.post("/stars", json={
-                "name": "ApiTestStar", "ra": 100.0, "dec": 20.0,
-            })
-            assert create_res.status_code == 201
-            star_id = create_res.json()["id"]
-            get_res = client.get(f"/stars/{star_id}")
+            get_res = client.get("/stars/ApiTestStar")
 
         assert get_res.status_code == 200
-        assert get_res.json()["name"] == "ApiTestStar"
+        body = get_res.json()
+        assert body["id"] == star_id
+        assert body["name"] == "ApiTestStar"
+        assert body["queried_name"] == "ApiTestStar"
 
-    def test_simbad_import_409_on_duplicate(self, monkeypatch):
+    def test_simbad_import_returns_existing_on_duplicate(self, monkeypatch):
+        """Un second import du même nom ne crée pas de doublon : renvoie l'étoile
+        existante (200), pas d'erreur."""
         import rosace.main as main_mod
         from rosace.targets import StarCreate
 
@@ -1147,7 +1229,32 @@ class TestApiEndpoints:
             assert first.status_code == 201
             second = client.post("/simbad/import", params={"name": "DupStar"})
 
-        assert second.status_code == 409
+        assert second.status_code == 200
+        assert second.json()["id"] == first.json()["id"]
+
+    def test_simbad_import_registers_search_term_as_alias(self, monkeypatch):
+        """Si le nom recherché diffère du nom canonique renvoyé par Simbad, il
+        est enregistré comme alias — et devient ensuite directement cherchable."""
+        import rosace.main as main_mod
+        from rosace.targets import StarCreate
+
+        async def fake_simbad_search(name):
+            return StarCreate(name="alf Lyr", ra=279.23, dec=38.78)
+
+        monkeypatch.setattr(main_mod, "simbad_search", fake_simbad_search)
+
+        with self._client() as client:
+            res = client.post("/simbad/import", params={"name": "Vega"})
+            assert res.status_code == 201
+
+            by_alias = client.get("/stars/Vega")
+            by_canonical = client.get("/stars/alf Lyr")
+
+        assert by_alias.status_code == 200
+        assert by_canonical.status_code == 200
+        assert by_alias.json()["id"] == by_canonical.json()["id"]
+        assert by_alias.json()["queried_name"] == "Vega"
+        assert by_alias.json()["name"] == "alf Lyr"
 
     def test_observations_recent_endpoint(self):
         with self._client() as client:
