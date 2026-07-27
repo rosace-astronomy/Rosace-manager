@@ -47,6 +47,7 @@ from rosace.database import (
     db_set_error,
     db_set_stage_status,
     db_get_recent_observations,
+    db_count_observations_for_target,
     _astronomical_day_start_utc,
 )
 from rosace.targets import (
@@ -211,6 +212,13 @@ class TestExposureConfig:
         with pytest.raises(ValidationError):
             ExposureConfig(exposure_time=-1.0)
 
+    def test_exposure_time_optional(self):
+        """exposure_time peut être absent — cas où aucun temps de pose spécifique
+        n'est défini en base pour ce couple programme/étoile (à calculer plus
+        tard depuis la magnitude, pas encore implémenté)."""
+        e = ExposureConfig()
+        assert e.exposure_time is None
+
     def test_binning_bounds(self):
         from pydantic import ValidationError
         ExposureConfig(exposure_time=1.0, binning=4)       # ok
@@ -332,6 +340,18 @@ class TestDatabase:
         await db_init()
         await db_init()
 
+    async def test_db_init_enables_wal_mode(self):
+        """WAL : un lecteur externe (ex. DB Browser for SQLite) ne doit plus
+        bloquer les écritures concurrentes de Rosace."""
+        import aiosqlite
+        from rosace.config import DB_PATH
+
+        await db_init()
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("PRAGMA journal_mode") as cursor:
+                row = await cursor.fetchone()
+        assert row[0].lower() == "wal"
+
     async def test_insert_and_close_session(self):
         ctx = self._make_ctx()
         await db_insert_session(ctx)
@@ -443,6 +463,32 @@ class TestDatabase:
         assert today_obs.id in ids
         assert old_obs.id not in ids
 
+    async def test_count_observations_for_target_zero_when_none(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        count = await db_count_observations_for_target(ctx.session_id, "etoiles_be", "Vega")
+        assert count == 0
+
+    async def test_count_observations_for_target_counts_matching_pair(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs1 = self._make_obs(ctx.session_id)
+        obs2 = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs1, ctx.session_id)
+        await db_insert_observation(obs2, ctx.session_id)
+        # _make_obs() pose target="Vega" et programme="etoiles_be" pour les deux
+        count = await db_count_observations_for_target(ctx.session_id, "etoiles_be", "Vega")
+        assert count == 2
+
+    async def test_count_observations_for_target_scoped_by_programme(self):
+        """Même étoile, programme différent : ne doit pas compter dans l'autre programme."""
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)  # programme="etoiles_be"
+        await db_insert_observation(obs, ctx.session_id)
+        count = await db_count_observations_for_target(ctx.session_id, "un_autre_programme", "Vega")
+        assert count == 0
+
     def test_astronomical_day_start_utc_spans_local_noon(self):
         """La frontière est le midi local précédent — robuste au fuseau de la machine de test."""
         system_tz = datetime.now().astimezone().tzinfo
@@ -477,6 +523,17 @@ class TestTargetsDB:
 
     def _program(self, name="Programme A") -> ProgramCreate:
         return ProgramCreate(name=name, description="Test programme")
+
+    async def test_targets_db_init_enables_wal_mode(self):
+        """WAL : un lecteur externe (ex. DB Browser for SQLite) ne doit plus
+        bloquer les écritures concurrentes de Rosace."""
+        import aiosqlite
+        from rosace.targets import TARGETS_DB_PATH
+
+        async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+            async with db.execute("PRAGMA journal_mode") as cursor:
+                row = await cursor.fetchone()
+        assert row[0].lower() == "wal"
 
     # ── Étoiles ──────────────────────────────────────────────
 
@@ -1239,7 +1296,7 @@ class TestApiEndpoints:
         from rosace.targets import StarCreate
 
         async def fake_simbad_search(name):
-            return StarCreate(name="alf Lyr", ra=279.23, dec=38.78)
+            return StarCreate(name="alf Lyr ApiAliasTest", ra=279.23, dec=38.78)
 
         monkeypatch.setattr(main_mod, "simbad_search", fake_simbad_search)
 
@@ -1248,13 +1305,146 @@ class TestApiEndpoints:
             assert res.status_code == 201
 
             by_alias = client.get("/stars/Vega")
-            by_canonical = client.get("/stars/alf Lyr")
+            by_canonical = client.get("/stars/alf Lyr ApiAliasTest")
 
         assert by_alias.status_code == 200
         assert by_canonical.status_code == 200
         assert by_alias.json()["id"] == by_canonical.json()["id"]
         assert by_alias.json()["queried_name"] == "Vega"
-        assert by_alias.json()["name"] == "alf Lyr"
+        assert by_alias.json()["name"] == "alf Lyr ApiAliasTest"
+
+    def test_simbad_import_deduplicates_across_different_search_terms(self, monkeypatch):
+        """Deux noms différents (ex. 'bet Lyr' / 'Sheliak') que Simbad résout vers
+        la même identité canonique ne doivent pas créer deux étoiles distinctes."""
+        import rosace.main as main_mod
+        from rosace.targets import StarCreate
+
+        async def fake_simbad_search(name):
+            # Simule deux noms de recherche différents pour le même objet physique.
+            return StarCreate(name="DedupCanonicalStar", ra=282.52, dec=33.36)
+
+        monkeypatch.setattr(main_mod, "simbad_search", fake_simbad_search)
+
+        with self._client() as client:
+            first = client.post("/simbad/import", params={"name": "DedupSearchTermOne"})
+            assert first.status_code == 201
+
+            second = client.post("/simbad/import", params={"name": "DedupSearchTermTwo"})
+
+        assert second.status_code == 200
+        assert second.json()["id"] == first.json()["id"]
+        assert second.json()["name"] == "DedupCanonicalStar"
+
+        with self._client() as client:
+            all_stars = client.get("/stars").json()
+        canonical_matches = [s for s in all_stars if s["name"] == "DedupCanonicalStar"]
+        assert len(canonical_matches) == 1  # pas de doublon
+
+    def test_simbad_import_reports_alias_added(self, monkeypatch):
+        """La réponse indique explicitement si le terme recherché a été
+        enregistré comme nouvel alias — pour ne pas avoir à aller vérifier
+        la base à la main."""
+        import rosace.main as main_mod
+        from rosace.targets import StarCreate
+
+        async def fake_simbad_search(name):
+            return StarCreate(name="AliasAddedCanonicalStar", ra=10.0, dec=10.0)
+
+        monkeypatch.setattr(main_mod, "simbad_search", fake_simbad_search)
+
+        with self._client() as client:
+            # Nouvelle étoile, nom recherché différent du nom canonique -> alias ajouté.
+            created = client.post("/simbad/import", params={"name": "AliasAddedSearchTerm"})
+            assert created.json()["alias_added"] is True
+
+            # Même nom recherché une 2e fois -> déjà connu, pas de nouvel alias.
+            again = client.post("/simbad/import", params={"name": "AliasAddedSearchTerm"})
+            assert again.json()["alias_added"] is False
+
+            # Recherche directement par le nom canonique -> jamais un alias.
+            by_canonical = client.post("/simbad/import", params={"name": "AliasAddedCanonicalStar"})
+            assert by_canonical.json()["alias_added"] is False
+
+    def test_import_stars_from_file_mixed_results(self, monkeypatch):
+        """Une ligne par étoile ; les erreurs sur une ligne n'empêchent pas les autres."""
+        import rosace.main as main_mod
+        from rosace.targets import StarCreate
+
+        known = {
+            "VegaBulkImportTest": StarCreate(name="alf Lyr BulkImportTest", ra=279.23, dec=38.78),
+        }
+
+        async def fake_simbad_search(name):
+            if name not in known:
+                raise SimbadNotFoundError(f"{name} introuvable")
+            return known[name]
+
+        monkeypatch.setattr(main_mod, "simbad_search", fake_simbad_search)
+
+        content = "VegaBulkImportTest\nBadStarBulkImportTest\n"
+        with self._client() as client:
+            res = client.post(
+                "/stars/import-list",
+                files={"file": ("stars.txt", content, "text/plain")},
+            )
+
+        assert res.status_code == 200
+        results = {r["name"]: r for r in res.json()}
+        assert results["VegaBulkImportTest"]["status"] == "created"
+        assert results["VegaBulkImportTest"]["canonical_name"] == "alf Lyr BulkImportTest"
+        assert results["BadStarBulkImportTest"]["status"] == "error"
+        assert results["BadStarBulkImportTest"]["id"] is None
+
+    def test_import_stars_from_file_existing_star_reported_as_existing(self, monkeypatch):
+        import rosace.main as main_mod
+        from rosace.targets import StarCreate
+
+        async def fake_simbad_search(name):
+            return StarCreate(name="alf Lyr BulkExistingTest", ra=279.23, dec=38.78)
+
+        monkeypatch.setattr(main_mod, "simbad_search", fake_simbad_search)
+
+        with self._client() as client:
+            first = client.post(
+                "/stars/import-list",
+                files={"file": ("stars.txt", "VegaBulkExistingTest\n", "text/plain")},
+            )
+            second = client.post(
+                "/stars/import-list",
+                files={"file": ("stars.txt", "VegaBulkExistingTest\n", "text/plain")},
+            )
+
+        assert first.json()[0]["status"] == "created"
+        assert second.json()[0]["status"] == "existing"
+        assert second.json()[0]["id"] == first.json()[0]["id"]
+
+    def test_import_program_stars_from_file(self):
+        with self._client() as client:
+            client.post("/programs", json={"name": "BulkProgramTest", "description": "test"})
+
+            async def _insert_star():
+                from rosace.targets import StarCreate, star_insert
+                return await star_insert(StarCreate(name="BulkLinkStarTest", ra=1.0, dec=1.0))
+
+            asyncio.run(_insert_star())
+
+            yaml_content = (
+                "BulkProgramTest:\n"
+                "  - BulkLinkStarTest\n"
+                "  - UnknownStarBulkTest\n"
+                "UnknownProgramBulkTest:\n"
+                "  - BulkLinkStarTest\n"
+            )
+            res = client.post(
+                "/programs/import-list",
+                files={"file": ("programs.yaml", yaml_content, "application/x-yaml")},
+            )
+
+        assert res.status_code == 200
+        results = {(r["program"], r["star"]): r for r in res.json()}
+        assert results[("BulkProgramTest", "BulkLinkStarTest")]["status"] == "linked"
+        assert results[("BulkProgramTest", "UnknownStarBulkTest")]["status"] == "star_not_found"
+        assert results[("UnknownProgramBulkTest", "BulkLinkStarTest")]["status"] == "program_not_found"
 
     def test_observations_recent_endpoint(self):
         with self._client() as client:

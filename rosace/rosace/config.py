@@ -95,3 +95,8 @@ try:
 except ValueError as e:
     _log_fatal_startup_error(str(e))
     raise
+
+# ── Plan d'observation (SCHEDULER) ───────────────────────────────
+# Fichier texte (n'importe où sur le disque, pas nécessairement sous
+# BASE_DATA_DIR) que SCHEDULER lit pour choisir la prochaine cible.
+OBSERVATION_LIST_PATH = Path(_cfg["observation_list_path"]).expanduser()

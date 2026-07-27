@@ -65,7 +65,10 @@ class StarLookup(Star):
 async def targets_db_init() -> None:
     """Crée les tables si elles n'existent pas."""
     DATABASES_DIR.mkdir(parents=True, exist_ok=True)
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
+        # WAL: un import en masse (plusieurs secondes, appels Simbad séquentiels)
+        # ne se fait plus bloquer par une lecture concurrente (GUI, polling...).
+        await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("""
             CREATE TABLE IF NOT EXISTS stars (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -109,7 +112,7 @@ async def targets_db_init() -> None:
 
 async def star_insert(star: StarCreate) -> int:
     """Insère une étoile et retourne son id."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         cursor = await db.execute(
             """INSERT INTO stars (name, ra, dec, magnitude_v, spectral_type, notes)
                VALUES (?, ?, ?, ?, ?, ?)""",
@@ -123,7 +126,7 @@ async def star_insert(star: StarCreate) -> int:
 
 async def star_get(star_id: int) -> Optional[Star]:
     """Récupère une étoile par son id."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM stars WHERE id = ?", (star_id,)) as cursor:
             row = await cursor.fetchone()
@@ -133,7 +136,7 @@ async def star_get(star_id: int) -> Optional[Star]:
 async def star_get_by_name(name: str) -> Optional[Star]:
     """Récupère une étoile par son nom (insensible à la casse). Si aucune étoile
     ne porte ce nom canonique, se rabat sur la table d'alias."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM stars WHERE name LIKE ?", (name,)
@@ -154,7 +157,7 @@ async def star_get_by_name(name: str) -> Optional[Star]:
 
 async def star_list() -> list[Star]:
     """Retourne toutes les étoiles."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM stars ORDER BY name") as cursor:
             rows = await cursor.fetchall()
@@ -163,7 +166,7 @@ async def star_list() -> list[Star]:
 
 async def star_update(star_id: int, star: StarCreate) -> None:
     """Met à jour une étoile existante."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         await db.execute(
             """UPDATE stars
                SET name=?, ra=?, dec=?, magnitude_v=?, spectral_type=?, notes=?
@@ -177,7 +180,7 @@ async def star_update(star_id: int, star: StarCreate) -> None:
 
 async def star_delete(star_id: int) -> None:
     """Supprime une étoile, ses alias et ses liens avec les programmes."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         await db.execute("DELETE FROM star_aliases WHERE star_id = ?", (star_id,))
         await db.execute("DELETE FROM program_stars WHERE star_id = ?", (star_id,))
         await db.execute("DELETE FROM stars WHERE id = ?", (star_id,))
@@ -192,7 +195,7 @@ async def star_delete(star_id: int) -> None:
 async def star_add_alias(star_id: int, alias_name: str) -> int:
     """Ajoute un nom alternatif pour une étoile et retourne l'id de l'alias.
     alias_name doit être unique dans toute la base (une seule étoile par alias)."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         cursor = await db.execute(
             "INSERT INTO star_aliases (star_id, alias_name) VALUES (?, ?)",
             (star_id, alias_name)
@@ -204,7 +207,7 @@ async def star_add_alias(star_id: int, alias_name: str) -> int:
 
 async def star_remove_alias(alias_id: int) -> None:
     """Supprime un alias par son id."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         await db.execute("DELETE FROM star_aliases WHERE id = ?", (alias_id,))
         await db.commit()
     log.info(f"[TARGETS DB] Alias supprimé : id={alias_id}")
@@ -212,7 +215,7 @@ async def star_remove_alias(alias_id: int) -> None:
 
 async def star_list_aliases(star_id: int) -> list[str]:
     """Retourne tous les noms alternatifs connus pour une étoile."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT alias_name FROM star_aliases WHERE star_id = ? ORDER BY alias_name",
@@ -228,7 +231,7 @@ async def star_list_aliases(star_id: int) -> list[str]:
 
 async def program_insert(program: ProgramCreate) -> int:
     """Insère un programme et retourne son id."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         cursor = await db.execute(
             "INSERT INTO programs (name, description) VALUES (?, ?)",
             (program.name, program.description)
@@ -240,7 +243,7 @@ async def program_insert(program: ProgramCreate) -> int:
 
 async def program_get(program_id: int) -> Optional[Program]:
     """Récupère un programme par son id."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM programs WHERE id = ?", (program_id,)) as cursor:
             row = await cursor.fetchone()
@@ -249,7 +252,7 @@ async def program_get(program_id: int) -> Optional[Program]:
 
 async def program_get_by_name(name: str) -> Optional[Program]:
     """Récupère un programme par son nom (insensible à la casse)."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM programs WHERE name LIKE ?", (name,)) as cursor:
             row = await cursor.fetchone()
@@ -258,7 +261,7 @@ async def program_get_by_name(name: str) -> Optional[Program]:
 
 async def program_list() -> list[Program]:
     """Retourne tous les programmes."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM programs ORDER BY name") as cursor:
             rows = await cursor.fetchall()
@@ -267,7 +270,7 @@ async def program_list() -> list[Program]:
 
 async def program_delete(program_id: int) -> None:
     """Supprime un programme et ses liens avec les étoiles."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         await db.execute("DELETE FROM program_stars WHERE program_id = ?", (program_id,))
         await db.execute("DELETE FROM programs WHERE id = ?", (program_id,))
         await db.commit()
@@ -282,7 +285,7 @@ async def program_add_star(program_id: int, star_id: int, exposure_time: Optiona
     """Associe une étoile à un programme, avec un temps de pose optionnel
     spécifique à ce couple programme/étoile. Un second appel sur le même
     couple met à jour le temps de pose (upsert)."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         await db.execute(
             """INSERT INTO program_stars (program_id, star_id, exposure_time)
                VALUES (?, ?, ?)
@@ -296,7 +299,7 @@ async def program_add_star(program_id: int, star_id: int, exposure_time: Optiona
 
 async def program_remove_star(program_id: int, star_id: int) -> None:
     """Retire une étoile d'un programme."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         await db.execute(
             "DELETE FROM program_stars WHERE program_id = ? AND star_id = ?",
             (program_id, star_id)
@@ -308,7 +311,7 @@ async def program_remove_star(program_id: int, star_id: int) -> None:
 async def program_get_stars(program_id: int) -> list[StarInProgram]:
     """Retourne toutes les étoiles d'un programme, avec leur temps de pose
     éventuellement spécifique à ce programme."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT s.*, ps.exposure_time AS exposure_time FROM stars s
@@ -323,7 +326,7 @@ async def program_get_stars(program_id: int) -> list[StarInProgram]:
 
 async def star_get_programs(star_id: int) -> list[Program]:
     """Retourne tous les programmes auxquels appartient une étoile."""
-    async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT p.* FROM programs p

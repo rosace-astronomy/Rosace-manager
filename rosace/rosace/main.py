@@ -23,8 +23,10 @@ from typing import Optional
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Response, WebSocket, WebSocketDisconnect
+import yaml
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from .config     import SITE_NAME, SCHEDULER_RETRY_SECONDS
 from .log_config import configure_logging
@@ -316,40 +318,154 @@ async def simbad_search_endpoint(name: str):
         raise HTTPException(status_code=502, detail=str(e))
 
 
-@app.post("/simbad/import", response_model=Star)
-async def simbad_import_endpoint(name: str, response: Response):
+async def _ensure_alias(star: Star, name: str) -> bool:
+    """Enregistre `name` comme alias de `star` s'il n'est ni son nom canonique
+    ni un alias déjà connu. Retourne True si un nouvel alias a été ajouté."""
+    known_names = {star.name.lower()} | {a.lower() for a in await star_list_aliases(star.id)}
+    if name.lower() not in known_names:
+        await star_add_alias(star.id, name)
+        return True
+    return False
+
+
+async def _import_star_from_simbad(name: str) -> tuple[Star, bool, bool]:
     """
     Ajoute une étoile à la base, identifiée par un nom quelconque — pas besoin
     de connaître son nom canonique Simbad. Recherche d'abord si une étoile
     correspondant à `name` (nom canonique ou alias) existe déjà :
     - si oui, enregistre `name` comme alias si nouveau, renvoie l'étoile
-      existante (200) plutôt que d'en créer un doublon ;
-    - sinon, interroge Simbad pour les données astrométriques, insère
-      l'étoile (nom canonique = celui retourné par Simbad), enregistre
-      `name` comme alias si différent du nom canonique, renvoie la
-      nouvelle étoile (201).
+      existante (created=False) plutôt que d'en créer un doublon ;
+    - sinon, interroge Simbad pour les données astrométriques. Simbad peut
+      résoudre `name` vers une identité canonique déjà présente en base sous
+      un tout autre terme de recherche (ex. "Sheliak" et "bet Lyr" sont la
+      même étoile) — on revérifie donc par ce nom canonique avant d'insérer :
+      si une étoile correspond déjà, même traitement que le cas "existant"
+      ci-dessus ; sinon seulement, insère la nouvelle étoile (nom canonique =
+      celui retourné par Simbad), enregistre `name` comme alias si différent
+      du nom canonique, renvoie la nouvelle étoile (created=True).
+    Retourne (star, created, alias_added) — alias_added indique si CET appel
+    a enregistré un nouvel alias (utile pour que l'appelant sache, sans avoir
+    à aller vérifier la base, si `name` a bien été retenu comme alias).
+    Lève SimbadNotFoundError / SimbadQueryError si l'étoile est réellement
+    nouvelle et que Simbad ne la reconnaît pas / ne répond pas.
     """
     existing = await star_get_by_name(name)
     if existing:
-        known_names = {existing.name.lower()} | {a.lower() for a in await star_list_aliases(existing.id)}
-        if name.lower() not in known_names:
-            await star_add_alias(existing.id, name)
-        response.status_code = 200
-        return existing
+        alias_added = await _ensure_alias(existing, name)
+        return existing, False, alias_added
 
+    star_create = await simbad_search(name)
+
+    existing_by_canonical = await star_get_by_name(star_create.name)
+    if existing_by_canonical:
+        alias_added = await _ensure_alias(existing_by_canonical, name)
+        return existing_by_canonical, False, alias_added
+
+    star_id = await star_insert(star_create)
+    alias_added = False
+    if name.lower() != star_create.name.lower():
+        await star_add_alias(star_id, name)
+        alias_added = True
+
+    return await star_get(star_id), True, alias_added
+
+
+class StarImportResponse(Star):
+    alias_added: bool  # True si `name` (le terme recherché) a été enregistré comme alias
+
+
+@app.post("/simbad/import", response_model=StarImportResponse)
+async def simbad_import_endpoint(name: str, response: Response):
+    """Ajoute une étoile à la base via Simbad — voir _import_star_from_simbad()."""
     try:
-        star_create = await simbad_search(name)
+        star, created, alias_added = await _import_star_from_simbad(name)
     except SimbadNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except SimbadQueryError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    star_id = await star_insert(star_create)
-    if name.lower() != star_create.name.lower():
-        await star_add_alias(star_id, name)
+    response.status_code = 201 if created else 200
+    return StarImportResponse(**star.model_dump(), alias_added=alias_added)
 
-    response.status_code = 201
-    return await star_get(star_id)
+
+class StarImportResult(BaseModel):
+    name: str
+    status: str  # "created" | "existing" | "error"
+    id: Optional[int] = None
+    canonical_name: Optional[str] = None
+    alias_added: bool = False
+    detail: Optional[str] = None
+
+
+@app.post("/stars/import-list", response_model=list[StarImportResult])
+async def import_stars_from_file(file: UploadFile):
+    """
+    Importe une liste d'étoiles (un nom par ligne, fichier texte uploadé) —
+    chaque ligne suit exactement le même chemin que /simbad/import. Rapport
+    ligne par ligne : une erreur sur une ligne n'interrompt pas les suivantes.
+    """
+    content = (await file.read()).decode("utf-8")
+    results: list[StarImportResult] = []
+
+    for line in content.splitlines():
+        name = line.strip()
+        if not name:
+            continue
+        try:
+            star, created, alias_added = await _import_star_from_simbad(name)
+            results.append(StarImportResult(
+                name=name, status="created" if created else "existing",
+                id=star.id, canonical_name=star.name, alias_added=alias_added,
+            ))
+        except (SimbadNotFoundError, SimbadQueryError) as e:
+            results.append(StarImportResult(name=name, status="error", detail=str(e)))
+
+    return results
+
+
+class ProgramStarImportResult(BaseModel):
+    program: str
+    star: str
+    status: str  # "linked" | "program_not_found" | "star_not_found"
+    detail: Optional[str] = None
+
+
+@app.post("/programs/import-list", response_model=list[ProgramStarImportResult])
+async def import_program_stars_from_file(file: UploadFile):
+    """
+    Importe des liens programme <-> étoiles depuis un fichier YAML uploadé
+    (format : {nom_programme: [nom_etoile, ...], ...}). Les étoiles doivent
+    déjà exister en base (nom canonique ou alias) — pas d'appel Simbad ici,
+    contrairement à /stars/import-list. Rapport ligne par ligne.
+    """
+    content = (await file.read()).decode("utf-8")
+    data = yaml.safe_load(content) or {}
+    results: list[ProgramStarImportResult] = []
+
+    for program_name, star_names in data.items():
+        program = await program_get_by_name(program_name)
+        for star_name in star_names or []:
+            if not program:
+                results.append(ProgramStarImportResult(
+                    program=program_name, star=star_name, status="program_not_found",
+                    detail=f"Programme '{program_name}' introuvable en base",
+                ))
+                continue
+
+            star = await star_get_by_name(star_name)
+            if not star:
+                results.append(ProgramStarImportResult(
+                    program=program_name, star=star_name, status="star_not_found",
+                    detail=f"Étoile '{star_name}' introuvable en base",
+                ))
+                continue
+
+            await program_add_star(program.id, star.id)
+            results.append(ProgramStarImportResult(
+                program=program_name, star=star_name, status="linked",
+            ))
+
+    return results
 
 # ─────────────────────────────────────────────────────────────
 # Point d'entrée

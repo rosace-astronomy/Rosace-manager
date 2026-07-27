@@ -3,24 +3,187 @@ Tests du plugin SCHEDULER (SchedulerPlugin).
 Lancement : pytest plugins/test_scheduler.py -v
 """
 
+import uuid
 from datetime import datetime, timezone
 
-from rosace.models import Observation
+import pytest
+import pytest_asyncio
+
+from rosace.database import db_init, db_insert_session, db_insert_observation
+from rosace.models import Observation, SessionContext
+from rosace.plugins import scheduler as scheduler_mod
 from rosace.plugins.scheduler import SchedulerPlugin
+from rosace.targets import (
+    targets_db_init,
+    StarCreate, ProgramCreate,
+    star_insert, star_add_alias, program_insert, program_add_star,
+)
 
 
-def _make_obs() -> Observation:
-    return Observation(id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234")
+def _write_observation_list(tmp_path, content: str):
+    path = tmp_path / "ObservationList.txt"
+    path.write_text(content)
+    return path
 
 
 class TestSchedulerPlugin:
 
-    async def test_fills_scheduler_data(self):
-        obs = _make_obs()
+    @pytest_asyncio.fixture(autouse=True)
+    async def init_db(self):
+        await db_init()
+        await targets_db_init()
 
-        result = await SchedulerPlugin().run(obs)
+    async def _make_session(self) -> SessionContext:
+        session = SessionContext(site_name="Test")
+        await db_insert_session(session)
+        return session
 
-        assert result is obs
-        assert obs.scheduler_data["target"].name == "Vega"
-        assert obs.scheduler_data["exposure"].exposure_time == 300.0
-        assert obs.scheduler_data["programme"] == "demo"
+    def _make_obs(self, session_id: str) -> Observation:
+        return Observation(
+            id=str(uuid.uuid4())[:8],
+            created_at=datetime.now(timezone.utc),
+            session_id=session_id,
+        )
+
+    async def test_selects_single_valid_target(self, tmp_path, monkeypatch):
+        sid = await star_insert(StarCreate(name="alf Lyr", ra=279.23, dec=38.78, magnitude_v=0.03))
+        pid = await program_insert(ProgramCreate(name="Be_stars"))
+        await program_add_star(pid, sid, exposure_time=45.0)
+        await star_add_alias(sid, "VegaSingleTargetTest")
+
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n1, Be_stars, VegaSingleTargetTest, Test\n"
+        ))
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"].name == "alf Lyr"  # nom canonique
+        assert obs.scheduler_data["queried_name"] == "VegaSingleTargetTest"  # nom tel qu'écrit dans le fichier
+        assert obs.scheduler_data["programme"] == "Be_stars"
+        assert obs.scheduler_data["exposure"].exposure_time == pytest.approx(45.0)
+
+    async def test_returns_none_when_file_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n"
+        ))
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"] is None
+
+    async def test_unknown_program_line_is_skipped(self, tmp_path, monkeypatch):
+        await star_insert(StarCreate(name="SomeStar", ra=10.0, dec=10.0))
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n1, NoSuchProgram, SomeStar, x\n"
+        ))
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"] is None
+
+    async def test_unknown_star_line_is_skipped(self, tmp_path, monkeypatch):
+        await program_insert(ProgramCreate(name="SomeProgram"))
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n1, SomeProgram, NoSuchStar, x\n"
+        ))
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"] is None
+
+    async def test_star_not_linked_to_program_is_skipped(self, tmp_path, monkeypatch):
+        await star_insert(StarCreate(name="UnlinkedStar", ra=10.0, dec=10.0))
+        await program_insert(ProgramCreate(name="UnlinkedProgram"))
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n1, UnlinkedProgram, UnlinkedStar, x\n"
+        ))
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"] is None
+
+    async def test_priority_ordering_lower_number_wins(self, tmp_path, monkeypatch):
+        sid_low = await star_insert(StarCreate(name="LowPriorityStar", ra=1.0, dec=1.0))
+        sid_high = await star_insert(StarCreate(name="HighPriorityStar", ra=2.0, dec=2.0))
+        pid = await program_insert(ProgramCreate(name="PrioProgram"))
+        await program_add_star(pid, sid_low)
+        await program_add_star(pid, sid_high)
+
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path,
+            "Priority, Program, Star, commentaire\n"
+            "3, PrioProgram, LowPriorityStar, x\n"
+            "1, PrioProgram, HighPriorityStar, x\n"
+        ))
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"].name == "HighPriorityStar"
+
+    async def test_alias_lines_count_as_same_target(self, tmp_path, monkeypatch):
+        """Deux lignes pour la même étoile (une fois par son nom canonique, une fois
+        par alias) comptent comme une seule cible demandée deux fois — pas deux
+        cibles distinctes."""
+        sid = await star_insert(StarCreate(name="alf Lyr Alias Test", ra=279.23, dec=38.78))
+        pid = await program_insert(ProgramCreate(name="Be_stars_alias_test"))
+        await program_add_star(pid, sid)
+        await star_add_alias(sid, "VegaSchedAliasTest")
+
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path,
+            "Priority, Program, Star, commentaire\n"
+            "1, Be_stars_alias_test, VegaSchedAliasTest, x\n"
+            "1, Be_stars_alias_test, alf Lyr Alias Test, x\n"
+        ))
+
+        session = await self._make_session()
+
+        # 1er et 2e appel : la cible reste consommable (2 lignes demandées, 0 puis 1 observées)
+        obs1 = await SchedulerPlugin().run(self._make_obs(session.session_id))
+        assert obs1.scheduler_data["target"].name == "alf Lyr Alias Test"
+        await db_insert_observation(obs1, session.session_id)
+
+        obs2 = await SchedulerPlugin().run(self._make_obs(session.session_id))
+        assert obs2.scheduler_data["target"].name == "alf Lyr Alias Test"
+        await db_insert_observation(obs2, session.session_id)
+
+        # 3e appel : entièrement consommée (2 lignes, 2 déjà observées)
+        obs3 = await SchedulerPlugin().run(self._make_obs(session.session_id))
+        assert obs3.scheduler_data["target"] is None
+
+    async def test_already_consumed_target_is_skipped(self, tmp_path, monkeypatch):
+        sid = await star_insert(StarCreate(name="ConsumedStar", ra=5.0, dec=5.0))
+        pid = await program_insert(ProgramCreate(name="ConsumedProgram"))
+        await program_add_star(pid, sid)
+
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n1, ConsumedProgram, ConsumedStar, x\n"
+        ))
+
+        session = await self._make_session()
+        obs1 = await SchedulerPlugin().run(self._make_obs(session.session_id))
+        assert obs1.scheduler_data["target"] is not None
+        await db_insert_observation(obs1, session.session_id)
+
+        obs2 = await SchedulerPlugin().run(self._make_obs(session.session_id))
+        assert obs2.scheduler_data["target"] is None
+
+    async def test_exposure_time_none_when_not_set_in_program_stars(self, tmp_path, monkeypatch):
+        sid = await star_insert(StarCreate(name="NoExpStar", ra=6.0, dec=6.0))
+        pid = await program_insert(ProgramCreate(name="NoExpProgram"))
+        await program_add_star(pid, sid)  # pas de exposure_time
+
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n1, NoExpProgram, NoExpStar, x\n"
+        ))
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["exposure"].exposure_time is None

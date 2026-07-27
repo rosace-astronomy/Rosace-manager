@@ -40,7 +40,7 @@ class Target(BaseModel):
 
 
 class ExposureConfig(BaseModel):
-    exposure_time: float = Field(..., gt=0, description="Temps d'exposition en secondes")
+    exposure_time: Optional[float] = Field(default=None, gt=0, description="Temps d'exposition en secondes — absent si à calculer depuis la magnitude (sous-plugin expose)")
     num_exposures: int = Field(default=1, ge=1)
     binning: int = Field(default=1, ge=1, le=4)
     grating: str = Field(default="R1200")
