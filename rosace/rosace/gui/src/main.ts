@@ -38,6 +38,8 @@ interface StageInfo {
 interface ObsRow {
     id: string;
     target_name: string;
+    queried_name: string | null;
+    priority: number | null;
     created_at: string | Date;
     error_message: string;
     stages: Record<string, StageInfo>;
@@ -50,6 +52,7 @@ interface ObsRow {
 interface ApiStatus {
     stage: OrchestratorStageType;
     is_running: boolean;
+    session_active: boolean;
     completed_count: number;
     pending_post_obs_count: number;
 }
@@ -69,7 +72,7 @@ interface AppData {
 };
 
 const app_data = makeState<AppData>( {
-	status: { stage: "idle", is_running: false, completed_count: 0, pending_post_obs_count: 0 },
+	status: { stage: "idle", is_running: false, session_active: false, completed_count: 0, pending_post_obs_count: 0 },
 	connected: false,
 	observations: [],
 	settings: {
@@ -83,7 +86,7 @@ const app_data = makeState<AppData>( {
 const __debug = true;
 
 const FAKE_OBS = [
-	{ id: "1", target_name: "Altair", created_at: new Date(), error_message: "", stages: { 
+	{ id: "1", target_name: "Altair", queried_name: "Altair", priority: 1, created_at: new Date(), error_message: "", stages: {
 		"scheduler": 	{ status: "done", done_at: new Date() },
 		"sequencer": 	{ status: "running", done_at: new Date() },
 //		"reduction":   	{ status: "done", done_at: new Date() },
@@ -94,6 +97,7 @@ const FAKE_OBS = [
 
 const FAKE_STATUS: ApiStatus = {
 	is_running: true,
+	session_active: true,
 	completed_count: 1,
 	pending_post_obs_count: 5,
 	stage: "idle"
@@ -105,7 +109,7 @@ const FAKE_STATUS: ApiStatus = {
 
 const API = "";
 
-const OBS_FETCH_TIME = 10000;
+const OBS_FETCH_TIME = 3000;
 const STATUS_FETCH_TIME = 5000;
 const WS_RETRY_DELAY = 5000;
 
@@ -276,14 +280,24 @@ class MainView extends VBox {
 				}
 			});
 
+			// Nom utilisé pour interroger la base (ex. "Vega") en gras ; nom canonique
+			// (ex. "* alf Lyr") entre parenthèses seulement s'il diffère du premier —
+			// la case existe toujours (texte vide sinon) pour garder les colonnes alignées.
+			const displayName   = obs.queried_name || obs.target_name;
+			const showCanonical = !!obs.queried_name && obs.queried_name !== obs.target_name;
+			const canonicalText = showCanonical ? `(${obs.target_name})` : "";
+			const priorityText  = obs.priority != null ? `P${obs.priority}` : "";
+
 			const r: ListItem = {
 				id: obs.id,
 				text: null,
 				cls: 'obs-row',
 				sub_cols: [
-					new SimpleText({ cls: "obs-id", text: obs.id }),
-					new SimpleText({ cls: "obs-target", text: obs.target_name }),
-					new SimpleText({ cls: "obs-time",   text: time }),
+					new SimpleText({ cls: "obs-priority",  text: priorityText }),
+					new SimpleText({ cls: "obs-target",    text: displayName }),
+					new SimpleText({ cls: "obs-canonical", text: canonicalText }),
+					new SimpleText({ cls: "obs-id",        text: obs.id }),
+					new SimpleText({ cls: "obs-time",      text: time }),
 					new HBox({ cls: "obs-stages",  content: stages }),
 				]
 			}
@@ -366,7 +380,7 @@ class MainView extends VBox {
 			app_data.status = data;
 
 			//this.obsCountBadge.setText(`${d.completed_count} obs`);
-			this.query("#start").enable(!data.is_running);
+			this.query("#start").enable(!data.session_active);
 			this.query("#stop").enable(data.is_running);
 
 			if (data.stage !== this.last_stage) {

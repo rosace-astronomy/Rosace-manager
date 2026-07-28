@@ -448,6 +448,51 @@ class TestDatabase:
         ids = [r["id"] for r in rows]
         assert obs1.id in ids and obs2.id in ids
 
+    async def test_queried_name_roundtrips(self):
+        """queried_name (le nom tel qu'utilisé, ex. un alias) est bien conservé
+        séparément du nom canonique — distinct de target_name."""
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        obs.scheduler_data["queried_name"] = "VegaQueriedNameTest"
+        await db_insert_observation(obs, ctx.session_id)
+
+        rows = await db_get_recent_observations(limit=1)
+        row = next(r for r in rows if r["id"] == obs.id)
+        assert row["queried_name"] == "VegaQueriedNameTest"
+        assert row["target_name"] == "Vega"
+
+    async def test_queried_name_none_when_not_set(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)  # ne pose pas queried_name
+        await db_insert_observation(obs, ctx.session_id)
+
+        rows = await db_get_recent_observations(limit=1)
+        row = next(r for r in rows if r["id"] == obs.id)
+        assert row["queried_name"] is None
+
+    async def test_priority_roundtrips(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        obs.scheduler_data["priority"] = 2
+        await db_insert_observation(obs, ctx.session_id)
+
+        rows = await db_get_recent_observations(limit=1)
+        row = next(r for r in rows if r["id"] == obs.id)
+        assert row["priority"] == 2
+
+    async def test_priority_none_when_not_set(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)  # ne pose pas priority
+        await db_insert_observation(obs, ctx.session_id)
+
+        rows = await db_get_recent_observations(limit=1)
+        row = next(r for r in rows if r["id"] == obs.id)
+        assert row["priority"] is None
+
     async def test_get_recent_observations_excludes_previous_astronomical_day(self):
         """Une observation d'avant-hier n'apparaît pas dans la liste du jour astronomique en cours."""
         ctx = self._make_ctx()
@@ -464,9 +509,7 @@ class TestDatabase:
         assert old_obs.id not in ids
 
     async def test_count_observations_for_target_zero_when_none(self):
-        ctx = self._make_ctx()
-        await db_insert_session(ctx)
-        count = await db_count_observations_for_target(ctx.session_id, "etoiles_be", "Vega")
+        count = await db_count_observations_for_target("etoiles_be", "VegaCountZeroTest")
         assert count == 0
 
     async def test_count_observations_for_target_counts_matching_pair(self):
@@ -474,10 +517,12 @@ class TestDatabase:
         await db_insert_session(ctx)
         obs1 = self._make_obs(ctx.session_id)
         obs2 = self._make_obs(ctx.session_id)
+        for obs in (obs1, obs2):
+            obs.scheduler_data["target"] = Target(name="VegaCountPairTest", ra=0.0, dec=0.0)
+            obs.scheduler_data["programme"] = "CountPairProgram"
         await db_insert_observation(obs1, ctx.session_id)
         await db_insert_observation(obs2, ctx.session_id)
-        # _make_obs() pose target="Vega" et programme="etoiles_be" pour les deux
-        count = await db_count_observations_for_target(ctx.session_id, "etoiles_be", "Vega")
+        count = await db_count_observations_for_target("CountPairProgram", "VegaCountPairTest")
         assert count == 2
 
     async def test_count_observations_for_target_scoped_by_programme(self):
@@ -486,8 +531,28 @@ class TestDatabase:
         await db_insert_session(ctx)
         obs = self._make_obs(ctx.session_id)  # programme="etoiles_be"
         await db_insert_observation(obs, ctx.session_id)
-        count = await db_count_observations_for_target(ctx.session_id, "un_autre_programme", "Vega")
+        count = await db_count_observations_for_target("un_autre_programme", "Vega")
         assert count == 0
+
+    async def test_count_observations_for_target_persists_across_sessions(self):
+        """Le compteur est scopé par nuit astronomique, pas par session_id — un
+        arrêt/redémarrage de session ne doit pas le remettre à zéro."""
+        obs1_ctx = self._make_ctx()
+        await db_insert_session(obs1_ctx)
+        obs1 = self._make_obs(obs1_ctx.session_id)
+        obs1.scheduler_data["target"] = Target(name="VegaCrossSessionTest", ra=0.0, dec=0.0)
+        obs1.scheduler_data["programme"] = "CrossSessionProgram"
+        await db_insert_observation(obs1, obs1_ctx.session_id)
+
+        obs2_ctx = self._make_ctx()  # nouvelle session, même nuit
+        await db_insert_session(obs2_ctx)
+        obs2 = self._make_obs(obs2_ctx.session_id)
+        obs2.scheduler_data["target"] = Target(name="VegaCrossSessionTest", ra=0.0, dec=0.0)
+        obs2.scheduler_data["programme"] = "CrossSessionProgram"
+        await db_insert_observation(obs2, obs2_ctx.session_id)
+
+        count = await db_count_observations_for_target("CrossSessionProgram", "VegaCrossSessionTest")
+        assert count == 2
 
     def test_astronomical_day_start_utc_spans_local_noon(self):
         """La frontière est le midi local précédent — robuste au fuseau de la machine de test."""
@@ -956,9 +1021,11 @@ class TestSessionRunner:
         """Isole chaque test : état propre avant et après."""
         import rosace.main as main_mod
         main_mod.state.is_running = False
+        main_mod.state.session_active = False
         main_mod.state.stage = OrchestratorStage.IDLE
         yield
         main_mod.state.is_running = False
+        main_mod.state.session_active = False
         main_mod.state.stage = OrchestratorStage.IDLE
 
     async def test_clean_stop_calls_close_session(self, monkeypatch):
@@ -1127,6 +1194,38 @@ class TestSessionRunner:
         assert init_calls == [1]           # INIT_SESSION jamais relancé
         assert len(scheduler_calls) == 2   # SCHEDULER relancé après l'erreur
 
+    async def test_scheduler_fatal_error_stops_session_without_looping(self, monkeypatch):
+        """SchedulerFatalError (config/données invalides) arrête la session
+        immédiatement, contrairement à une erreur ordinaire qui relance en boucle."""
+        import rosace.main as main_mod
+        from rosace.plugins.scheduler import SchedulerFatalError
+
+        scheduler_calls = []
+
+        class FakeInit:
+            async def run(self, ctx):
+                Path("/tmp/fake_session_dir_fatal").mkdir(parents=True, exist_ok=True)
+                ctx.session_dir = "/tmp/fake_session_dir_fatal"
+                return ctx
+
+        class FakeScheduler:
+            async def run(self, ctx):
+                scheduler_calls.append(1)
+                raise SchedulerFatalError("ObservationList.txt introuvable")
+
+        class FakeClose:
+            async def run(self, ctx): return ctx
+
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.INIT_SESSION, FakeInit())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SCHEDULER, FakeScheduler())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.CLOSE_SESSION, FakeClose())
+
+        main_mod.state.is_running = True
+        await main_mod.session_runner()
+
+        assert len(scheduler_calls) == 1   # jamais relancé
+        assert main_mod.state.is_running is False
+
     async def test_close_session_error_still_reaches_idle(self, monkeypatch):
         """Si CLOSE_SESSION lève une exception, l'état repasse quand même à IDLE."""
         import rosace.main as main_mod
@@ -1180,6 +1279,40 @@ class TestSessionRunner:
         assert scheduler_called == []
         assert main_mod.state.is_running is False
         assert main_mod.state.stage == OrchestratorStage.ERROR
+        assert main_mod.state.session_active is False  # même sur cette sortie précoce
+
+    async def test_session_active_true_during_run_false_after(self, monkeypatch):
+        """session_active doit être vrai pendant toute la durée de l'appel, et
+        redevenir faux à la sortie — quel que soit le chemin de sortie."""
+        import rosace.main as main_mod
+
+        active_during_run = []
+
+        class FakeInit:
+            async def run(self, ctx):
+                active_during_run.append(main_mod.state.session_active)
+                Path("/tmp/fake_session_dir_active").mkdir(parents=True, exist_ok=True)
+                ctx.session_dir = "/tmp/fake_session_dir_active"
+                return ctx
+
+        class FakeScheduler:
+            async def run(self, ctx):
+                main_mod.state.is_running = False  # simule /control/stop immédiat
+                return ctx
+
+        class FakeClose:
+            async def run(self, ctx): return ctx
+
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.INIT_SESSION, FakeInit())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SCHEDULER, FakeScheduler())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.CLOSE_SESSION, FakeClose())
+
+        assert main_mod.state.session_active is False
+        main_mod.state.is_running = True
+        await main_mod.session_runner()
+
+        assert active_during_run == [True]
+        assert main_mod.state.session_active is False
 
 
 # ═════════════════════════════════════════════════════════════
@@ -1193,9 +1326,11 @@ class TestApiEndpoints:
     def reset_state(self):
         import rosace.main as main_mod
         main_mod.state.is_running = False
+        main_mod.state.session_active = False
         main_mod.state.stage = OrchestratorStage.IDLE
         yield
         main_mod.state.is_running = False
+        main_mod.state.session_active = False
         main_mod.state.stage = OrchestratorStage.IDLE
 
     def _client(self):
@@ -1208,7 +1343,9 @@ class TestApiEndpoints:
             res = client.get("/status")
         assert res.status_code == 200
         data = res.json()
-        assert set(data.keys()) == {"stage", "is_running", "completed_count", "pending_post_obs_count"}
+        assert set(data.keys()) == {
+            "stage", "is_running", "session_active", "completed_count", "pending_post_obs_count",
+        }
 
     def test_control_start_when_idle(self, monkeypatch):
         """Démarre la session ; session_runner est mocké pour ne pas boucler indéfiniment."""
@@ -1230,7 +1367,20 @@ class TestApiEndpoints:
         import rosace.main as main_mod
 
         with self._client() as client:
-            main_mod.state.is_running = True
+            main_mod.state.session_active = True
+            res = client.post("/control/start")
+
+        assert res.status_code == 200
+        assert "déjà" in res.json()["message"].lower()
+
+    def test_control_start_refused_while_previous_session_still_winding_down(self):
+        """is_running=False (arrêt demandé) ne suffit pas à autoriser un nouveau
+        départ tant que la session précédente n'a pas fini son nettoyage."""
+        import rosace.main as main_mod
+
+        with self._client() as client:
+            main_mod.state.is_running = False       # arrêt déjà demandé...
+            main_mod.state.session_active = True     # ...mais le nettoyage tourne encore
             res = client.post("/control/start")
 
         assert res.status_code == 200

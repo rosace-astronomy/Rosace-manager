@@ -12,7 +12,7 @@ import pytest_asyncio
 from rosace.database import db_init, db_insert_session, db_insert_observation
 from rosace.models import Observation, SessionContext
 from rosace.plugins import scheduler as scheduler_mod
-from rosace.plugins.scheduler import SchedulerPlugin
+from rosace.plugins.scheduler import SchedulerPlugin, SchedulerFatalError
 from rosace.targets import (
     targets_db_init,
     StarCreate, ProgramCreate,
@@ -125,6 +125,40 @@ class TestSchedulerPlugin:
         obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
 
         assert obs.scheduler_data["target"].name == "HighPriorityStar"
+        assert obs.scheduler_data["priority"] == 1
+
+    async def test_repeated_target_at_different_priorities_lets_intermediate_priority_through(
+        self, tmp_path, monkeypatch
+    ):
+        """Une cible demandée deux fois à des priorités différentes (2 et 4) ne doit
+        pas 'emprunter' sa priorité la plus précoce pour sa seconde occurrence — une
+        cible de priorité intermédiaire (3) doit être proposée entre les deux."""
+        sid_repeated = await star_insert(StarCreate(name="RepeatedPriorityStar", ra=1.0, dec=1.0))
+        sid_between = await star_insert(StarCreate(name="BetweenPriorityStar", ra=2.0, dec=2.0))
+        pid = await program_insert(ProgramCreate(name="InterleavedPrioProgram"))
+        await program_add_star(pid, sid_repeated)
+        await program_add_star(pid, sid_between)
+
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path,
+            "Priority, Program, Star, commentaire\n"
+            "2, InterleavedPrioProgram, RepeatedPriorityStar, x\n"
+            "3, InterleavedPrioProgram, BetweenPriorityStar, x\n"
+            "4, InterleavedPrioProgram, RepeatedPriorityStar, x\n"
+        ))
+
+        session = await self._make_session()
+
+        obs1 = await SchedulerPlugin().run(self._make_obs(session.session_id))
+        assert (obs1.scheduler_data["target"].name, obs1.scheduler_data["priority"]) == ("RepeatedPriorityStar", 2)
+        await db_insert_observation(obs1, session.session_id)
+
+        obs2 = await SchedulerPlugin().run(self._make_obs(session.session_id))
+        assert (obs2.scheduler_data["target"].name, obs2.scheduler_data["priority"]) == ("BetweenPriorityStar", 3)
+        await db_insert_observation(obs2, session.session_id)
+
+        obs3 = await SchedulerPlugin().run(self._make_obs(session.session_id))
+        assert (obs3.scheduler_data["target"].name, obs3.scheduler_data["priority"]) == ("RepeatedPriorityStar", 4)
 
     async def test_alias_lines_count_as_same_target(self, tmp_path, monkeypatch):
         """Deux lignes pour la même étoile (une fois par son nom canonique, une fois
@@ -187,3 +221,51 @@ class TestSchedulerPlugin:
         obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
 
         assert obs.scheduler_data["exposure"].exposure_time is None
+
+    async def test_missing_observation_list_file_raises_fatal_error(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", tmp_path / "DoesNotExist.txt")
+
+        session = await self._make_session()
+        with pytest.raises(SchedulerFatalError, match="introuvable"):
+            await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+    async def test_missing_column_in_observation_list_raises_fatal_error(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program_name, Star, commentaire\n1, Be_stars, Vega, Test\n"
+        ))
+
+        session = await self._make_session()
+        with pytest.raises(SchedulerFatalError, match="colonne manquante"):
+            await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+    async def test_invalid_priority_value_raises_fatal_error(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\nabc, Be_stars, Vega, Test\n"
+        ))
+
+        session = await self._make_session()
+        with pytest.raises(SchedulerFatalError, match="ligne invalide"):
+            await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+    async def test_invalid_exposure_time_in_db_raises_fatal_error(self, tmp_path, monkeypatch):
+        """Une valeur exposure_time corrompue en base (ex. '' au lieu de NULL,
+        via une édition manuelle externe) ne doit pas boucler indéfiniment."""
+        import aiosqlite
+        from rosace.targets import TARGETS_DB_PATH
+
+        sid = await star_insert(StarCreate(name="CorruptExpStar", ra=7.0, dec=7.0))
+        pid = await program_insert(ProgramCreate(name="CorruptExpProgram"))
+        async with aiosqlite.connect(TARGETS_DB_PATH) as db:
+            await db.execute(
+                "INSERT INTO program_stars (program_id, star_id, exposure_time) VALUES (?, ?, ?)",
+                (pid, sid, ""),
+            )
+            await db.commit()
+
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n1, CorruptExpProgram, CorruptExpStar, x\n"
+        ))
+
+        session = await self._make_session()
+        with pytest.raises(SchedulerFatalError, match="Donnée invalide"):
+            await SchedulerPlugin().run(self._make_obs(session.session_id))

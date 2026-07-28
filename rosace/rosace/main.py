@@ -46,6 +46,7 @@ from .database import (
 )
 from .observation_file import create_observation_file, write_observation_file
 from .plugins  import plugins
+from .plugins.scheduler import SchedulerFatalError
 from .simbad   import simbad_search, SimbadNotFoundError, SimbadQueryError
 from .targets  import (
     targets_db_init,
@@ -85,6 +86,14 @@ class SystemState:
     def __init__(self):
         self.stage: OrchestratorStage = OrchestratorStage.IDLE
         self.is_running: bool = False
+        # True for the entire lifetime of the session_runner() coroutine, from just
+        # before it starts until it has fully wound down (INIT_SESSION failure,
+        # normal completion through CLOSE_SESSION, or any other exit path) — distinct
+        # from is_running, which flips to False as soon as a stop is *requested*,
+        # well before the coroutine actually finishes cleaning up. /control/start
+        # checks this (not is_running) so a second session can never overlap a first
+        # one that's still winding down.
+        self.session_active: bool = False
         self.completed: list[Observation] = []
         self.pending_post_obs: int = 0
 
@@ -150,7 +159,19 @@ async def session_runner():
     INIT_SESSION → [SCHEDULER → SEQUENCER] × N (foreground)
                  → [REDUCTION → SHARING → ARCHIVE] × N (background, overlapped)
                  → CLOSE_SESSION
+
+    state.session_active stays True for the whole call, on every exit path —
+    see SystemState's docstring comment for why this must be distinct from
+    state.is_running.
     """
+    state.session_active = True
+    try:
+        await _session_runner_body()
+    finally:
+        state.session_active = False
+
+
+async def _session_runner_body():
     await db_init()
     await targets_db_init()
     session = SessionContext(site_name=SITE_NAME)
@@ -201,6 +222,15 @@ async def session_runner():
 
                 write_observation_file(obs)
 
+            except SchedulerFatalError as e:
+                log.error(f"[SCHEDULER] Fatal error, stopping session: {e}")
+                if obs:
+                    await db_set_stage_status(obs.id, stage, "error")
+                    await db_set_error(obs.id, str(e))
+                    write_observation_file(obs)
+                state.is_running = False
+                obs = None
+                break
             except Exception as e:
                 log.error(f"[{stage.value.upper()}] Error: {e} — restarting from SCHEDULER")
                 if obs:
@@ -240,6 +270,7 @@ async def get_status():
     return {
         "stage": state.stage,
         "is_running": state.is_running,
+        "session_active": state.session_active,
         "completed_count": len(state.completed),
         "pending_post_obs_count": state.pending_post_obs,
     }
@@ -266,8 +297,11 @@ async def get_observation(obs_id: str):
 
 @app.post("/control/start")
 async def start_session(background_tasks: BackgroundTasks):
-    """Démarre une nouvelle session d'observation."""
-    if state.is_running:
+    """Démarre une nouvelle session d'observation. Refuse tant qu'une session
+    précédente n'a pas complètement terminé son arrêt (session_active), pas
+    seulement tant qu'un arrêt a été demandé (is_running) — sinon une seconde
+    session pourrait démarrer pendant que la première finit son nettoyage."""
+    if state.session_active:
         return {"message": "Session déjà en cours"}
     state.is_running = True
     background_tasks.add_task(session_runner)

@@ -55,7 +55,9 @@ async def db_init() -> None:
                 id               TEXT PRIMARY KEY,
                 session_id       TEXT NOT NULL REFERENCES sessions(id),
                 target_name      TEXT NOT NULL,
+                queried_name     TEXT,
                 programme_name   TEXT,
+                priority         INTEGER,
                 yaml_file        TEXT,
                 created_at       TEXT NOT NULL,
                 error_message    TEXT,
@@ -110,13 +112,15 @@ async def db_insert_observation(obs: Observation, session_id: str) -> None:
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         await db.execute(
             """INSERT INTO observations
-               (id, session_id, target_name, programme_name, created_at, scheduler_done, scheduler_status)
-               VALUES (?, ?, ?, ?, ?, ?, 'done')""",
+               (id, session_id, target_name, queried_name, programme_name, priority, created_at, scheduler_done, scheduler_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'done')""",
             (
                 obs.id,
                 session_id,
                 obs.scheduler_data["target"].name,
+                obs.scheduler_data.get("queried_name"),
                 obs.scheduler_data.get("programme"),
+                obs.scheduler_data.get("priority"),
                 obs.created_at.isoformat(),
                 datetime.now(timezone.utc).isoformat(),
             )
@@ -125,15 +129,18 @@ async def db_insert_observation(obs: Observation, session_id: str) -> None:
     log.info(f"[DB] Observation inserted: {obs.id}")
 
 
-async def db_count_observations_for_target(session_id: str, programme_name: str, target_name: str) -> int:
-    """Counts how many observations already exist this session for a given
-    (programme, target) pair — used by SCHEDULER to know how many times a
-    line from its observation list has already been consumed."""
+async def db_count_observations_for_target(programme_name: str, target_name: str) -> int:
+    """Counts how many observations already exist during the current *astronomical
+    day* (not scoped to a single session_id) for a given (programme, target) pair —
+    used by SCHEDULER to know how many times a line from its observation list has
+    already been consumed. Scoped by night rather than by session so that stopping
+    and restarting the session (e.g. after a pause) doesn't reset the count."""
+    since = _astronomical_day_start_utc()
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         async with db.execute(
             """SELECT COUNT(*) FROM observations
-               WHERE session_id = ? AND programme_name = ? AND target_name = ?""",
-            (session_id, programme_name, target_name)
+               WHERE created_at >= ? AND programme_name = ? AND target_name = ?""",
+            (since, programme_name, target_name)
         ) as cursor:
             row = await cursor.fetchone()
             return row[0]
@@ -212,7 +219,7 @@ async def db_get_recent_observations(limit: int | None = None) -> list[dict]:
     No limit by default: the astronomical-day filter alone already bounds the result set to one night.
     An explicit limit is still accepted (used by tests to isolate their own rows in the shared DB)."""
     since = _astronomical_day_start_utc()
-    query = """SELECT id, target_name, created_at, error_message,
+    query = """SELECT id, target_name, queried_name, priority, created_at, error_message,
                       scheduler_done, sequencer_done, reduction_done,
                       sharing_done, archive_done,
                       scheduler_status, sequencer_status, reduction_status,
@@ -232,6 +239,8 @@ async def db_get_recent_observations(limit: int | None = None) -> list[dict]:
         {
             "id":            row["id"],
             "target_name":   row["target_name"],
+            "queried_name":  row["queried_name"],
+            "priority":      row["priority"],
             "created_at":    row["created_at"],
             "error_message": row["error_message"],
             "stages": {

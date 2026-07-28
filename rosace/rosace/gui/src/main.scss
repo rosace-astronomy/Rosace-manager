@@ -208,18 +208,38 @@ body {
 					background: var(--bg-card);
 				}
 
+				.obs-priority {
+					font-weight: 600;
+					flex: 0 0 2.5rem;
+				}
+
 				.obs-id {
 					color: var(--muted);
+					flex: 0 0 6rem;
+					overflow: hidden;
+					text-overflow: ellipsis;
+					white-space: nowrap;
 				}
 
 				.obs-target {
 					font-weight: 600;
+					flex: 0 0 8rem;
+					overflow: hidden;
+					text-overflow: ellipsis;
+					white-space: nowrap;
+				}
+
+				.obs-canonical {
+					color: var(--muted);
+					flex: 0 0 8rem;
 					overflow: hidden;
 					text-overflow: ellipsis;
 					white-space: nowrap;
 				}
 
 				.obs-time {
+					font-weight: 600;
+					flex: 0 0 5rem;
 				}
 
 				.obs-stages {
