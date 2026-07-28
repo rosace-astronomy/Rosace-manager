@@ -96,6 +96,28 @@ except ValueError as e:
     _log_fatal_startup_error(str(e))
     raise
 
+# ── Plugin SCHEDULER actif ────────────────────────────────────────
+# Nom (registre plugins/schedulers/__init__.py) du plugin SCHEDULER à
+# utiliser — chacun est un algorithme de sélection de cible interchangeable,
+# voir plugins/schedulers/blank/scheduler.py pour le contrat à respecter.
+_VALID_SCHEDULERS = ("scheduler_rosace_2026", "blank")
+
+
+def _validate_active_scheduler(value: str) -> str:
+    if value not in _VALID_SCHEDULERS:
+        raise ValueError(
+            f"conf/config.yaml: active_scheduler={value!r} invalide "
+            f"(valeurs acceptées : {_VALID_SCHEDULERS})"
+        )
+    return value
+
+
+try:
+    ACTIVE_SCHEDULER = _validate_active_scheduler(_cfg["active_scheduler"])
+except ValueError as e:
+    _log_fatal_startup_error(str(e))
+    raise
+
 # ── Plan d'observation (SCHEDULER) ───────────────────────────────
 # Fichier texte (n'importe où sur le disque, pas nécessairement sous
 # BASE_DATA_DIR) que SCHEDULER lit pour choisir la prochaine cible.

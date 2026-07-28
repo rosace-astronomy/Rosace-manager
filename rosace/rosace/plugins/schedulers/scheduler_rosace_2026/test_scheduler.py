@@ -11,8 +11,10 @@ import pytest_asyncio
 
 from rosace.database import db_init, db_insert_session, db_insert_observation
 from rosace.models import Observation, SessionContext
-from rosace.plugins import scheduler as scheduler_mod
-from rosace.plugins.scheduler import SchedulerPlugin, SchedulerFatalError
+from rosace.plugins.schedulers.scheduler_rosace_2026 import scheduler as scheduler_mod
+from rosace.plugins.schedulers.scheduler_rosace_2026.scheduler import SchedulerPlugin
+from rosace.plugins.schedulers import SchedulerFatalError
+from rosace.conftest import assert_scheduler_contract
 from rosace.targets import (
     targets_db_init,
     StarCreate, ProgramCreate,
@@ -62,6 +64,7 @@ class TestSchedulerPlugin:
         assert obs.scheduler_data["queried_name"] == "VegaSingleTargetTest"  # nom tel qu'écrit dans le fichier
         assert obs.scheduler_data["programme"] == "Be_stars"
         assert obs.scheduler_data["exposure"].exposure_time == pytest.approx(45.0)
+        assert_scheduler_contract(obs)
 
     async def test_returns_none_when_file_empty(self, tmp_path, monkeypatch):
         monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
@@ -126,6 +129,7 @@ class TestSchedulerPlugin:
 
         assert obs.scheduler_data["target"].name == "HighPriorityStar"
         assert obs.scheduler_data["priority"] == 1
+        assert_scheduler_contract(obs)
 
     async def test_repeated_target_at_different_priorities_lets_intermediate_priority_through(
         self, tmp_path, monkeypatch
@@ -151,14 +155,17 @@ class TestSchedulerPlugin:
 
         obs1 = await SchedulerPlugin().run(self._make_obs(session.session_id))
         assert (obs1.scheduler_data["target"].name, obs1.scheduler_data["priority"]) == ("RepeatedPriorityStar", 2)
+        assert_scheduler_contract(obs1)
         await db_insert_observation(obs1, session.session_id)
 
         obs2 = await SchedulerPlugin().run(self._make_obs(session.session_id))
         assert (obs2.scheduler_data["target"].name, obs2.scheduler_data["priority"]) == ("BetweenPriorityStar", 3)
+        assert_scheduler_contract(obs2)
         await db_insert_observation(obs2, session.session_id)
 
         obs3 = await SchedulerPlugin().run(self._make_obs(session.session_id))
         assert (obs3.scheduler_data["target"].name, obs3.scheduler_data["priority"]) == ("RepeatedPriorityStar", 4)
+        assert_scheduler_contract(obs3)
 
     async def test_alias_lines_count_as_same_target(self, tmp_path, monkeypatch):
         """Deux lignes pour la même étoile (une fois par son nom canonique, une fois
@@ -181,10 +188,12 @@ class TestSchedulerPlugin:
         # 1er et 2e appel : la cible reste consommable (2 lignes demandées, 0 puis 1 observées)
         obs1 = await SchedulerPlugin().run(self._make_obs(session.session_id))
         assert obs1.scheduler_data["target"].name == "alf Lyr Alias Test"
+        assert_scheduler_contract(obs1)
         await db_insert_observation(obs1, session.session_id)
 
         obs2 = await SchedulerPlugin().run(self._make_obs(session.session_id))
         assert obs2.scheduler_data["target"].name == "alf Lyr Alias Test"
+        assert_scheduler_contract(obs2)
         await db_insert_observation(obs2, session.session_id)
 
         # 3e appel : entièrement consommée (2 lignes, 2 déjà observées)
@@ -203,6 +212,7 @@ class TestSchedulerPlugin:
         session = await self._make_session()
         obs1 = await SchedulerPlugin().run(self._make_obs(session.session_id))
         assert obs1.scheduler_data["target"] is not None
+        assert_scheduler_contract(obs1)
         await db_insert_observation(obs1, session.session_id)
 
         obs2 = await SchedulerPlugin().run(self._make_obs(session.session_id))
@@ -221,6 +231,7 @@ class TestSchedulerPlugin:
         obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
 
         assert obs.scheduler_data["exposure"].exposure_time is None
+        assert_scheduler_contract(obs)
 
     async def test_missing_observation_list_file_raises_fatal_error(self, tmp_path, monkeypatch):
         monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", tmp_path / "DoesNotExist.txt")

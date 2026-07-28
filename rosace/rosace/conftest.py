@@ -5,6 +5,8 @@ Fixtures pytest partagées par tous les fichiers de tests du paquet
 
 import pytest
 
+from rosace.models import Observation, Target, ExposureConfig
+
 
 @pytest.fixture(scope="session", autouse=True)
 def tmp_data_dir(tmp_path_factory):
@@ -31,3 +33,34 @@ def tmp_data_dir(tmp_path_factory):
     import rosace.plugins.init_session as init_session_mod
     init_session_mod.OBSERVATIONS_DIR = tmp / "observations"
     return tmp
+
+
+def assert_scheduler_contract(obs: Observation) -> None:
+    """
+    Canonical SCHEDULER contract check, shared by every SCHEDULER plugin's own
+    test suite (plugins/schedulers/<name>/test_scheduler.py) — see the full
+    contract description in plugins/schedulers/blank/scheduler.py. Deliberately
+    not enforced at runtime in plugin code itself (see plugins/schedulers/), only
+    checked here in tests, with explicit failure messages naming the offending
+    key and its actual value.
+
+    Call this after a run() that selected a target (obs.scheduler_data["target"]
+    is not None) — an empty night (target=None) is a valid outcome with nothing
+    else to check.
+    """
+    data = obs.scheduler_data
+    assert isinstance(data.get("target"), Target), (
+        f"scheduler_data['target'] must be a Target instance, got {data.get('target')!r}"
+    )
+    assert isinstance(data.get("queried_name"), str) and data["queried_name"], (
+        f"scheduler_data['queried_name'] must be a non-empty string, got {data.get('queried_name')!r}"
+    )
+    assert isinstance(data.get("programme"), str) and data["programme"], (
+        f"scheduler_data['programme'] must be a non-empty string, got {data.get('programme')!r}"
+    )
+    assert isinstance(data.get("priority"), int), (
+        f"scheduler_data['priority'] must be an int, got {data.get('priority')!r}"
+    )
+    assert isinstance(data.get("exposure"), ExposureConfig), (
+        f"scheduler_data['exposure'] must be an ExposureConfig instance, got {data.get('exposure')!r}"
+    )

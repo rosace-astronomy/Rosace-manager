@@ -3,22 +3,13 @@ import logging
 
 from pydantic import ValidationError
 
-from ..config import OBSERVATION_LIST_PATH
-from ..database import db_count_observations_for_target
-from ..models import Observation, Target, ExposureConfig
-from ..targets import program_get_by_name, star_get_by_name, program_get_stars
+from ....config import OBSERVATION_LIST_PATH
+from ....database import db_count_observations_for_target
+from ....models import Observation, Target, ExposureConfig
+from ....targets import program_get_by_name, star_get_by_name, program_get_stars
+from .. import SchedulerFatalError
 
 log = logging.getLogger("spectro.plugin.scheduler")
-
-
-class SchedulerFatalError(Exception):
-    """
-    Erreur de configuration ou de données (fichier de plan introuvable/mal
-    formé, donnée invalide dans targets.db…) — pas une erreur transitoire.
-    L'orchestrateur (main.py) arrête la session sur cette exception, plutôt
-    que de redemander SCHEDULER en boucle comme pour une erreur ordinaire :
-    retenter ne changerait rien tant que la cause n'est pas corrigée.
-    """
 
 
 def _read_observation_list(path) -> list[dict]:

@@ -46,7 +46,7 @@ from .database import (
 )
 from .observation_file import create_observation_file, write_observation_file
 from .plugins  import plugins
-from .plugins.scheduler import SchedulerFatalError
+from .plugins.schedulers import SchedulerFatalError
 from .simbad   import simbad_search, SimbadNotFoundError, SimbadQueryError
 from .targets  import (
     targets_db_init,

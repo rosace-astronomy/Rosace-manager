@@ -1198,7 +1198,7 @@ class TestSessionRunner:
         """SchedulerFatalError (config/données invalides) arrête la session
         immédiatement, contrairement à une erreur ordinaire qui relance en boucle."""
         import rosace.main as main_mod
-        from rosace.plugins.scheduler import SchedulerFatalError
+        from rosace.plugins.schedulers import SchedulerFatalError
 
         scheduler_calls = []
 
