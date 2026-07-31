@@ -1,5 +1,5 @@
 """
-Sous-plugin REDUCTION — Étape 4 : Extraction spectrale
+Sous-plugin REDUCTION — Extraction spectrale
 Extrait le spectre 1D depuis l'image 2D calibrée et produit le fichier final.
 """
 
@@ -19,15 +19,11 @@ class ExtractPlugin(SubPlugin):
     """Extraction du spectre 1D depuis l'image spectrale 2D calibrée — simulation interne."""
 
     async def execute(self, obs: Observation) -> Observation:
-        # Prend les fichiers les plus avancés dans la chaîne
-        input_files: list[str] = (
-            obs.reduction_data.get("flat_corrected_files")
-            or obs.reduction_data.get("dark_corrected_files")
-            or obs.reduction_data.get("bias_corrected_files")
-            or obs.sequencer_data.get("raw_files", [])
-        )
+        if "flat" not in obs.reduction_data:
+            raise RuntimeError("EXTRACT : reduction_data['flat'] manquant — FLAT doit avoir tourné avant EXTRACT")
+        input_files: list[str] = obs.reduction_data["flat"]["corrected_files"]
         if not input_files:
-            raise RuntimeError("EXTRACT : aucun fichier calibré disponible")
+            raise RuntimeError("EXTRACT : aucun fichier d'entrée (reduction_data['flat']['corrected_files'] vide)")
 
         method = "sum"
         aperture_px = 10
@@ -40,21 +36,13 @@ class ExtractPlugin(SubPlugin):
 
         reduced_files: list[str] = []
         for f in input_files:
-            # Produit un fichier _reduced.fits (le nom final standard)
-            base = f
-            for suffix in ("_f.fits", "_bd.fits", "_b.fits", "_d.fits", ".fits"):
-                if base.endswith(suffix):
-                    base = base[: -len(suffix)]
-                    break
-            out = base + "_reduced.fits"
-
+            out = f.replace("_bdf.fits", "_reduced.fits")
             await asyncio.sleep(0.1)
             Path(out).parent.mkdir(parents=True, exist_ok=True)
             Path(out).touch()
             log.info(f"[EXTRACT] Simulation : {Path(f).name} → {Path(out).name}")
             reduced_files.append(out)
 
-        obs.reduction_data["reduced_files"] = reduced_files
-        obs.reduction_data["extract_done"] = True
+        obs.reduction_data["extract"] = {"reduced_files": reduced_files}
         log.info(f"[EXTRACT] Extraction terminée — {len(reduced_files)} spectre(s) produit(s)")
         return obs

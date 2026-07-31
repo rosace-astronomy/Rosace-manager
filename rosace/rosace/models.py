@@ -68,8 +68,17 @@ class Observation(BaseModel):
     obs_dir: Optional[str] = None
     yaml_file: Optional[str] = None
 
+    # Manifeste des étapes attendues (noms déclarés dans le YAML du programme,
+    # sequencer ET reduction), posé par SequencerPlugin en tout premier, avant
+    # d'exécuter le moindre sous-plugin — permet de savoir ce qui était prévu
+    # même si l'observation plante en cours de route (les casiers ci-dessous
+    # ne prouvent que ce qui a réussi, pas ce qui était prévu).
+    pipeline: dict[str, list[str]] = {}
+
     # Un casier par plugin de stage connu — contenu libre, géré par le plugin
-    # et ses sous-plugins (ex. sequencer_data["raw_files"], posé par ExposePlugin).
+    # et ses sous-plugins (ex. sequencer_data["expose"]["raw_files"], posé par
+    # ExposePlugin — la présence de la clé d'un sous-plugin signifie qu'il a
+    # terminé avec succès, pas besoin d'un flag "done" séparé).
     scheduler_data: dict[str, Any] = {}
     sequencer_data: dict[str, Any] = {}
     reduction_data: dict[str, Any] = {}

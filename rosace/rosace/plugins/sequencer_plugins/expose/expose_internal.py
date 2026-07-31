@@ -1,5 +1,5 @@
 """
-Sous-plugin SEQUENCER — Étape 3 : Exposition CCD
+Sous-plugin SEQUENCER — Exposition CCD
 Déclenche les expositions et collecte les fichiers FITS produits.
 Backend "internal" — simulation interne, sans dépendance externe.
 """
@@ -20,8 +20,8 @@ class ExposePlugin(SubPlugin):
     """Réalise les expositions spectrales et produit les fichiers FITS bruts — simulation interne."""
 
     async def execute(self, obs: Observation) -> Observation:
-        if not obs.sequencer_data.get("slew_done"):
-            raise RuntimeError("EXPOSE : télescope non pointé (slew_done manquant)")
+        if "slew" not in obs.sequencer_data:
+            raise RuntimeError("EXPOSE : télescope non pointé (sequencer_data['slew'] manquant)")
 
         if not obs.obs_dir:
             raise RuntimeError("EXPOSE : répertoire d'observation (obs_dir) non défini")
@@ -58,9 +58,7 @@ class ExposePlugin(SubPlugin):
 
             raw_files.append(filename)
 
-        obs.sequencer_data["raw_files"] = obs.sequencer_data.get("raw_files", []) + raw_files
-        obs.sequencer_data["expose_done"] = True
-        obs.sequencer_data["expose_count"] = num_exposures
+        obs.sequencer_data["expose"] = {"raw_files": raw_files, "count": num_exposures}
 
         log.info(f"[EXPOSE] {num_exposures} exposition(s) terminée(s) — {len(raw_files)} fichier(s) produit(s)")
         return obs

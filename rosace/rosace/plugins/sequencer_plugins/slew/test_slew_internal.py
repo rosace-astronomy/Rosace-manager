@@ -1,6 +1,6 @@
 """
 Tests du sous-plugin SLEW (SlewPlugin), backend internal.
-Lancement : pytest plugins/sequencer_plugins/internal/test_slew.py -v
+Lancement : pytest plugins/sequencer_plugins/slew/test_slew_internal.py -v
 """
 
 from datetime import datetime, timezone
@@ -28,17 +28,15 @@ def fast_sleep(monkeypatch):
 
 class TestSlewPlugin:
 
-    async def test_sets_slew_done_and_target(self):
+    async def test_sets_slew_target(self):
         obs = _make_obs(target=Target(name="Vega", ra=279.23, dec=38.78))
         result = await SlewPlugin().execute(obs)
 
         assert result is obs
-        assert obs.sequencer_data["slew_done"] is True
-        assert obs.sequencer_data["slew_target"] == "Vega"
+        assert obs.sequencer_data["slew"] == {"target": "Vega"}
 
     async def test_handles_missing_target_gracefully(self):
         obs = _make_obs(target=None)
         result = await SlewPlugin().execute(obs)
 
-        assert result.sequencer_data["slew_done"] is True
-        assert result.sequencer_data["slew_target"] == "inconnue"
+        assert result.sequencer_data["slew"] == {"target": "inconnue"}

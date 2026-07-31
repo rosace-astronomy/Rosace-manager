@@ -114,21 +114,25 @@ class TestLoadPipelines:
         assert seq_names == ["SlewPlugin", "FocusPlugin", "ExposePlugin"]
         assert red_names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
 
-    def test_etoiles_brillantes_no_focus_no_dark(self):
+    def test_etoiles_brillantes_no_focus_full_reduction(self):
+        """Pas de focus (étoile brillante, réglage manuel) — mais la chaîne de
+        réduction reste complète : chaque sous-plugin REDUCTION dépend
+        explicitement du précédent, aucune étape ne peut être sautée."""
         seq, red = load_pipelines("etoiles_brillantes")
         seq_names = [p.__class__.__name__ for p in seq]
         red_names = [p.__class__.__name__ for p in red]
         assert "FocusPlugin" not in seq_names
-        assert "DarkPlugin" not in red_names
+        assert red_names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
 
-    def test_nova_monitoring_minimal(self):
+    def test_nova_monitoring_minimal_sequencer_full_reduction(self):
+        """Séquenceur minimal (pas de focus, réactivité maximale) — mais la
+        chaîne de réduction reste complète, même contrainte que ci-dessus."""
         seq, red = load_pipelines("nova_monitoring")
         seq_names = [p.__class__.__name__ for p in seq]
         red_names = [p.__class__.__name__ for p in red]
         assert "FocusPlugin" not in seq_names
-        assert "FlatPlugin" not in red_names
         assert len(seq) == 2
-        assert len(red) == 2
+        assert red_names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
 
     def test_demo_full_pipeline(self):
         seq, red = load_pipelines("demo")

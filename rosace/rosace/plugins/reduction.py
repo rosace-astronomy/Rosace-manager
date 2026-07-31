@@ -24,9 +24,9 @@ class ReductionPlugin:
     """
 
     async def run(self, obs: Observation) -> Observation:
-        raw_files = obs.sequencer_data.get("raw_files")
+        raw_files = obs.sequencer_data.get("expose", {}).get("raw_files")
         if not raw_files:
-            raise RuntimeError("REDUCTION : aucun fichier brut dans sequencer_data (raw_files vide)")
+            raise RuntimeError("REDUCTION : aucun fichier brut (sequencer_data['expose']['raw_files'] vide)")
 
         programme = obs.scheduler_data.get("programme")
         if not programme:
@@ -40,7 +40,7 @@ class ReductionPlugin:
         )
 
         # Chaque sous-plugin lit/écrit directement dans obs.reduction_data
-        # (et lit obs.sequencer_data["raw_files"] posé par SEQUENCER en entrée)
+        # (et lit obs.sequencer_data["expose"]["raw_files"] posé par SEQUENCER en entrée)
         for sub in red_pipeline:
             step = sub.__class__.__name__
             log.info(f"[REDUCTION] → {step}")
@@ -52,6 +52,6 @@ class ReductionPlugin:
 
         log.info(
             f"[REDUCTION] Réduction terminée — "
-            f"{len(obs.reduction_data.get('reduced_files', []))} spectre(s) produit(s)"
+            f"{len(obs.reduction_data.get('extract', {}).get('reduced_files', []))} spectre(s) produit(s)"
         )
         return obs

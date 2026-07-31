@@ -12,7 +12,7 @@ Structure :
 import logging
 
 from ..models import Observation
-from .pipeline_loader import load_pipelines
+from .pipeline_loader import load_pipelines, load_programme_yaml
 
 log = logging.getLogger("spectro.plugin.sequencer")
 
@@ -29,6 +29,14 @@ class SequencerPlugin:
             raise RuntimeError("SEQUENCER : scheduler_data incomplet (target/programme)")
         if not obs.obs_dir:
             raise RuntimeError("SEQUENCER : répertoire d'observation (obs_dir) non défini")
+
+        # Manifeste posé en tout premier, avant tout sous-plugin — survit à un
+        # plantage n'importe où dans SEQUENCER ou REDUCTION (voir models.py).
+        programme_data = load_programme_yaml(programme)
+        obs.pipeline = {
+            "sequencer": list(programme_data["sequencer"]),
+            "reduction": list(programme_data["reduction"]),
+        }
 
         seq_pipeline, _ = load_pipelines(programme)
         steps = [s.__class__.__name__ for s in seq_pipeline]
@@ -49,6 +57,6 @@ class SequencerPlugin:
 
         log.info(
             f"[SEQUENCER] Séquence terminée — "
-            f"{len(obs.sequencer_data.get('raw_files', []))} fichier(s) brut(s)"
+            f"{len(obs.sequencer_data.get('expose', {}).get('raw_files', []))} fichier(s) brut(s)"
         )
         return obs

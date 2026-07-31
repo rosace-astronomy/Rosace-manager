@@ -1,6 +1,6 @@
 """
 Tests du sous-plugin BIAS (BiasPlugin).
-Lancement : pytest plugins/reduction_plugins/test_bias.py -v
+Lancement : pytest plugins/reduction_plugins/bias/test_bias.py -v
 """
 
 from datetime import datetime, timezone
@@ -16,7 +16,7 @@ from rosace.plugins.reduction_plugins.bias.bias import BiasPlugin
 def _make_obs(raw_files=None) -> Observation:
     obs = Observation(id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234")
     if raw_files is not None:
-        obs.sequencer_data["raw_files"] = raw_files
+        obs.sequencer_data["expose"] = {"raw_files": raw_files}
     return obs
 
 
@@ -29,9 +29,14 @@ def fast_sleep(monkeypatch):
 
 class TestBiasPlugin:
 
+    async def test_raises_if_expose_missing(self):
+        obs = _make_obs()  # sequencer_data == {}, expose n'a jamais tourné
+        with pytest.raises(RuntimeError, match="expose"):
+            await BiasPlugin().execute(obs)
+
     async def test_raises_if_no_raw_files(self):
         obs = _make_obs(raw_files=[])
-        with pytest.raises(RuntimeError, match="raw_files vide"):
+        with pytest.raises(RuntimeError, match="raw_files"):
             await BiasPlugin().execute(obs)
 
     async def test_produces_bias_suffixed_files(self, tmp_path):
@@ -40,7 +45,6 @@ class TestBiasPlugin:
 
         result = await BiasPlugin().execute(obs)
 
-        corrected = result.reduction_data["bias_corrected_files"]
+        corrected = result.reduction_data["bias"]["corrected_files"]
         assert corrected == [str(tmp_path / "spectrum_0001_b.fits")]
-        assert result.reduction_data["bias_done"] is True
         assert Path(corrected[0]).is_file()

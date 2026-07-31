@@ -1,6 +1,8 @@
 # ── Programme : Étoiles brillantes ───────────────────────────────────────────
 # Vitesses radiales d'étoiles brillantes (V < 4).
-# Pas de dark (CCD refroidi, poses courtes), mise au point ignorée si récente.
+# Mise au point ignorée si récente. Chaîne de réduction complète : chaque
+# sous-plugin REDUCTION dépend explicitement de l'étape précédente (bias →
+# dark → flat → extract), aucune étape ne peut être sautée.
 
 programme: etoiles_brillantes
 description: "Mesures de vitesse radiale sur étoiles brillantes — poses courtes"
@@ -11,5 +13,6 @@ sequencer:
 
 reduction:
   - bias        # Soustraction biais
-  - flat        # Flat-field (dark négligeable sur poses courtes)
+  - dark        # Soustraction dark
+  - flat        # Correction flat-field
   - extract     # Extraction spectre 1D

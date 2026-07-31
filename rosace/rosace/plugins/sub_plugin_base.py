@@ -20,7 +20,7 @@ class SubPlugin:
 
     Le sous-plugin lit/écrit dans le casier de son plugin de stage parent
     (obs.sequencer_data ou obs.reduction_data), et peut lire celui d'une
-    étape précédente si besoin (ex. extract lit obs.sequencer_data["raw_files"]).
+    étape précédente si besoin (ex. bias lit obs.sequencer_data["expose"]["raw_files"]).
 
     Toute configuration vit dans conf/ (config.yaml, hardware_<variant>.yaml)
     comme le reste de l'application — pas de config.yaml propre au sous-plugin.

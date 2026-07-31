@@ -1,8 +1,8 @@
 """
-Sous-plugin SEQUENCER — Étape 1 : Pointage (Slew)
+Sous-plugin SEQUENCER — Pointage (Slew)
 Backend "indi" — PLACEHOLDER : à implémenter avec le vrai protocole INDI
 (chantier suivant). Pour l'instant, action minimale (sleep) mais structure
-et contrat (clés posées dans sequencer_data) identiques à internal/slew.py,
+et contrat (clé posée dans sequencer_data) identiques à slew_internal.py,
 pour rester compatible avec n'importe quel programme YAML.
 """
 
@@ -28,7 +28,6 @@ class SlewPlugin(SubPlugin):
         # TODO : commande INDI réelle (télescope.slew_to(ra, dec) via un client INDI)
         await asyncio.sleep(1)
 
-        obs.sequencer_data["slew_done"] = True
-        obs.sequencer_data["slew_target"] = target_name
+        obs.sequencer_data["slew"] = {"target": target_name}
         log.info(f"[SLEW] (placeholder INDI) Télescope en position sur {target_name}")
         return obs

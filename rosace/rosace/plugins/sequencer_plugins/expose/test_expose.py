@@ -1,7 +1,7 @@
 """
 Tests du sous-plugin EXPOSE (ExposePlugin), backend indi — placeholder.
 Vérifie uniquement la structure (clés posées), pas de comportement matériel réel.
-Lancement : pytest plugins/sequencer_plugins/indi/test_expose.py -v
+Lancement : pytest plugins/sequencer_plugins/expose/test_expose.py -v
 """
 
 from datetime import datetime, timezone
@@ -19,7 +19,7 @@ def _make_obs(obs_dir=None, slew_done=True, exposure=None) -> Observation:
         obs_dir=str(obs_dir) if obs_dir else None,
     )
     if slew_done:
-        obs.sequencer_data["slew_done"] = True
+        obs.sequencer_data["slew"] = {"target": "Vega"}
     if exposure is not None:
         obs.scheduler_data["exposure"] = exposure
     return obs
@@ -36,7 +36,7 @@ class TestExposePlugin:
 
     async def test_raises_if_slew_not_done(self, tmp_path):
         obs = _make_obs(obs_dir=tmp_path, slew_done=False, exposure=ExposureConfig(exposure_time=1.0))
-        with pytest.raises(RuntimeError, match="slew_done"):
+        with pytest.raises(RuntimeError, match="slew"):
             await ExposePlugin().execute(obs)
 
     async def test_raises_if_obs_dir_missing(self):
@@ -49,12 +49,10 @@ class TestExposePlugin:
         with pytest.raises(RuntimeError, match="exposure"):
             await ExposePlugin().execute(obs)
 
-    async def test_sets_expose_done_placeholder_values(self, tmp_path):
+    async def test_sets_expose_placeholder_values(self, tmp_path):
         exposure = ExposureConfig(exposure_time=1.0, num_exposures=3)
         obs = _make_obs(obs_dir=tmp_path, exposure=exposure)
 
         result = await ExposePlugin().execute(obs)
 
-        assert result.sequencer_data["raw_files"] == []
-        assert result.sequencer_data["expose_done"] is True
-        assert result.sequencer_data["expose_count"] == 0
+        assert result.sequencer_data["expose"] == {"raw_files": [], "count": 0}

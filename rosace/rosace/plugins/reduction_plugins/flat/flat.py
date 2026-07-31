@@ -1,5 +1,5 @@
 """
-Sous-plugin REDUCTION — Étape 3 : Division par le flat-field
+Sous-plugin REDUCTION — Division par le flat-field
 Corrige les variations de sensibilité pixel-à-pixel et le vignettage.
 """
 
@@ -19,14 +19,11 @@ class FlatPlugin(SubPlugin):
     """Division par le flat-field (correction de réponse spectrale) — simulation interne."""
 
     async def execute(self, obs: Observation) -> Observation:
-        # Chaîne de traitement : dark_corrected → bias_corrected → raw
-        input_files: list[str] = (
-            obs.reduction_data.get("dark_corrected_files")
-            or obs.reduction_data.get("bias_corrected_files")
-            or obs.sequencer_data.get("raw_files", [])
-        )
+        if "dark" not in obs.reduction_data:
+            raise RuntimeError("FLAT : reduction_data['dark'] manquant — DARK doit avoir tourné avant FLAT")
+        input_files: list[str] = obs.reduction_data["dark"]["corrected_files"]
         if not input_files:
-            raise RuntimeError("FLAT : aucun fichier d'entrée disponible")
+            raise RuntimeError("FLAT : aucun fichier d'entrée (reduction_data['dark']['corrected_files'] vide)")
 
         normalize = True
 
@@ -34,21 +31,13 @@ class FlatPlugin(SubPlugin):
 
         flat_corrected: list[str] = []
         for f in input_files:
-            # Suffixe : _f pour flat
-            base = f
-            for suffix in ("_bd.fits", "_b.fits", "_d.fits", ".fits"):
-                if base.endswith(suffix):
-                    base = base[: -len(suffix)]
-                    break
-            out = base + "_f.fits"
-
+            out = f.replace("_bd.fits", "_bdf.fits")
             await asyncio.sleep(0.05)
             Path(out).parent.mkdir(parents=True, exist_ok=True)
             Path(out).touch()
             log.info(f"[FLAT] Simulation : {Path(f).name} → {Path(out).name}")
             flat_corrected.append(out)
 
-        obs.reduction_data["flat_corrected_files"] = flat_corrected
-        obs.reduction_data["flat_done"] = True
+        obs.reduction_data["flat"] = {"corrected_files": flat_corrected}
         log.info(f"[FLAT] Correction terminée — {len(flat_corrected)} fichier(s)")
         return obs

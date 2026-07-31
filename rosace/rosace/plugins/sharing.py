@@ -10,7 +10,7 @@ class SharingPlugin:
     """Diffuse les fichiers réduits (envoi observateur, publication)."""
 
     async def run(self, obs: Observation) -> Observation:
-        reduced_files = obs.reduction_data.get("reduced_files", [])
+        reduced_files = obs.reduction_data.get("extract", {}).get("reduced_files", [])
         if not reduced_files:
             raise RuntimeError("SHARING : aucun fichier réduit dans reduction_data")
 

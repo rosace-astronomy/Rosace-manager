@@ -15,7 +15,7 @@ from rosace.plugins.sharing import SharingPlugin
 def _make_obs(reduced_files=None) -> Observation:
     obs = Observation(id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234")
     if reduced_files is not None:
-        obs.reduction_data["reduced_files"] = reduced_files
+        obs.reduction_data["extract"] = {"reduced_files": reduced_files}
     return obs
 
 
