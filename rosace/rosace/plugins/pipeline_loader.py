@@ -19,13 +19,27 @@ Structure attendue du YAML :
 Usage :
     from .pipeline_loader import load_pipelines
     seq_pipeline, red_pipeline = load_pipelines()
+
+Chargement dynamique par convention de nommage — pas de registre central à
+maintenir (contrairement à l'ancienne approche) : un sous-plugin déclaré
+"<name>" dans le YAML vit dans son propre répertoire, un par sous-plugin
+(<name>/<name>.py, classe <Name>Plugin). Seuls les sous-plugins réellement
+déclarés dans le programme en cours sont importés — pas tout le catalogue.
+
+Seul SEQUENCER a un axe backend (SEQUENCER_BACKEND, config.py) : le nom nu
+(<name>.py) est la version canonique — utilisée pour REDUCTION (qui n'a pas
+de dépendance matérielle) et pour SEQUENCER quand SEQUENCER_BACKEND="indi".
+"internal" est une exception ponctuelle réservée à la démo (pas un backend
+de plein droit) : seuls les sous-plugins réellement nécessaires à la démo
+ont un fichier <name>_internal.py — son absence pour un sous-plugin donné
+est normale, pas un manque.
 """
 
 from __future__ import annotations
 
+import importlib
 import logging
 from pathlib import Path
-from typing import Any
 
 import yaml
 
@@ -36,44 +50,49 @@ log = logging.getLogger("spectro.pipeline_loader")
 # ── Répertoire contenant les fichiers de programme ────────────────────────────
 PROGRAMMES_DIR = Path(__file__).parents[1] / "programmes"
 
-# ── Registre de tous les sous-plugins disponibles ─────────────────────────────
-# Clé : nom déclaré dans le YAML  →  Valeur : classe du sous-plugin
-# Ajouter ici tout nouveau sous-plugin pour le rendre utilisable depuis un YAML.
-# Les sous-plugins SEQUENCER ont deux implémentations (internal/indi), choisies
-# selon SEQUENCER_BACKEND — REDUCTION n'a pas de dépendance matérielle, une
-# seule implémentation.
 
-def _build_registry() -> dict[str, Any]:
-    """Construit le registre en important les classes à la demande."""
-    if SEQUENCER_BACKEND == "internal":
-        from .sequencer_plugins.internal.slew   import SlewPlugin
-        from .sequencer_plugins.internal.focus  import FocusPlugin
-        from .sequencer_plugins.internal.expose import ExposePlugin
-    elif SEQUENCER_BACKEND == "indi":
-        from .sequencer_plugins.indi.slew   import SlewPlugin
-        from .sequencer_plugins.indi.focus  import FocusPlugin
-        from .sequencer_plugins.indi.expose import ExposePlugin
+def _resolve_module_and_class(kind: str, name: str) -> tuple[str, str]:
+    """
+    Détermine le chemin de module et le nom de classe attendus pour un
+    sous-plugin déclaré "name" dans un programme, selon "kind" ('sequencer'
+    ou 'reduction') et, pour 'sequencer' uniquement, SEQUENCER_BACKEND.
+    """
+    class_name = f"{name.capitalize()}Plugin"
+
+    if kind == "sequencer":
+        if SEQUENCER_BACKEND == "internal":
+            module_path = f"rosace.plugins.sequencer_plugins.{name}.{name}_internal"
+        elif SEQUENCER_BACKEND == "indi":
+            module_path = f"rosace.plugins.sequencer_plugins.{name}.{name}"
+        else:
+            raise ValueError(
+                f"sequencer_backend={SEQUENCER_BACKEND!r} inconnu (attendu : 'internal' ou 'indi')"
+            )
+    elif kind == "reduction":
+        module_path = f"rosace.plugins.reduction_plugins.{name}.{name}"
     else:
+        raise ValueError(f"kind={kind!r} inconnu (attendu : 'sequencer' ou 'reduction')")
+
+    return module_path, class_name
+
+
+def _load_subplugin_class(kind: str, name: str) -> type:
+    """Importe dynamiquement le module du sous-plugin et retourne sa classe."""
+    module_path, class_name = _resolve_module_and_class(kind, name)
+
+    try:
+        module = importlib.import_module(module_path)
+    except ImportError as e:
         raise ValueError(
-            f"sequencer_backend={SEQUENCER_BACKEND!r} inconnu (attendu : 'internal' ou 'indi')"
-        )
+            f"Sous-plugin {kind} '{name}' introuvable : module '{module_path}' non chargeable — {e}"
+        ) from e
 
-    from .reduction_plugins.bias    import BiasPlugin
-    from .reduction_plugins.dark    import DarkPlugin
-    from .reduction_plugins.flat    import FlatPlugin
-    from .reduction_plugins.extract import ExtractPlugin
-
-    return {
-        # Séquenceur
-        "slew":    SlewPlugin,
-        "focus":   FocusPlugin,
-        "expose":  ExposePlugin,
-        # Réduction
-        "bias":    BiasPlugin,
-        "dark":    DarkPlugin,
-        "flat":    FlatPlugin,
-        "extract": ExtractPlugin,
-    }
+    try:
+        return getattr(module, class_name)
+    except AttributeError as e:
+        raise ValueError(
+            f"Sous-plugin {kind} '{name}' introuvable : classe '{class_name}' absente de '{module_path}'"
+        ) from e
 
 
 # ── Fonctions publiques ────────────────────────────────────────────────────────
@@ -99,24 +118,26 @@ def load_programme_yaml(programme_name: str) -> dict:
         return yaml.safe_load(f) or {}
 
 
-def build_pipeline(step_names: list[str], registry: dict) -> list:
+def build_pipeline(step_names: list[str], kind: str) -> list:
     """
-    Instancie et retourne la liste ordonnée de sous-plugins
-    à partir d'une liste de noms et d'un registre de classes.
+    Instancie et retourne la liste ordonnée de sous-plugins à partir d'une
+    liste de noms déclarés dans un programme et de "kind" ('sequencer' ou
+    'reduction') — résolution dynamique, un import par étape déclarée
+    (seules les étapes de CETTE liste sont importées, jamais le catalogue
+    entier des sous-plugins existants).
 
-    Lève ValueError si un nom est inconnu.
+    Lève ValueError si un nom déclaré n'a pas de sous-plugin correspondant.
     """
     pipeline = []
     for name in step_names:
         name = name.strip().lower()
-        if name not in registry:
-            raise ValueError(
-                f"Sous-plugin inconnu : '{name}'. "
-                f"Noms valides : {sorted(registry.keys())}"
-            )
-        plugin_instance = registry[name]()
+        plugin_class = _load_subplugin_class(kind, name)
+        plugin_instance = plugin_class()
         pipeline.append(plugin_instance)
-        log.debug(f"[PIPELINE] Sous-plugin chargé : {name} → {plugin_instance.__class__.__name__}")
+        log.debug(
+            f"[PIPELINE] Sous-plugin chargé : {name} → "
+            f"{plugin_class.__module__}.{plugin_class.__name__}"
+        )
     return pipeline
 
 
@@ -124,13 +145,12 @@ def load_pipelines(programme_name: str) -> tuple[list, list]:
     """
     Charge le programme YAML et retourne (sequencer_pipeline, reduction_pipeline).
 
-    :param programme_name: Nom du fichier YAML sans extension (ex. 'etoiles_be')
+    :param programme_name: Nom du fichier YAML sans extension (ex. 'demo')
     :returns: (liste de sous-plugins séquenceur, liste de sous-plugins réduction)
     :raises FileNotFoundError: Programme YAML introuvable
-    :raises ValueError: Sous-plugin déclaré dans le YAML mais absent du registre
+    :raises ValueError: Sous-plugin déclaré dans le YAML mais introuvable
     :raises KeyError: Clés 'sequencer' ou 'reduction' manquantes dans le YAML
     """
-    registry = _build_registry()
     data = load_programme_yaml(programme_name)
 
     if "sequencer" not in data:
@@ -146,7 +166,7 @@ def load_pipelines(programme_name: str) -> tuple[list, list]:
         f"séquenceur : {seq_steps}, réduction : {red_steps}"
     )
 
-    seq_pipeline = build_pipeline(seq_steps, registry)
-    red_pipeline = build_pipeline(red_steps, registry)
+    seq_pipeline = build_pipeline(seq_steps, "sequencer")
+    red_pipeline = build_pipeline(red_steps, "reduction")
 
     return seq_pipeline, red_pipeline

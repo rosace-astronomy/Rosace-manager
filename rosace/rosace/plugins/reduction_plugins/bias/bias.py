@@ -9,8 +9,8 @@ import asyncio
 import logging
 from pathlib import Path
 
-from ...models import Observation
-from ..sub_plugin_base import SubPlugin
+from ....models import Observation
+from ...sub_plugin_base import SubPlugin
 
 log = logging.getLogger("spectro.subplugin.bias")
 

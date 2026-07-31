@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from rosace.models import Observation
-from rosace.plugins.sequencer_plugins.indi.focus import FocusPlugin
+from rosace.plugins.sequencer_plugins.focus.focus import FocusPlugin
 
 
 def _make_obs(slew_done=True) -> Observation:
@@ -23,7 +23,7 @@ def _make_obs(slew_done=True) -> Observation:
 @pytest.fixture(autouse=True)
 def fast_sleep(monkeypatch):
     monkeypatch.setattr(
-        "rosace.plugins.sequencer_plugins.indi.focus.asyncio.sleep", AsyncMock(return_value=None)
+        "rosace.plugins.sequencer_plugins.focus.focus.asyncio.sleep", AsyncMock(return_value=None)
     )
 
 

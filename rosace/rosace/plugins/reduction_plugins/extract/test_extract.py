@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from rosace.models import Observation
-from rosace.plugins.reduction_plugins.extract import ExtractPlugin
+from rosace.plugins.reduction_plugins.extract.extract import ExtractPlugin
 
 
 def _make_obs(raw_files=None, bias_corrected_files=None, dark_corrected_files=None,
@@ -30,7 +30,7 @@ def _make_obs(raw_files=None, bias_corrected_files=None, dark_corrected_files=No
 @pytest.fixture(autouse=True)
 def fast_sleep(monkeypatch):
     monkeypatch.setattr(
-        "rosace.plugins.reduction_plugins.extract.asyncio.sleep", AsyncMock(return_value=None)
+        "rosace.plugins.reduction_plugins.extract.extract.asyncio.sleep", AsyncMock(return_value=None)
     )
 
 

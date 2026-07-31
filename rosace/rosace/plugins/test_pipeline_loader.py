@@ -15,7 +15,6 @@ from rosace.plugins.pipeline_loader import (
     build_pipeline,
     load_pipelines,
     list_programmes,
-    _build_registry,
 )
 
 
@@ -65,37 +64,40 @@ class TestLoadProgrammeYaml:
 
 
 class TestBuildPipeline:
+    """Résolution dynamique par importlib — pas de registre central, un import
+    par étape déclarée. Le backend actif (conf/config.yaml) détermine le
+    module SEQUENCER résolu ; ces tests tournent avec le backend réel de la
+    config de test ("indi" — voir conf/config.yaml), donc sans suffixe."""
 
     def test_builds_full_sequencer_pipeline(self):
-        registry = _build_registry()
-        pipeline = build_pipeline(["slew", "focus", "expose"], registry)
+        pipeline = build_pipeline(["slew", "focus", "expose"], "sequencer")
         assert len(pipeline) == 3
         names = [p.__class__.__name__ for p in pipeline]
         assert names == ["SlewPlugin", "FocusPlugin", "ExposePlugin"]
 
     def test_builds_partial_pipeline(self):
         """Un pipeline peut omettre des étapes (ex: pas de focus)."""
-        registry = _build_registry()
-        pipeline = build_pipeline(["slew", "expose"], registry)
+        pipeline = build_pipeline(["slew", "expose"], "sequencer")
         assert len(pipeline) == 2
 
     def test_raises_on_unknown_step(self):
-        registry = _build_registry()
         with pytest.raises(ValueError, match="inexistant"):
-            build_pipeline(["slew", "inexistant"], registry)
-
-    def test_error_message_lists_valid_names(self):
-        registry = _build_registry()
-        with pytest.raises(ValueError) as exc_info:
-            build_pipeline(["xxx"], registry)
-        assert "slew" in str(exc_info.value)
+            build_pipeline(["slew", "inexistant"], "sequencer")
 
     def test_order_is_preserved(self):
         """L'ordre du YAML est strictement respecté."""
-        registry = _build_registry()
-        pipeline = build_pipeline(["expose", "slew"], registry)
+        pipeline = build_pipeline(["expose", "slew"], "sequencer")
         assert pipeline[0].__class__.__name__ == "ExposePlugin"
         assert pipeline[1].__class__.__name__ == "SlewPlugin"
+
+    def test_builds_reduction_pipeline(self):
+        pipeline = build_pipeline(["bias", "dark", "flat", "extract"], "reduction")
+        names = [p.__class__.__name__ for p in pipeline]
+        assert names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
+
+    def test_raises_on_unknown_kind(self):
+        with pytest.raises(ValueError, match="bogus_kind"):
+            build_pipeline(["slew"], "bogus_kind")
 
 
 class TestLoadPipelines:
@@ -180,41 +182,54 @@ class TestLoadPipelines:
 
 
 class TestSequencerBackendDispatch:
-    """_build_registry() choisit la famille de sous-plugins SEQUENCER selon SEQUENCER_BACKEND
-    (config.py) — REDUCTION n'a pas de dépendance matérielle, une seule implémentation."""
+    """_resolve_module_and_class() choisit le module SEQUENCER selon
+    SEQUENCER_BACKEND (config.py) — REDUCTION n'a pas de dépendance
+    matérielle, jamais suffixé quel que soit le backend actif."""
 
-    def test_internal_backend_loads_internal_classes(self, monkeypatch):
+    def test_internal_backend_resolves_internal_suffix(self, monkeypatch):
         from rosace.plugins import pipeline_loader
         monkeypatch.setattr(pipeline_loader, "SEQUENCER_BACKEND", "internal")
 
-        registry = pipeline_loader._build_registry()
+        module_path, class_name = pipeline_loader._resolve_module_and_class("sequencer", "slew")
 
-        assert registry["slew"].__module__ == "rosace.plugins.sequencer_plugins.internal.slew"
-        assert registry["focus"].__module__ == "rosace.plugins.sequencer_plugins.internal.focus"
-        assert registry["expose"].__module__ == "rosace.plugins.sequencer_plugins.internal.expose"
+        assert module_path == "rosace.plugins.sequencer_plugins.slew.slew_internal"
+        assert class_name == "SlewPlugin"
 
-    def test_indi_backend_loads_indi_classes(self, monkeypatch):
+    def test_indi_backend_resolves_no_suffix(self, monkeypatch):
         from rosace.plugins import pipeline_loader
         monkeypatch.setattr(pipeline_loader, "SEQUENCER_BACKEND", "indi")
 
-        registry = pipeline_loader._build_registry()
+        module_path, class_name = pipeline_loader._resolve_module_and_class("sequencer", "slew")
 
-        assert registry["slew"].__module__ == "rosace.plugins.sequencer_plugins.indi.slew"
-        assert registry["focus"].__module__ == "rosace.plugins.sequencer_plugins.indi.focus"
-        assert registry["expose"].__module__ == "rosace.plugins.sequencer_plugins.indi.expose"
+        assert module_path == "rosace.plugins.sequencer_plugins.slew.slew"
 
-    def test_reduction_classes_unaffected_by_backend(self, monkeypatch):
+    def test_reduction_never_suffixed_regardless_of_backend(self, monkeypatch):
         from rosace.plugins import pipeline_loader
-        monkeypatch.setattr(pipeline_loader, "SEQUENCER_BACKEND", "indi")
+        monkeypatch.setattr(pipeline_loader, "SEQUENCER_BACKEND", "internal")
 
-        registry = pipeline_loader._build_registry()
+        module_path, class_name = pipeline_loader._resolve_module_and_class("reduction", "bias")
 
-        assert registry["bias"].__module__ == "rosace.plugins.reduction_plugins.bias"
-        assert registry["dark"].__module__ == "rosace.plugins.reduction_plugins.dark"
+        assert module_path == "rosace.plugins.reduction_plugins.bias.bias"
 
     def test_unknown_backend_raises_value_error(self, monkeypatch):
         from rosace.plugins import pipeline_loader
         monkeypatch.setattr(pipeline_loader, "SEQUENCER_BACKEND", "bogus")
 
         with pytest.raises(ValueError, match="bogus"):
-            pipeline_loader._build_registry()
+            pipeline_loader._resolve_module_and_class("sequencer", "slew")
+
+    def test_internal_backend_actually_loads_internal_class(self, monkeypatch):
+        from rosace.plugins import pipeline_loader
+        monkeypatch.setattr(pipeline_loader, "SEQUENCER_BACKEND", "internal")
+
+        pipeline = pipeline_loader.build_pipeline(["slew"], "sequencer")
+
+        assert pipeline[0].__class__.__module__ == "rosace.plugins.sequencer_plugins.slew.slew_internal"
+
+    def test_indi_backend_actually_loads_canonical_class(self, monkeypatch):
+        from rosace.plugins import pipeline_loader
+        monkeypatch.setattr(pipeline_loader, "SEQUENCER_BACKEND", "indi")
+
+        pipeline = pipeline_loader.build_pipeline(["slew"], "sequencer")
+
+        assert pipeline[0].__class__.__module__ == "rosace.plugins.sequencer_plugins.slew.slew"
