@@ -244,9 +244,9 @@ class TestLoadSharingPlugin:
     """load_sharing_plugin() résout un seul sous-plugin (clé "sharing"
     singulière dans le YAML) — pas une liste comme sequencer/reduction."""
 
-    def test_loads_default_for_demo(self):
+    def test_loads_blank_for_demo(self):
         sub = load_sharing_plugin("demo")
-        assert sub.__class__.__name__ == "DefaultPlugin"
+        assert sub.__class__.__name__ == "BlankPlugin"
 
     def test_raises_if_sharing_key_missing(self, tmp_path, monkeypatch):
         import yaml as _yaml

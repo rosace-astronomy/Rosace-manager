@@ -35,7 +35,7 @@ scheduler_retry_seconds: 60 # If the scheduler replies that no star is to be obs
 
 # Which SEQUENCER sub-plugin family to load: 'internal' (simulation, no
 # hardware) or 'indi' (real INDI protocol). Exposed as SEQUENCER_BACKEND.
-sequencer_backend: internal   # Must be 'internal' (for basic demo) or 'indi' (for real world)
+sequencer_backend: indi   # Must be 'internal' (for basic demo) or 'indi' (for real world)
 
 # INIT_SESSION (sequencer_backend=indi only): max time to wait for each
 # INDI device / PHD2 to answer. Exposed as HARDWARE_CONNECT_TIMEOUT_SECONDS.

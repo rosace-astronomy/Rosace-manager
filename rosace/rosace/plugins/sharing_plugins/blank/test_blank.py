@@ -1,6 +1,6 @@
 """
-Tests du sous-plugin SHARING "default" (DefaultPlugin).
-Lancement : pytest plugins/sharing_plugins/default/test_default.py -v
+Tests du sous-plugin SHARING "blank" (BlankPlugin).
+Lancement : pytest plugins/sharing_plugins/blank/test_blank.py -v
 """
 
 from datetime import datetime, timezone
@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from rosace.models import Observation
-from rosace.plugins.sharing_plugins.default.default import DefaultPlugin
+from rosace.plugins.sharing_plugins.blank.blank import BlankPlugin
 
 
 def _make_obs(reduced_files=None) -> Observation:
@@ -23,28 +23,28 @@ def _make_obs(reduced_files=None) -> Observation:
 def fast_sleep(monkeypatch):
     """Évite d'attendre le sleep(0.3) simulé par fichier diffusé."""
     mock = AsyncMock(return_value=None)
-    monkeypatch.setattr("rosace.plugins.sharing_plugins.default.default.asyncio.sleep", mock)
+    monkeypatch.setattr("rosace.plugins.sharing_plugins.blank.blank.asyncio.sleep", mock)
     return mock
 
 
-class TestDefaultPlugin:
+class TestBlankPlugin:
 
     async def test_raises_if_extract_missing(self):
         obs = _make_obs()  # reduction_data == {}, extract n'a jamais tourné
         with pytest.raises(RuntimeError, match="reduced_files"):
-            await DefaultPlugin().execute(obs)
+            await BlankPlugin().execute(obs)
 
     async def test_raises_if_no_reduced_files(self):
         obs = _make_obs(reduced_files=[])
         with pytest.raises(RuntimeError, match="reduced_files"):
-            await DefaultPlugin().execute(obs)
+            await BlankPlugin().execute(obs)
 
     async def test_processes_every_reduced_file(self, fast_sleep):
         files = ["/tmp/a_reduced.fits", "/tmp/b_reduced.fits"]
         obs = _make_obs(reduced_files=files)
 
-        result = await DefaultPlugin().execute(obs)
+        result = await BlankPlugin().execute(obs)
 
         assert result is obs
         assert fast_sleep.await_count == len(files)
-        assert result.sharing_data["default"] == {"shared_files": files}
+        assert result.sharing_data["blank"] == {"shared_files": files}
