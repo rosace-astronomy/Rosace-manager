@@ -15,10 +15,12 @@ Structure attendue du YAML :
       - dark
       - flat
       - extract
+    sharing: default
 
 Usage :
-    from .pipeline_loader import load_pipelines
-    seq_pipeline, red_pipeline = load_pipelines()
+    from .pipeline_loader import load_pipelines, load_sharing_plugin
+    seq_pipeline, red_pipeline = load_pipelines(programme)
+    sharing_plugin = load_sharing_plugin(programme)
 
 Chargement dynamique par convention de nommage — pas de registre central à
 maintenir (contrairement à l'ancienne approche) : un sous-plugin déclaré
@@ -54,8 +56,8 @@ PROGRAMMES_DIR = Path(__file__).parents[1] / "programmes"
 def _resolve_module_and_class(kind: str, name: str) -> tuple[str, str]:
     """
     Détermine le chemin de module et le nom de classe attendus pour un
-    sous-plugin déclaré "name" dans un programme, selon "kind" ('sequencer'
-    ou 'reduction') et, pour 'sequencer' uniquement, SEQUENCER_BACKEND.
+    sous-plugin déclaré "name" dans un programme, selon "kind" ('sequencer',
+    'reduction' ou 'sharing') et, pour 'sequencer' uniquement, SEQUENCER_BACKEND.
     """
     class_name = f"{name.capitalize()}Plugin"
 
@@ -70,8 +72,10 @@ def _resolve_module_and_class(kind: str, name: str) -> tuple[str, str]:
             )
     elif kind == "reduction":
         module_path = f"rosace.plugins.reduction_plugins.{name}.{name}"
+    elif kind == "sharing":
+        module_path = f"rosace.plugins.sharing_plugins.{name}.{name}"
     else:
-        raise ValueError(f"kind={kind!r} inconnu (attendu : 'sequencer' ou 'reduction')")
+        raise ValueError(f"kind={kind!r} inconnu (attendu : 'sequencer', 'reduction' ou 'sharing')")
 
     return module_path, class_name
 
@@ -170,3 +174,26 @@ def load_pipelines(programme_name: str) -> tuple[list, list]:
     red_pipeline = build_pipeline(red_steps, "reduction")
 
     return seq_pipeline, red_pipeline
+
+
+def load_sharing_plugin(programme_name: str):
+    """
+    Charge le programme YAML et retourne l'unique sous-plugin SHARING déclaré
+    — contrairement à sequencer/reduction, la clé "sharing" est singulière
+    (un seul plugin de diffusion par programme, pas une liste d'étapes) :
+    un programme qui a besoin de diffuser vers plusieurs destinations gère ça
+    dans son propre sous-plugin, ce n'est pas au mécanisme de le permettre.
+
+    :raises FileNotFoundError: Programme YAML introuvable
+    :raises ValueError: Sous-plugin déclaré dans le YAML mais introuvable
+    :raises KeyError: Clé 'sharing' manquante dans le YAML
+    """
+    data = load_programme_yaml(programme_name)
+
+    if "sharing" not in data:
+        raise KeyError(f"Clé 'sharing' manquante dans le programme '{programme_name}'")
+
+    name = data["sharing"].strip().lower()
+    plugin_class = _load_subplugin_class("sharing", name)
+    log.info(f"[PIPELINE] Programme '{programme_name}' — sous-plugin sharing : {name} → {plugin_class.__name__}")
+    return plugin_class()

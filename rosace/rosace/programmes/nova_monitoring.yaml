@@ -16,3 +16,5 @@ reduction:
   - dark        # Soustraction dark
   - flat        # Correction flat-field
   - extract     # Extraction spectre 1D
+
+sharing: default

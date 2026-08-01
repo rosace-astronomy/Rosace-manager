@@ -14,6 +14,7 @@ from rosace.plugins.pipeline_loader import (
     load_programme_yaml,
     build_pipeline,
     load_pipelines,
+    load_sharing_plugin,
     list_programmes,
 )
 
@@ -237,3 +238,36 @@ class TestSequencerBackendDispatch:
         pipeline = pipeline_loader.build_pipeline(["slew"], "sequencer")
 
         assert pipeline[0].__class__.__module__ == "rosace.plugins.sequencer_plugins.slew.slew"
+
+
+class TestLoadSharingPlugin:
+    """load_sharing_plugin() résout un seul sous-plugin (clé "sharing"
+    singulière dans le YAML) — pas une liste comme sequencer/reduction."""
+
+    def test_loads_default_for_demo(self):
+        sub = load_sharing_plugin("demo")
+        assert sub.__class__.__name__ == "DefaultPlugin"
+
+    def test_raises_if_sharing_key_missing(self, tmp_path, monkeypatch):
+        import yaml as _yaml
+        from rosace.plugins import pipeline_loader
+
+        bad_yaml = tmp_path / "bad3.yaml"
+        bad_yaml.write_text(_yaml.dump({"sequencer": ["slew"], "reduction": ["bias"]}))
+        monkeypatch.setattr(pipeline_loader, "PROGRAMMES_DIR", tmp_path)
+
+        with pytest.raises(KeyError, match="sharing"):
+            load_sharing_plugin("bad3")
+
+    def test_raises_on_unknown_sharing_subplugin(self, tmp_path, monkeypatch):
+        import yaml as _yaml
+        from rosace.plugins import pipeline_loader
+
+        bad_yaml = tmp_path / "bad4.yaml"
+        bad_yaml.write_text(_yaml.dump({
+            "sequencer": ["slew"], "reduction": ["bias"], "sharing": "inexistant",
+        }))
+        monkeypatch.setattr(pipeline_loader, "PROGRAMMES_DIR", tmp_path)
+
+        with pytest.raises(ValueError, match="inexistant"):
+            load_sharing_plugin("bad4")

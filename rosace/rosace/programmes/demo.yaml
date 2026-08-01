@@ -15,3 +15,5 @@ reduction:
   - dark
   - flat
   - extract
+
+sharing: default
