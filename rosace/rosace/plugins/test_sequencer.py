@@ -67,6 +67,24 @@ class TestSequencerPlugin:
         assert calls == ["slew", "focus", "expose"]
         assert result.sequencer_data["order"] == ["slew", "focus", "expose"]
 
+    async def test_sets_pipeline_manifest_including_sharing(self, monkeypatch):
+        """obs.pipeline doit lister sequencer, reduction ET sharing — sinon un
+        lecteur du YAML de l'observation ne peut pas savoir quel sous-plugin
+        SHARING était prévu si l'observation plante avant qu'il ne tourne."""
+        monkeypatch.setattr(
+            "rosace.plugins.sequencer.load_pipelines",
+            lambda programme: ([], []),
+        )
+
+        obs = _make_obs()  # programme = "etoiles_be"
+        result = await SequencerPlugin().run(obs)
+
+        assert result.pipeline == {
+            "sequencer": ["slew", "focus", "expose"],
+            "reduction": ["bias", "dark", "flat", "extract"],
+            "sharing": "blank",
+        }
+
     async def test_loads_pipeline_for_observation_programme(self, monkeypatch):
         seen_programme = []
 

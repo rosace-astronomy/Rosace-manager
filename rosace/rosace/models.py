@@ -68,12 +68,13 @@ class Observation(BaseModel):
     obs_dir: Optional[str] = None
     yaml_file: Optional[str] = None
 
-    # Manifeste des étapes attendues (noms déclarés dans le YAML du programme,
-    # sequencer ET reduction), posé par SequencerPlugin en tout premier, avant
+    # Manifeste des étapes attendues (noms déclarés dans le YAML du programme :
+    # sequencer et reduction — des listes —, sharing — une seule valeur, voir
+    # plugins/sharing.py), posé par SequencerPlugin en tout premier, avant
     # d'exécuter le moindre sous-plugin — permet de savoir ce qui était prévu
     # même si l'observation plante en cours de route (les casiers ci-dessous
     # ne prouvent que ce qui a réussi, pas ce qui était prévu).
-    pipeline: dict[str, list[str]] = {}
+    pipeline: dict[str, Any] = {}
 
     # Un casier par plugin de stage connu — contenu libre, géré par le plugin
     # et ses sous-plugins (ex. sequencer_data["expose"]["raw_files"], posé par

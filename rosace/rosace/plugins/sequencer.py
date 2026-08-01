@@ -31,11 +31,12 @@ class SequencerPlugin:
             raise RuntimeError("SEQUENCER : répertoire d'observation (obs_dir) non défini")
 
         # Manifeste posé en tout premier, avant tout sous-plugin — survit à un
-        # plantage n'importe où dans SEQUENCER ou REDUCTION (voir models.py).
+        # plantage n'importe où dans SEQUENCER, REDUCTION ou SHARING (voir models.py).
         programme_data = load_programme_yaml(programme)
         obs.pipeline = {
             "sequencer": list(programme_data["sequencer"]),
             "reduction": list(programme_data["reduction"]),
+            "sharing": programme_data["sharing"],
         }
 
         seq_pipeline, _ = load_pipelines(programme)
