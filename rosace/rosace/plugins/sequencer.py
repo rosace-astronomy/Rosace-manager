@@ -33,7 +33,8 @@ class SequencerPlugin:
         # Manifeste posé en tout premier, avant tout sous-plugin — survit à un
         # plantage n'importe où dans SEQUENCER, REDUCTION ou SHARING (voir models.py).
         programme_data = load_programme_yaml(programme)
-        obs.pipeline = {
+        obs.program_file = f"{programme}.yaml"
+        obs.program_steps = {
             "sequencer": list(programme_data["sequencer"]),
             "reduction": list(programme_data["reduction"]),
             "sharing": programme_data["sharing"],
