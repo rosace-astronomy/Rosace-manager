@@ -1,5 +1,5 @@
 """
-Tests du check de connectivité matérielle pour INIT_SESSION (sequencer_backend=indi).
+Tests de la connexion matérielle pour INIT_SESSION (sequencer_backend=indi).
 Lancement : pytest plugins/test_hardware_connectivity.py -v
 """
 
@@ -20,6 +20,7 @@ def short_timeout(monkeypatch):
 
 
 MOUNT_DRIVER = {
+    "role": "mount",
     "module": "mount",
     "module_dir": "rosace.hardware_indi.devices",
     "class_name": "IndiMount",
@@ -28,11 +29,20 @@ MOUNT_DRIVER = {
 }
 
 FOCUSER_DRIVER = {
+    "role": "focuser",
     "module": "focuser",
     "module_dir": "rosace.hardware_indi.devices",
     "class_name": "IndiFocuser",
     "focuser_name": "Test Focuser",
     "port": "/dev/ttyUSB0",
+    "indi_client": {"indi_host": "localhost", "indi_port": 7624},
+}
+
+SPECTROSCOPE_DRIVER = {
+    "role": "spectroscope",  # no adapter registered for this role yet
+    "module": "usis_spectroscope",
+    "module_dir": "rosace.hardware_indi.devices",
+    "class_name": "IndiUsisSpectro",
     "indi_client": {"indi_host": "localhost", "indi_port": 7624},
 }
 
@@ -67,14 +77,14 @@ class TestLoadDeviceClass:
             hc._load_device_class("rosace.hardware_indi.devices", "mount", "DoesNotExist")
 
 
-class TestCheckHardwareConnectivity:
+class TestConnectSessionHardware:
 
-    async def test_all_succeed(self, monkeypatch, short_timeout):
+    async def test_all_succeed_returns_adapters_keyed_by_device_name(self, monkeypatch, short_timeout):
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
-            "INDI_drivers": {"mount": MOUNT_DRIVER},
+            "INDI_drivers": {"mount": MOUNT_DRIVER, "focuser": FOCUSER_DRIVER},
             "PHD2_config": {"host": "127.0.0.1", "port": 4400},
         })
-        monkeypatch.setattr(hc, "_connect_device_sync", MagicMock(return_value=None))
+        monkeypatch.setattr(hc, "_connect_device_sync", MagicMock(return_value=MagicMock()))
 
         fake_writer = MagicMock()
         fake_writer.wait_closed = AsyncMock(return_value=None)
@@ -84,7 +94,21 @@ class TestCheckHardwareConnectivity:
 
         monkeypatch.setattr(asyncio, "open_connection", fake_open_connection)
 
-        await hc.check_hardware_connectivity()  # ne doit pas lever
+        adapters = await hc.connect_session_hardware()
+
+        assert set(adapters) == {"mount", "focuser"}
+        assert isinstance(adapters["mount"], hc.MountAdapter)
+        assert isinstance(adapters["focuser"], hc.FocuserAdapter)
+
+    async def test_unknown_role_is_connected_but_not_returned(self, monkeypatch, short_timeout):
+        monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
+            "INDI_drivers": {"spectroscope": SPECTROSCOPE_DRIVER},
+        })
+        monkeypatch.setattr(hc, "_connect_device_sync", MagicMock(return_value=MagicMock()))
+
+        adapters = await hc.connect_session_hardware()  # ne doit pas lever
+
+        assert adapters == {}
 
     async def test_device_failure_is_collected_and_raised(self, monkeypatch, short_timeout):
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
@@ -97,7 +121,7 @@ class TestCheckHardwareConnectivity:
         monkeypatch.setattr(hc, "_connect_device_sync", failing_connect)
 
         with pytest.raises(RuntimeError, match="mount"):
-            await hc.check_hardware_connectivity()
+            await hc.connect_session_hardware()
 
     async def test_phd2_failure_is_collected_and_raised(self, monkeypatch, short_timeout):
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
@@ -111,7 +135,7 @@ class TestCheckHardwareConnectivity:
         monkeypatch.setattr(asyncio, "open_connection", failing_open_connection)
 
         with pytest.raises(RuntimeError, match="PHD2"):
-            await hc.check_hardware_connectivity()
+            await hc.connect_session_hardware()
 
     async def test_device_timeout_is_reported(self, monkeypatch, short_timeout):
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
@@ -124,12 +148,12 @@ class TestCheckHardwareConnectivity:
         monkeypatch.setattr(hc, "_connect_device_sync", slow_connect)
 
         with pytest.raises(RuntimeError, match="mount"):
-            await hc.check_hardware_connectivity()
+            await hc.connect_session_hardware()
 
-    async def test_devices_are_checked_one_at_a_time(self, monkeypatch, short_timeout):
+    async def test_devices_are_connected_one_at_a_time(self, monkeypatch, short_timeout):
         """Plusieurs devices peuvent partager le même IndiClient singleton (même
         indi_host/indi_port), dont l'initialisation n'est pas thread-safe : on
-        vérifie qu'aucun check de device ne chevauche un autre."""
+        vérifie qu'aucune connexion de device ne chevauche une autre."""
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
             "INDI_drivers": {"mount": MOUNT_DRIVER, "focuser": FOCUSER_DRIVER},
         })
@@ -143,9 +167,10 @@ class TestCheckHardwareConnectivity:
             max_concurrent = max(max_concurrent, concurrent_count)
             time.sleep(0.05)
             concurrent_count -= 1
+            return MagicMock()
 
         monkeypatch.setattr(hc, "_connect_device_sync", tracking_connect)
 
-        await hc.check_hardware_connectivity()
+        await hc.connect_session_hardware()
 
         assert max_concurrent == 1

@@ -7,6 +7,22 @@ from rosace.hardware_indi.adapters.filter_wheel import FilterWheelAdapter
 
 
 class TestFilterWheelAdapter:
+    async def test_connect_calls_indi_filter_wheel(self):
+        indi_filter_wheel = MagicMock()
+        adapter = FilterWheelAdapter(indi_filter_wheel)
+
+        await adapter.connect()
+
+        indi_filter_wheel.connect.assert_called_once()
+
+    async def test_disconnect_calls_indi_filter_wheel(self):
+        indi_filter_wheel = MagicMock()
+        adapter = FilterWheelAdapter(indi_filter_wheel)
+
+        await adapter.disconnect()
+
+        indi_filter_wheel.disconnect.assert_called_once()
+
     async def test_set_filter_calls_indi_filter_wheel(self):
         indi_filter_wheel = MagicMock()
         adapter = FilterWheelAdapter(indi_filter_wheel)

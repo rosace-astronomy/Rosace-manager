@@ -1,6 +1,7 @@
 """
-Tests du sous-plugin SLEW (SlewPlugin), backend indi — placeholder.
-Vérifie uniquement la structure (clés posées), pas de comportement matériel réel.
+Tests du sous-plugin SLEW (SlewPlugin), backend indi.
+Vérifie que SlewPlugin appelle bien obs.hardware["mount"].slew_to() avec les
+bonnes coordonnées — le mount lui-même est un mock, pas de matériel réel.
 Lancement : pytest plugins/sequencer_plugins/slew/test_slew.py -v
 """
 
@@ -17,27 +18,27 @@ def _make_obs(target=None) -> Observation:
     obs = Observation(id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234")
     if target is not None:
         obs.scheduler_data["target"] = target
+    obs.hardware["mount"] = AsyncMock()
     return obs
-
-
-@pytest.fixture(autouse=True)
-def fast_sleep(monkeypatch):
-    monkeypatch.setattr(
-        "rosace.plugins.sequencer_plugins.slew.slew.asyncio.sleep", AsyncMock(return_value=None)
-    )
 
 
 class TestSlewPlugin:
 
-    async def test_sets_slew_target(self):
+    async def test_calls_mount_slew_to_with_target_coordinates(self):
         obs = _make_obs(target=Target(name="Vega", ra=279.23, dec=38.78))
         result = await SlewPlugin().execute(obs)
 
         assert result is obs
+        obs.hardware["mount"].slew_to.assert_awaited_once_with(279.23, 38.78)
+
+    async def test_sets_slew_target(self):
+        obs = _make_obs(target=Target(name="Vega", ra=279.23, dec=38.78))
+        await SlewPlugin().execute(obs)
+
         assert obs.sequencer_data["slew"] == {"target": "Vega"}
 
-    async def test_handles_missing_target_gracefully(self):
+    async def test_raises_on_missing_target(self):
         obs = _make_obs(target=None)
-        result = await SlewPlugin().execute(obs)
 
-        assert result.sequencer_data["slew"] == {"target": "inconnue"}
+        with pytest.raises(RuntimeError, match="target"):
+            await SlewPlugin().execute(obs)

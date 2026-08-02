@@ -1,5 +1,6 @@
 """
-FilterWheelAdapter — wraps an already-connected IndiFilterWheel, exposing
+FilterWheelAdapter — wraps an IndiFilterWheel instance for its whole
+lifecycle (connect, business calls, disconnect), exposing
 hardware.filter_wheel.FilterWheel's async contract.
 """
 
@@ -14,6 +15,12 @@ from ..devices.filter_wheel import IndiFilterWheel
 class FilterWheelAdapter:
     def __init__(self, indi_filter_wheel: IndiFilterWheel) -> None:
         self._indi_filter_wheel = indi_filter_wheel
+
+    async def connect(self) -> None:
+        await asyncio.to_thread(self._indi_filter_wheel.connect)
+
+    async def disconnect(self) -> None:
+        await asyncio.to_thread(self._indi_filter_wheel.disconnect)
 
     async def set_filter(self, name: str) -> None:
         try:

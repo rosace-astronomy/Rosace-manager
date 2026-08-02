@@ -36,3 +36,22 @@ class TestCloseSessionPlugin:
         ctx = SessionContext(site_name="St-Pancrasse")
         await CloseSessionPlugin().run(ctx)
         fast_sleep.assert_awaited_once()
+
+    async def test_disconnects_every_hardware_adapter(self):
+        ctx = SessionContext(site_name="St-Pancrasse")
+        ctx.hardware = {"mount": AsyncMock(), "science_camera": AsyncMock()}
+
+        await CloseSessionPlugin().run(ctx)
+
+        ctx.hardware["mount"].disconnect.assert_awaited_once()
+        ctx.hardware["science_camera"].disconnect.assert_awaited_once()
+
+    async def test_one_disconnect_failure_does_not_block_the_others(self):
+        failing = AsyncMock()
+        failing.disconnect.side_effect = RuntimeError("boom")
+        ctx = SessionContext(site_name="St-Pancrasse")
+        ctx.hardware = {"mount": failing, "science_camera": AsyncMock()}
+
+        await CloseSessionPlugin().run(ctx)  # ne doit pas lever
+
+        ctx.hardware["science_camera"].disconnect.assert_awaited_once()

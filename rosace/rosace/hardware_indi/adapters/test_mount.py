@@ -8,6 +8,22 @@ from rosace.hardware_indi.adapters.mount import MountAdapter
 
 
 class TestMountAdapter:
+    async def test_connect_calls_indi_mount(self):
+        indi_mount = MagicMock()
+        adapter = MountAdapter(indi_mount)
+
+        await adapter.connect()
+
+        indi_mount.connect.assert_called_once()
+
+    async def test_disconnect_calls_indi_mount(self):
+        indi_mount = MagicMock()
+        adapter = MountAdapter(indi_mount)
+
+        await adapter.disconnect()
+
+        indi_mount.disconnect.assert_called_once()
+
     async def test_slew_to_calls_indi_mount_with_correct_coord(self):
         indi_mount = MagicMock()
         adapter = MountAdapter(indi_mount)

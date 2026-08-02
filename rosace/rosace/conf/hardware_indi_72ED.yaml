@@ -2,6 +2,7 @@
 INDI_drivers:
 
     guiding_camera:
+        role: camera
         module: camera
         # module: asi_camera
         module_dir: rosace.hardware_indi.devices
@@ -16,6 +17,7 @@ INDI_drivers:
         cooling_capability : -20
         sampling_arcsec : 1.75
     science_camera:
+        role: camera
         module: camera
         module_dir: rosace.hardware_indi.devices
         camera_name : Atik 314L
@@ -28,6 +30,7 @@ INDI_drivers:
         cooling_capability : -20
 
     mount:
+        role: mount
         module: mount
         module_dir: rosace.hardware_indi.devices
         mount_name : ZWO AM3 USB
@@ -38,6 +41,7 @@ INDI_drivers:
         equatorial_eod: J2000 # JNOW
 
     pointing_camera:
+        role: camera
         module: asi_camera
         module_dir: rosace.hardware_indi.devices
         camera_name : ZWO CCD ASI224MC
@@ -48,6 +52,7 @@ INDI_drivers:
         cooling : false
 
     focuser:
+        role: focuser
         module: focuser
         module_dir: rosace.hardware_indi.devices
         focuser_name: ZWO EAF

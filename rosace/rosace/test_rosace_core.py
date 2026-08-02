@@ -318,6 +318,18 @@ class TestObservation:
         obs1.sequencer_data["raw_files"] = ["a.fits"]
         assert obs2.sequencer_data == {}
 
+    def test_hardware_defaults_to_empty_dict_and_is_independent_per_instance(self):
+        obs1 = self._make("id1")
+        obs2 = self._make("id2")
+        assert obs1.hardware == {}
+        obs1.hardware["mount"] = object()
+        assert obs2.hardware == {}
+
+    def test_hardware_excluded_from_model_dump(self):
+        obs = self._make()
+        obs.hardware["mount"] = object()
+        assert "hardware" not in obs.model_dump(mode="json")
+
     def test_suggested_filename_uses_target_name(self):
         obs = self._make()
         assert obs.suggested_filename.endswith("_Altair.yaml")
@@ -360,6 +372,12 @@ class TestSessionContext:
     def test_custom_site(self):
         ctx = SessionContext(site_name="Pic du Midi")
         assert ctx.site_name == "Pic du Midi"
+
+    def test_hardware_defaults_to_empty_dict_and_is_independent_per_instance(self):
+        ctx1, ctx2 = SessionContext(), SessionContext()
+        assert ctx1.hardware == {}
+        ctx1.hardware["mount"] = object()
+        assert ctx2.hardware == {}
 
 
 class TestObservationSessionId:

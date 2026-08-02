@@ -1,27 +1,36 @@
 """
-Hardware connectivity check for INIT_SESSION (SEQUENCER_BACKEND=indi only).
+Hardware connectivity for INIT_SESSION (SEQUENCER_BACKEND=indi only).
 
-Reads the active hardware profile (conf/hardware_<variant>.yaml, resolved as
-HARDWARE_CONFIG_PATH) into a plain dict and, for every declared INDI device
-plus PHD2, attempts a single connection bounded by
-HARDWARE_CONNECT_TIMEOUT_SECONDS. Each device's driver class is loaded
-dynamically from its own module/module_dir/class_name fields, then
-instantiated and connected using nothing but its own config sub-dict.
+connect_session_hardware() reads the active hardware profile
+(conf/hardware_<variant>.yaml, resolved as HARDWARE_CONFIG_PATH) into a
+plain dict and, for every declared INDI device, connects it for real and
+keeps the connection open for the whole session — the caller (INIT_SESSION)
+is responsible for handing the result to CLOSE_SESSION so each adapter gets
+disconnected there. Each device's driver class is loaded dynamically from
+its own module/module_dir/class_name fields, then instantiated and
+connected using nothing but its own config sub-dict, bounded by
+HARDWARE_CONNECT_TIMEOUT_SECONDS. The connected device is wrapped in the
+adapter matching its declared `role` field (see hardware/ for the generic
+interfaces those adapters satisfy) — a device whose role has no registered
+adapter yet (e.g. a spectroscope) is connected and logged, not fatal, but
+isn't included in the returned mapping since nothing could call it through
+hardware/ yet.
 
 Devices are connected via blocking (non-asyncio) code inherited from
-hardware_indi/, so each device check runs in a worker thread
+hardware_indi/, so each device connect runs in a worker thread
 (asyncio.to_thread) to avoid blocking the event loop. Devices sharing the
 same INDI server (indi_host/indi_port) also share a single IndiClient
 instance under the hood (see hardware_indi/wrapper/indi_client.py's
-SingletonIndiClientHolder) whose setup is not thread-safe, so device checks
-run one at a time rather than concurrently. PHD2 uses a plain asyncio TCP
-connection and runs concurrently with the device checks.
+SingletonIndiClientHolder) whose setup is not thread-safe, so devices are
+connected one at a time rather than concurrently. PHD2 uses a plain
+asyncio TCP connection and runs concurrently with the device connects —
+it's checked for reachability only (no adapter: guiding is a separate
+protocol/service, out of scope for hardware/).
 
-Devices are disconnected again right after a successful check: this
-function only verifies reachability, it doesn't keep connections open for
-the rest of the session (SEQUENCER's own connection lifecycle is a separate,
-not yet implemented, concern - see sequencer_plugins/indi/, still
-placeholders).
+Known simplification: if one device fails partway through, devices already
+connected before it are left connected (not explicitly disconnected here)
+since INIT_SESSION failure already stops the session as a critical error —
+acceptable for now, revisit if leaked connections become a real problem.
 """
 
 from __future__ import annotations
@@ -33,8 +42,19 @@ import logging
 import yaml
 
 from ..config import HARDWARE_CONFIG_PATH, HARDWARE_CONNECT_TIMEOUT_SECONDS
+from ..hardware_indi.adapters.camera import CameraAdapter
+from ..hardware_indi.adapters.filter_wheel import FilterWheelAdapter
+from ..hardware_indi.adapters.focuser import FocuserAdapter
+from ..hardware_indi.adapters.mount import MountAdapter
 
 log = logging.getLogger("spectro.plugin.hardware_connectivity")
+
+_ADAPTERS_BY_ROLE = {
+    "mount": MountAdapter,
+    "camera": CameraAdapter,
+    "focuser": FocuserAdapter,
+    "filter_wheel": FilterWheelAdapter,
+}
 
 
 def _load_hardware_config() -> dict:
@@ -47,29 +67,43 @@ def _load_device_class(module_dir: str, module: str, class_name: str):
     return getattr(mod, class_name)
 
 
-def _connect_device_sync(device_cfg: dict, timeout: float) -> None:
-    """Blocking: instantiate the device's driver class and connect it. Runs in a worker thread."""
+def _connect_device_sync(device_cfg: dict, timeout: float):
+    """Blocking: instantiate the device's driver class and connect it (left open). Runs in a worker thread."""
     cls = _load_device_class(device_cfg["module_dir"], device_cfg["module"], device_cfg["class_name"])
     device = cls(config=device_cfg, connect_on_create=False)
     device.timeout = timeout
     device.connect()
-    device.disconnect()
+    return device
 
 
-async def _check_devices(devices: dict[str, dict], timeout: float) -> list[str]:
+async def _connect_devices(devices: dict[str, dict], timeout: float) -> tuple[dict[str, object], list[str]]:
     """Connects every device one at a time (they may share a single, non-thread-safe
-    IndiClient behind the scenes) and returns the list of failure messages."""
+    IndiClient behind the scenes) and wraps each in its role's adapter.
+    Returns (adapters by device name, failure messages)."""
+    adapters: dict[str, object] = {}
     failures = []
     for device_name, device_cfg in devices.items():
         try:
-            await asyncio.wait_for(
+            device = await asyncio.wait_for(
                 asyncio.to_thread(_connect_device_sync, device_cfg, timeout),
                 timeout=timeout,
             )
-            log.info(f"[INIT_SESSION] Device '{device_name}' reachable")
         except Exception as e:
             failures.append(f"device '{device_name}': {e}")
-    return failures
+            continue
+
+        role = device_cfg.get("role")
+        adapter_cls = _ADAPTERS_BY_ROLE.get(role)
+        if adapter_cls is None:
+            log.warning(
+                f"[INIT_SESSION] Device '{device_name}' (role={role!r}) connected, "
+                f"no adapter registered for this role yet — not usable from hardware/"
+            )
+            continue
+        adapters[device_name] = adapter_cls(device)
+        log.info(f"[INIT_SESSION] Device '{device_name}' connected")
+
+    return adapters, failures
 
 
 async def _check_phd2(phd2_cfg: dict, timeout: float) -> str | None:
@@ -84,22 +118,28 @@ async def _check_phd2(phd2_cfg: dict, timeout: float) -> str | None:
         return f"PHD2 ({host}:{port}): {e}"
 
 
-async def check_hardware_connectivity() -> None:
-    """Verifies every declared INDI device and PHD2 answer within HARDWARE_CONNECT_TIMEOUT_SECONDS.
-    Raises RuntimeError listing every failure if at least one check fails."""
+async def connect_session_hardware() -> dict[str, object]:
+    """Connects every declared INDI device for the whole session (left open —
+    the caller must disconnect each returned adapter at CLOSE_SESSION) and
+    checks PHD2 reachability. Raises RuntimeError listing every failure if at
+    least one device or PHD2 fails. Returns the connected adapters, keyed by
+    device name (e.g. "science_camera", "mount") — this is what becomes
+    SessionContext.hardware / Observation.hardware."""
     hw_config = _load_hardware_config()
     timeout = HARDWARE_CONNECT_TIMEOUT_SECONDS
 
-    devices_task = asyncio.create_task(_check_devices(hw_config.get("INDI_drivers", {}), timeout))
+    devices_task = asyncio.create_task(_connect_devices(hw_config.get("INDI_drivers", {}), timeout))
     phd2_task = (
         asyncio.create_task(_check_phd2(hw_config["PHD2_config"], timeout))
         if "PHD2_config" in hw_config
         else None
     )
 
-    device_failures = await devices_task
+    adapters, device_failures = await devices_task
     phd2_failure = await phd2_task if phd2_task else None
 
     failures = device_failures + ([phd2_failure] if phd2_failure else [])
     if failures:
         raise RuntimeError(f"Hardware connectivity check failed: {'; '.join(failures)}")
+
+    return adapters

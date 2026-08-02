@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from ..config import OBSERVATIONS_DIR, SEQUENCER_BACKEND, SITE_NAME
 from ..models import SessionContext
-from .hardware_connectivity import check_hardware_connectivity
+from .hardware_connectivity import connect_session_hardware
 
 log = logging.getLogger("spectro.plugin.init_session")
 
@@ -23,9 +23,9 @@ class InitSessionPlugin:
         log.info(f"[INIT_SESSION] Session directory: {session_dir}")
 
         if SEQUENCER_BACKEND == "indi":
-            log.info("[INIT_SESSION] Checking hardware connectivity (INDI devices + PHD2)…")
-            await check_hardware_connectivity()
-            log.info("[INIT_SESSION] Hardware connectivity check passed")
+            log.info("[INIT_SESSION] Connecting hardware (INDI devices + PHD2)…")
+            ctx.hardware = await connect_session_hardware()
+            log.info(f"[INIT_SESSION] Hardware connected: {list(ctx.hardware)}")
         else:
             log.info("[INIT_SESSION] Running in DEMO mode (sequencer_backend=internal) — no hardware involved")
 

@@ -23,10 +23,11 @@ def fast_sleep(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def mock_hardware_check(monkeypatch):
-    """Par défaut, le check de connectivité matérielle réussit instantanément —
-    les tests qui portent sur autre chose n'ont pas à parler à du vrai matériel INDI."""
-    mock = AsyncMock(return_value=None)
-    monkeypatch.setattr("rosace.plugins.init_session.check_hardware_connectivity", mock)
+    """Par défaut, la connexion matérielle réussit instantanément et renvoie un
+    device — les tests qui portent sur autre chose n'ont pas à parler à du vrai
+    matériel INDI."""
+    mock = AsyncMock(return_value={"mount": object()})
+    monkeypatch.setattr("rosace.plugins.init_session.connect_session_hardware", mock)
     return mock
 
 
@@ -103,6 +104,14 @@ class TestHardwareConnectivityDispatch:
             await InitSessionPlugin().run(ctx)
 
         assert not any("DEMO mode" in record.message for record in caplog.records)
+
+    async def test_sets_ctx_hardware_when_backend_is_indi(self, monkeypatch, mock_hardware_check):
+        monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "indi")
+        ctx = SessionContext(site_name="St-Pancrasse")
+
+        await InitSessionPlugin().run(ctx)
+
+        assert set(ctx.hardware) == {"mount"}
 
     async def test_propagates_hardware_connectivity_failure(self, monkeypatch, mock_hardware_check):
         monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "indi")

@@ -7,6 +7,22 @@ from rosace.hardware_indi.adapters.focuser import FocuserAdapter
 
 
 class TestFocuserAdapter:
+    async def test_connect_calls_indi_focuser(self):
+        indi_focuser = MagicMock()
+        adapter = FocuserAdapter(indi_focuser)
+
+        await adapter.connect()
+
+        indi_focuser.connect.assert_called_once()
+
+    async def test_disconnect_calls_indi_focuser(self):
+        indi_focuser = MagicMock()
+        adapter = FocuserAdapter(indi_focuser)
+
+        await adapter.disconnect()
+
+        indi_focuser.disconnect.assert_called_once()
+
     async def test_move_to_calls_indi_focuser(self):
         indi_focuser = MagicMock()
         adapter = FocuserAdapter(indi_focuser)

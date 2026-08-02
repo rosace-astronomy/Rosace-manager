@@ -225,6 +225,7 @@ async def _session_runner_body():
                         created_at=datetime.now(timezone.utc),
                         session_id=session.session_id,
                         obs_dir=str(session_dir),
+                        hardware=session.hardware,
                     )
                 else:
                     await db_set_stage_status(obs.id, stage, "running")
@@ -266,7 +267,11 @@ async def _session_runner_body():
         else:
             # SEQUENCER succeeded: record observation and launch post-obs in background
             state.completed.append(obs)
-            task = asyncio.create_task(run_post_obs(obs.model_copy(deep=True)))
+            # hardware excluded from the deep copy: REDUCTION/SHARING/ARCHIVE never
+            # touch it, and deep-copying a live device connection is meaningless
+            # (and likely to break — see Observation.hardware's docstring).
+            post_obs_copy = obs.model_copy(deep=True, update={"hardware": {}})
+            task = asyncio.create_task(run_post_obs(post_obs_copy))
             post_obs_tasks.append(task)
             obs = None
 

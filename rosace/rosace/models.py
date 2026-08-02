@@ -94,6 +94,16 @@ class Observation(BaseModel):
     sharing_data: dict[str, Any] = {}
     archive_data: dict[str, Any] = {}
 
+    # Connected hardware adapters (see hardware/, hardware_indi/adapters/), keyed
+    # by device name from the hardware YAML (e.g. "mount", "science_camera") —
+    # copied from SessionContext.hardware by session_runner() before SEQUENCER
+    # runs, since sub-plugins only ever see Observation, never SessionContext.
+    # Not persisted: excluded from model_dump() (the YAML dossier is a record of
+    # what happened, not live connection handles), and excluded from deep-copies
+    # (see model_copy(deep=True, update={"hardware": {}}) in main.py — deep-copying
+    # a live device connection is meaningless and likely to break).
+    hardware: dict[str, Any] = Field(default_factory=dict, exclude=True)
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @property
@@ -124,6 +134,12 @@ class SessionContext(BaseModel):
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     site_name: str = "St-Pancrasse"
     session_dir: Optional[str] = None
+
+    # Connected hardware adapters for the whole session (see Observation.hardware
+    # above for the full rationale) — set once by InitSessionPlugin, read again by
+    # CloseSessionPlugin to disconnect each adapter. Not persisted (db_insert_session
+    # only reads specific fields, never dumps this model wholesale).
+    hardware: dict[str, Any] = Field(default_factory=dict, exclude=True)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

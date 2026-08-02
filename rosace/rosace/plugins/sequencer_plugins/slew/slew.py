@@ -1,14 +1,14 @@
 """
 Sous-plugin SEQUENCER — Pointage (Slew)
-Backend "indi" — PLACEHOLDER : à implémenter avec le vrai protocole INDI
-(chantier suivant). Pour l'instant, action minimale (sleep) mais structure
-et contrat (clé posée dans sequencer_data) identiques à slew_internal.py,
-pour rester compatible avec n'importe quel programme YAML.
+Backend "indi" — appelle réellement le hardware via obs.hardware["mount"]
+(voir hardware/mount.py pour le contrat générique, hardware_indi/adapters/mount.py
+pour l'implémentation INDI). Minimal à dessein : ni gestion fine des erreurs de
+pointage, ni vérification post-slew — à enrichir quand ce sous-plugin deviendra
+une vraie fonctionnalité, pas juste un câblage.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from ....models import Observation
@@ -18,16 +18,17 @@ log = logging.getLogger("spectro.subplugin.slew")
 
 
 class SlewPlugin(SubPlugin):
-    """Pointe le télescope vers la cible (RA/Dec) — placeholder INDI, pas encore implémenté."""
+    """Pointe le télescope vers la cible (RA/Dec) via le hardware INDI réel."""
 
     async def execute(self, obs: Observation) -> Observation:
         target = obs.scheduler_data.get("target")
-        target_name = target.name if target else "inconnue"
+        if not target:
+            raise RuntimeError("SLEW : target manquant dans scheduler_data")
 
-        log.info(f"[SLEW] (placeholder INDI) Pointage vers {target_name}")
-        # TODO : commande INDI réelle (télescope.slew_to(ra, dec) via un client INDI)
-        await asyncio.sleep(1)
+        log.info(f"[SLEW] Pointage vers {target.name}")
+        mount = obs.hardware["mount"]
+        await mount.slew_to(target.ra, target.dec)
 
-        obs.sequencer_data["slew"] = {"target": target_name}
-        log.info(f"[SLEW] (placeholder INDI) Télescope en position sur {target_name}")
+        obs.sequencer_data["slew"] = {"target": target.name}
+        log.info(f"[SLEW] Télescope en position sur {target.name}")
         return obs

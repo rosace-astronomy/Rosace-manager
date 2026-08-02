@@ -7,6 +7,22 @@ from rosace.hardware_indi.adapters.camera import CameraAdapter
 
 
 class TestCameraAdapter:
+    async def test_connect_calls_indi_camera(self):
+        indi_camera = MagicMock()
+        adapter = CameraAdapter(indi_camera)
+
+        await adapter.connect()
+
+        indi_camera.connect.assert_called_once()
+
+    async def test_disconnect_calls_indi_camera(self):
+        indi_camera = MagicMock()
+        adapter = CameraAdapter(indi_camera)
+
+        await adapter.disconnect()
+
+        indi_camera.disconnect.assert_called_once()
+
     async def test_expose_runs_full_acquisition_sequence_in_order(self):
         indi_camera = MagicMock()
         indi_camera.get_received_image.return_value = "fake_fits_data"

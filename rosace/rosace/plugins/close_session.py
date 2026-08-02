@@ -11,6 +11,14 @@ class CloseSessionPlugin:
 
     async def run(self, ctx: SessionContext) -> SessionContext:
         log.info(f"[CLOSE_SESSION] Clôture session {ctx.session_id}")
+
+        for device_name, adapter in ctx.hardware.items():
+            try:
+                await adapter.disconnect()
+                log.info(f"[CLOSE_SESSION] Device '{device_name}' disconnected")
+            except Exception as e:
+                log.error(f"[CLOSE_SESSION] Failed to disconnect '{device_name}': {e}")
+
         await asyncio.sleep(7.0)  # TODO : stationner télescope, fermer coupole…
         log.info("[CLOSE_SESSION] Session clôturée")
         return ctx

@@ -1,6 +1,7 @@
 # Configuration for all the INDI devices
 INDI_drivers:
     guiding_camera:
+        role: camera
         module: camera
         module_dir: rosace.hardware_indi.devices
         camera_name : CCD Simulator
@@ -13,6 +14,7 @@ INDI_drivers:
         sampling_arcsec : 2.55
 
     science_camera:
+        role: camera
         module: camera
         module_dir: rosace.hardware_indi.devices
         camera_name : CCD Simulator
@@ -24,6 +26,7 @@ INDI_drivers:
         cooling_capability : -20
 
     mount:
+        role: mount
         module: mount
         module_dir: rosace.hardware_indi.devices
         mount_name : Telescope Simulator
@@ -34,6 +37,7 @@ INDI_drivers:
         equatorial_eod: J2000 # (or JNOW)
 
     focuser:
+        role: focuser
         module: focuser
         module_dir: rosace.hardware_indi.devices
         focuser_name: Focuser Simulator
