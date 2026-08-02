@@ -13,6 +13,8 @@ Dépendances :
 
 import asyncio
 import logging
+import subprocess
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -121,6 +123,67 @@ class TestSequencerBackend:
 
         monkeypatch.setattr(config_module, "BASE_DATA_DIR", "/chemin/inexistant/impossible")
         config_module._log_fatal_startup_error("ne doit pas lever")  # ne doit pas lever
+
+
+class TestConfigResolution:
+    """_resolve_config_path() : ROSACE_CONFIG > <base_data_dir>/conf/config.yaml > défaut du paquet."""
+
+    def test_explicit_rosace_config_env_wins(self, tmp_path, monkeypatch):
+        explicit = tmp_path / "explicit.yaml"
+        explicit.write_text("base_data_dir: /tmp/whatever\n")
+        monkeypatch.setenv("ROSACE_CONFIG", str(explicit))
+
+        import rosace.config as config_module
+        assert config_module._resolve_config_path() == explicit
+
+    def test_falls_back_to_base_data_dir_conf_when_present(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("ROSACE_CONFIG", raising=False)
+
+        install_dir = tmp_path / "install"
+        (install_dir / "conf").mkdir(parents=True)
+        real_config = install_dir / "conf" / "config.yaml"
+        real_config.write_text(f"base_data_dir: {install_dir}\n")
+
+        boot_file = tmp_path / "base_data_dir.yaml"
+        boot_file.write_text(f"base_data_dir: {install_dir}\n")
+
+        import rosace.config as config_module
+        monkeypatch.setattr(config_module, "_BASE_DATA_DIR_FILE", boot_file)
+
+        assert config_module._resolve_config_path() == real_config
+
+    def test_falls_back_to_packaged_default_when_nothing_found(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("ROSACE_CONFIG", raising=False)
+
+        boot_file = tmp_path / "base_data_dir.yaml"
+        boot_file.write_text(f"base_data_dir: {tmp_path / 'nonexistent_install'}\n")
+
+        import rosace.config as config_module
+        monkeypatch.setattr(config_module, "_BASE_DATA_DIR_FILE", boot_file)
+
+        assert config_module._resolve_config_path() == config_module._DEFAULT_CONFIG_PATH
+
+
+class TestCheckConfigCLI:
+    """`python -m rosace.main --check-config [fichier]` — valide et sort, ne démarre jamais le serveur."""
+
+    def test_no_argument_validates_active_config_and_exits_zero(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "rosace.main", "--check-config"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0
+        assert "[OK]" in result.stdout
+
+    def test_missing_file_exits_nonzero_with_clear_message(self, tmp_path):
+        missing = tmp_path / "does_not_exist.yaml"
+        result = subprocess.run(
+            [sys.executable, "-m", "rosace.main", "--check-config", str(missing)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode != 0
+        assert "[FAIL]" in result.stdout
+        assert str(missing) in result.stdout
 
 
 # ═════════════════════════════════════════════════════════════

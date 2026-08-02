@@ -157,15 +157,26 @@ All application configuration lives in `conf/` — one predictable place to look
 
 | File | Purpose |
 |---|---|
-| `config.yaml` | Core application settings (data paths, site name, active hardware profile, active scheduler) |
+| `base_data_dir.yaml` | Single field (`base_data_dir`), read before everything else to locate this installation's own active `config.yaml` — see "Which config.yaml is active" below |
+| `config.yaml` | Core application settings (data paths, site name, active hardware profile, active scheduler) — the packaged copy is demo defaults; a real deployment's own copy lives under `<base_data_dir>/conf/config.yaml` instead |
 | `logging.cfg` | Logging setup (`fileConfig` ini format — see below) |
 | `hardware_<variant>.yaml` | Hardware/instrument definitions, one file per variant (e.g. `hardware_indi_simu.yaml` for the INDI simulators, `hardware_indi_72ED.yaml` for a real telescope). Which variant is active is selected via `active_hardware` in `config.yaml` (resolved to `HARDWARE_CONFIG_PATH` in `config.py`). Declares, under `INDI_drivers`, one entry per device (`module`/`module_dir`/`class_name` for dynamic loading, plus device-specific fields incl. `indi_client: {indi_host, indi_port}`), and a `PHD2_config` section (`host`/`port`/...) — parsed by `plugins/hardware_connectivity.py` when `sequencer_backend=indi`. |
 
 Note: `programmes/*.yaml` (scientific programme definitions) intentionally live outside `conf/` — they're a catalogue of interchangeable observation plans, not app configuration.
 
+### Which config.yaml is active (multi-instrument support)
+
+The packaged `conf/config.yaml` is a **demo default**, meant to work out of the box — but a real deployment's own settings (site name, active hardware, observation list...) shouldn't have to live inside the git-tracked code tree, and someone running more than one instrument (e.g. a main telescope plus a demo scope) needs more than one active config. `config.py::_resolve_config_path()` picks the active file in priority order, evaluated once at import time:
+
+1. **`ROSACE_CONFIG` env var**, if set — an explicit path (any location, `~` expanded), highest priority. `python -m rosace.main <path>` sets this from a positional CLI argument before any other import runs (see `main.py`'s top-of-file CLI handling, required to run before `from .config import ...` triggers `config.py`'s own loading); a `uvicorn rosace.main:app` launch needs the env var set directly instead (`ROSACE_CONFIG=<path> uvicorn ...`). Meant for one-off overrides — a second instrument, a test config — not the everyday case.
+2. **`<base_data_dir>/conf/config.yaml`**, if it exists — where `base_data_dir` comes from `conf/base_data_dir.yaml` (a single-field file, `base_data_dir: ~/.rosace` by default). This is a real installation's own config, found automatically on every launch with no argument needed — the day-to-day case once you've configured your own instrument. `conf/base_data_dir.yaml` itself always lives in the package's own `conf/`: it has to be found before `base_data_dir` is even known, so it can't live under `base_data_dir` itself.
+3. **The packaged `conf/config.yaml`** — used only if neither of the above applies (fresh install, nothing configured yet).
+
+`python -m rosace.main --check-config [path]` validates a config without starting the server: with no argument, it validates whatever step 1–3 above would resolve to; with a path, it validates that file specifically (via the same `ROSACE_CONFIG` mechanism). Prints `[OK]`/`[FAIL]` and exits 0/1 — never reaches `uvicorn.run()` either way, so it's safe to run against a candidate config without risking a real session starting.
+
 ### Key configuration (`config.py` loads `conf/config.yaml`)
 
-`config.py` is a thin loader: it reads `conf/config.yaml` at import time and exposes the same constants the rest of the codebase already imports (`from .config import BASE_DATA_DIR, ...`).
+`config.py` is a thin loader: it resolves which `config.yaml` is active (see above), reads it at import time, and exposes the same constants the rest of the codebase already imports (`from .config import BASE_DATA_DIR, ...`).
 
 | Constant | Source key in `config.yaml` | Default | Purpose |
 |---|---|---|---|

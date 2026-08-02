@@ -4,19 +4,47 @@ Configuration globale : charge conf/config.yaml et expose les constantes de l'ap
 
 import logging
 import logging.config
+import os
 from pathlib import Path
 
 import yaml
 
-_CONFIG_PATH = Path(__file__).parent / "conf" / "config.yaml"
+_PACKAGE_CONF_DIR = Path(__file__).parent / "conf"
+_DEFAULT_CONFIG_PATH = _PACKAGE_CONF_DIR / "config.yaml"
+_BASE_DATA_DIR_FILE = _PACKAGE_CONF_DIR / "base_data_dir.yaml"
 
 
-def _load_config(path: Path = _CONFIG_PATH) -> dict:
+def _load_config(path: Path) -> dict:
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
-_cfg = _load_config()
+def _resolve_config_path() -> Path:
+    """
+    Which config.yaml to load, in priority order:
+    1. ROSACE_CONFIG env var, if set — an explicit path (any location), e.g. set by
+       `python -m rosace.main <path>` or by the caller's own environment. Highest
+       priority, meant for one-off overrides (a second instrument, a test config).
+    2. <base_data_dir>/conf/config.yaml, where base_data_dir comes from
+       base_data_dir.yaml (see that file) — this installation's own config, so a
+       real deployment doesn't need to pass ROSACE_CONFIG on every launch.
+    3. The packaged conf/config.yaml — demo defaults, works out of the box on a
+       fresh install with nothing configured yet.
+    """
+    explicit = os.environ.get("ROSACE_CONFIG")
+    if explicit:
+        return Path(explicit).expanduser()
+
+    boot_cfg = _load_config(_BASE_DATA_DIR_FILE)
+    candidate = Path(boot_cfg["base_data_dir"]).expanduser() / "conf" / "config.yaml"
+    if candidate.exists():
+        return candidate
+
+    return _DEFAULT_CONFIG_PATH
+
+
+_CONFIG_PATH = _resolve_config_path()
+_cfg = _load_config(_CONFIG_PATH)
 
 # ── Répertoires ───────────────────────────────────────────────
 BASE_DATA_DIR = Path(_cfg["base_data_dir"]).expanduser()

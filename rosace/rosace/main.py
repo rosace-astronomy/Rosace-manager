@@ -14,6 +14,30 @@ Machine d'état : INIT_SESSION → SCHEDULER → SEQUENCER → REDUCTION → SHA
 # Faire une séquence d'observations à partir d'une liste d'étoiles en fichier texte
 #─────────────────────────────────────────────────────────────
 
+# Config-selection CLI handling — must run before `from .config import ...`
+# below, since that import triggers config.py's own module-level loading.
+# Only takes effect for `python -m rosace.main` (uvicorn-driven launches set
+# ROSACE_CONFIG directly in the environment instead — see config.py).
+import os
+import sys
+
+if __name__ == "__main__":
+    _argv = sys.argv[1:]
+    if "--check-config" in _argv:
+        _idx = _argv.index("--check-config")
+        _explicit_config = _argv[_idx + 1] if _idx + 1 < len(_argv) else None
+        if _explicit_config:
+            os.environ["ROSACE_CONFIG"] = _explicit_config
+        try:
+            import rosace.config as _checked_config
+        except Exception as e:
+            print(f"[FAIL] config invalid: {e}")
+            sys.exit(1)
+        print(f"[OK] config valid: {_checked_config._CONFIG_PATH}")
+        sys.exit(0)
+    elif _argv:
+        os.environ["ROSACE_CONFIG"] = _argv[0]
+
 import asyncio
 import logging
 import uuid
