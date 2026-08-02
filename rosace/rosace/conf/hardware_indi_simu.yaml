@@ -2,7 +2,7 @@
 INDI_drivers:
     guiding_camera:
         module: camera
-        module_dir: rosace.indi_hardware.devices
+        module_dir: rosace.hardware_indi.devices
         camera_name : CCD Simulator
         class_name : IndiCamera
         indi_client :
@@ -14,7 +14,7 @@ INDI_drivers:
 
     science_camera:
         module: camera
-        module_dir: rosace.indi_hardware.devices
+        module_dir: rosace.hardware_indi.devices
         camera_name : CCD Simulator
         class_name : IndiCamera
         indi_client :
@@ -25,7 +25,7 @@ INDI_drivers:
 
     mount:
         module: mount
-        module_dir: rosace.indi_hardware.devices
+        module_dir: rosace.hardware_indi.devices
         mount_name : Telescope Simulator
         class_name : IndiMount
         indi_client :
@@ -35,7 +35,7 @@ INDI_drivers:
 
     focuser:
         module: focuser
-        module_dir: rosace.indi_hardware.devices
+        module_dir: rosace.hardware_indi.devices
         focuser_name: Focuser Simulator
         class_name : IndiFocuser
         port: /dev/ttyUSB0

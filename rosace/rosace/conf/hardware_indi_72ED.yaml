@@ -4,7 +4,7 @@ INDI_drivers:
     guiding_camera:
         module: camera
         # module: asi_camera
-        module_dir: rosace.indi_hardware.devices
+        module_dir: rosace.hardware_indi.devices
         camera_name : ZWO CCD ASI120MM Mini
         # camera_name : Atik 314L
         class_name : IndiCamera
@@ -17,7 +17,7 @@ INDI_drivers:
         sampling_arcsec : 1.75
     science_camera:
         module: camera
-        module_dir: rosace.indi_hardware.devices
+        module_dir: rosace.hardware_indi.devices
         camera_name : Atik 314L
         # camera_name : ZWO CCD ASI120MM Mini
         class_name : IndiCamera
@@ -29,7 +29,7 @@ INDI_drivers:
 
     mount:
         module: mount
-        module_dir: rosace.indi_hardware.devices
+        module_dir: rosace.hardware_indi.devices
         mount_name : ZWO AM3 USB
         class_name : IndiMount
         indi_client :
@@ -39,7 +39,7 @@ INDI_drivers:
 
     pointing_camera:
         module: asi_camera
-        module_dir: rosace.indi_hardware.devices
+        module_dir: rosace.hardware_indi.devices
         camera_name : ZWO CCD ASI224MC
         class_name : IndiASICamera
         indi_client :
@@ -49,7 +49,7 @@ INDI_drivers:
 
     focuser:
         module: focuser
-        module_dir: rosace.indi_hardware.devices
+        module_dir: rosace.hardware_indi.devices
         focuser_name: ZWO EAF
         class_name : IndiFocuser
         # port: /dev/serial/by-id/usb-Optec__Inc._Optec_USB_Serial_Cable_OP5AORA9-if00-port0

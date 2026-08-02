@@ -1,7 +1,7 @@
 """
 Minimal base class for INDI wrapper/device classes.
 
-Distant heritage: this package (indi_hardware/) originates from the
+Distant heritage: this package (hardware_indi/) originates from the
 PANOPTES/POCS observatory control software (github.com/panoptes/POCS).
 The original Base class loaded a POCS-specific config file and opened a
 MongoDB connection on every instantiation - both removed here, since

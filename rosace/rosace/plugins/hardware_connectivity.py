@@ -9,10 +9,10 @@ dynamically from its own module/module_dir/class_name fields, then
 instantiated and connected using nothing but its own config sub-dict.
 
 Devices are connected via blocking (non-asyncio) code inherited from
-indi_hardware/, so each device check runs in a worker thread
+hardware_indi/, so each device check runs in a worker thread
 (asyncio.to_thread) to avoid blocking the event loop. Devices sharing the
 same INDI server (indi_host/indi_port) also share a single IndiClient
-instance under the hood (see indi_hardware/wrapper/indi_client.py's
+instance under the hood (see hardware_indi/wrapper/indi_client.py's
 SingletonIndiClientHolder) whose setup is not thread-safe, so device checks
 run one at a time rather than concurrently. PHD2 uses a plain asyncio TCP
 connection and runs concurrently with the device checks.

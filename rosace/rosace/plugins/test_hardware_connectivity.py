@@ -21,7 +21,7 @@ def short_timeout(monkeypatch):
 
 MOUNT_DRIVER = {
     "module": "mount",
-    "module_dir": "rosace.indi_hardware.devices",
+    "module_dir": "rosace.hardware_indi.devices",
     "class_name": "IndiMount",
     "mount_name": "Test Mount",
     "indi_client": {"indi_host": "localhost", "indi_port": 7624},
@@ -29,7 +29,7 @@ MOUNT_DRIVER = {
 
 FOCUSER_DRIVER = {
     "module": "focuser",
-    "module_dir": "rosace.indi_hardware.devices",
+    "module_dir": "rosace.hardware_indi.devices",
     "class_name": "IndiFocuser",
     "focuser_name": "Test Focuser",
     "port": "/dev/ttyUSB0",
@@ -52,19 +52,19 @@ class TestLoadHardwareConfig:
 class TestLoadDeviceClass:
 
     def test_loads_a_real_device_class(self):
-        from rosace.indi_hardware.devices.mount import IndiMount
+        from rosace.hardware_indi.devices.mount import IndiMount
 
-        cls = hc._load_device_class("rosace.indi_hardware.devices", "mount", "IndiMount")
+        cls = hc._load_device_class("rosace.hardware_indi.devices", "mount", "IndiMount")
 
         assert cls is IndiMount
 
     def test_raises_on_unknown_module(self):
         with pytest.raises(ImportError):
-            hc._load_device_class("rosace.indi_hardware.devices", "does_not_exist", "Whatever")
+            hc._load_device_class("rosace.hardware_indi.devices", "does_not_exist", "Whatever")
 
     def test_raises_on_unknown_class(self):
         with pytest.raises(AttributeError):
-            hc._load_device_class("rosace.indi_hardware.devices", "mount", "DoesNotExist")
+            hc._load_device_class("rosace.hardware_indi.devices", "mount", "DoesNotExist")
 
 
 class TestCheckHardwareConnectivity:
