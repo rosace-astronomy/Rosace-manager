@@ -20,11 +20,14 @@ log = logging.getLogger("spectro.observation_file")
 def create_observation_file(obs: Observation, target_dir: Path) -> Path:
     """
     Détermine le nom de fichier YAML de l'observation (obs.suggested_filename)
-    et l'enregistre sur obs.yaml_file. Le contenu est écrit par
-    write_observation_file(), appelée juste après par l'appelant.
+    et l'enregistre sur obs.yaml_file — juste le nom de fichier, pas le chemin
+    complet : le répertoire est déjà porté séparément par obs.obs_dir, et
+    obs.yaml_file finit lui-même à l'intérieur du fichier YAML qu'il nomme,
+    où un chemin absolu n'aurait été qu'une redite encombrante. Le contenu
+    est écrit par write_observation_file(), appelée juste après par l'appelant.
     """
     filepath = target_dir / obs.suggested_filename
-    obs.yaml_file = str(filepath)
+    obs.yaml_file = filepath.name
     log.info(f"[OBSERVATION_FILE] Fichier d'observation créé : {filepath}")
     return filepath
 
@@ -41,5 +44,6 @@ def write_observation_file(obs: Observation) -> None:
     if not obs.yaml_file:
         return
     content = obs.model_dump(mode="json")
-    with open(obs.yaml_file, "w", encoding="utf-8") as f:
+    filepath = Path(obs.obs_dir) / obs.yaml_file
+    with open(filepath, "w", encoding="utf-8") as f:
         yaml.dump(content, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
