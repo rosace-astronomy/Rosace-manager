@@ -184,6 +184,8 @@ The packaged `conf/config.yaml` is a **demo default**, meant to work out of the 
 
 `python -m rosace.main --check-config [path]` validates a config without starting the server: with no argument, it validates whatever step 1–3 above would resolve to; with a path, it validates that file specifically (via the same `ROSACE_CONFIG` mechanism). Prints `[OK]`/`[FAIL]` and exits 0/1 — never reaches `uvicorn.run()` either way, so it's safe to run against a candidate config without risking a real session starting.
 
+`python -m rosace.main --help` (or `-h`) prints this same CLI's usage — the positional `config_path` argument and `--check-config` — and exits, without starting the server either.
+
 ### Key configuration (`config.py` loads `conf/config.yaml`)
 
 `config.py` is a thin loader: it resolves which `config.yaml` is active (see above), reads it at import time, and exposes the same constants the rest of the codebase already imports (`from .config import BASE_DATA_DIR, ...`).

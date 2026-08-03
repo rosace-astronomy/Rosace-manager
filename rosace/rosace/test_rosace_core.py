@@ -186,6 +186,30 @@ class TestCheckConfigCLI:
         assert str(missing) in result.stdout
 
 
+class TestHelpCLI:
+    """`python -m rosace.main --help` / `-h` — prints usage and exits, never starts the server."""
+
+    @pytest.mark.parametrize("flag", ["--help", "-h"])
+    def test_prints_usage_and_exits_zero(self, flag):
+        result = subprocess.run(
+            [sys.executable, "-m", "rosace.main", flag],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0
+        assert "--check-config" in result.stdout
+        assert "config_path" in result.stdout
+
+    def test_help_takes_priority_over_check_config(self):
+        """--help alongside --check-config prints usage rather than validating."""
+        result = subprocess.run(
+            [sys.executable, "-m", "rosace.main", "--check-config", "--help"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
+        assert "config valid" not in result.stdout  # would appear if --check-config actually ran
+
+
 # ═════════════════════════════════════════════════════════════
 # GROUPE 1 — Modèles Pydantic
 # ═════════════════════════════════════════════════════════════

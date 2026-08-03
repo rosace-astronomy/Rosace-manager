@@ -21,8 +21,33 @@ Machine d'état : INIT_SESSION → SCHEDULER → SEQUENCER → REDUCTION → SHA
 import os
 import sys
 
+_HELP_TEXT = """\
+Usage: python -m rosace.main [config_path] [--check-config [config_path]]
+
+  (no arguments)            Start the server using the active config, resolved in
+                            priority order: ROSACE_CONFIG env var > <base_data_dir>/
+                            conf/config.yaml (this installation's own config) > the
+                            packaged conf/config.yaml (fresh-install demo default).
+
+  config_path               Start the server against this config.yaml instead of
+                            the one that would normally be resolved — e.g. to run
+                            a second instrument's config for this launch only.
+                            One-off equivalent of setting ROSACE_CONFIG yourself.
+
+  --check-config [config_path]
+                            Validate a config and exit — never starts the server.
+                            With no path, validates whatever would normally be
+                            resolved; with a path, validates that file instead.
+                            Prints [OK]/[FAIL] and exits 0/1.
+
+  --help, -h                Show this message and exit.
+"""
+
 if __name__ == "__main__":
     _argv = sys.argv[1:]
+    if "--help" in _argv or "-h" in _argv:
+        print(_HELP_TEXT)
+        sys.exit(0)
     if "--check-config" in _argv:
         _idx = _argv.index("--check-config")
         _explicit_config = _argv[_idx + 1] if _idx + 1 < len(_argv) else None
