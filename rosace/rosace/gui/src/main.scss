@@ -87,6 +87,11 @@ body {
 	background: var( --bg-panel );
 }
 
+.x4input {
+	--input-background: var( --bg-card );
+	--input-color: var( --text );
+}
+
 
 
 // Header
@@ -388,5 +393,73 @@ body {
 @keyframes stage-pulse {
 	0%, 100% { opacity: 1; }
 	50%      { opacity: 0.4; }
+}
+
+// Login screen (AppShell, before MainView)
+.login-view {
+	position: relative;
+	width: 100%;
+	height: 100%;
+
+	// No .panel here (no border/background/shadow, deliberately) — a bordered card's
+	// height was coming out short of its own content for a reason not pinned down;
+	// simplest robust fix is to not have a box that can clip in the first place.
+	//
+	// Centering via absolute positioning + transform, not flex align/justify-content:
+	// the flex-based version (align-items/justify-content: center on .login-view) was
+	// tried twice and didn't reliably center .login-panel for a reason not pinned down
+	// either — this technique doesn't depend on flex container behavior at all.
+	.login-panel {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		width: 520px;
+		padding: 3.5rem 0;
+		gap: 2rem;
+
+		.login-title {
+			text-align: center;
+			font-size: 1.8rem;
+			color: var(--accent);
+			margin-bottom: 0.5rem;
+		}
+	}
+
+	.login-form {
+		// Form extends Box, not VBox — %box (shared.scss) only sets position:relative,
+		// no display:flex, unlike VBox/HBox — so gap/vertical stacking need to be set
+		// explicitly here, they aren't inherited the way they are for a plain VBox.
+		display: flex;
+		flex-direction: column;
+		gap: 1.75rem;
+
+		.field {
+			gap: 0.5rem;
+
+			.x4label {
+				font-size: 1rem;
+				color: var(--muted);
+			}
+
+			.x4input {
+				width: 100%;
+				height: 3.2rem;
+				font-size: 1.1rem;
+				border-radius: 8px;
+				padding: 0.5rem 1rem;
+				box-sizing: border-box;
+			}
+		}
+
+		.x4button {
+			height: 3.2rem;
+			font-size: 1.1rem;
+			margin-top: 0.5rem;
+			border-radius: 8px;
+			background: var(--accent);
+			color: white;
+		}
+	}
 }
 

@@ -52,3 +52,16 @@ observation_list_path: ~/.rosace/ObservationList.txt
 # plugins/schedulers/blank/scheduler.py for the contract a new one must
 # follow. Exposed as ACTIVE_SCHEDULER in config.py.
 active_scheduler: scheduler_rosace_2026
+
+# How long a login session (cookie) stays valid before requiring another
+# login. Long by design: the app runs unattended overnight, and a short
+# TTL would force inconvenient re-logins mid-session.
+# Exposed as SESSION_TTL_HOURS in config.py.
+session_ttl_hours: 336 # 336h = 14 days
+
+# Whether the session cookie requires HTTPS (the 'Secure' attribute). Keep
+# false for a plain-HTTP local network deployment — a true value stops the
+# browser from ever sending the cookie back over HTTP, including on
+# localhost. Only set true if every access path (local included) is
+# guaranteed HTTPS. Exposed as SESSION_COOKIE_SECURE in config.py.
+session_cookie_secure: false

@@ -4,6 +4,8 @@ import { VBox, HBox, Button, Label, Application, BoxProps, Image, Listbox, ListI
 
 import "./main.scss";
 
+import { LoginView, fetchCurrentUser, logout as authLogout, UserOut } from "./auth";
+
 import play_icon from "./assets/play.svg";
 import stop_icon from "./assets/stop.svg";
 import clock_icon from "./assets/clock.svg";
@@ -119,6 +121,7 @@ const STATUS_FETCH_TIME = 5000;
 const WS_RETRY_DELAY = 5000;
 
 const LOG_CREATE_MSG = "log.create";
+const AUTH_LOGOUT_MSG = "auth.logout";	// fired locally (Application.fireGlobal) on logout — AppShell listens
 
 const STAGE_LABEL: Record<StageType, { text: string, icon: string }> = {	//allow only a value of stages in stage_label
     scheduler: { text: "SCHEDULER", icon: null },
@@ -165,6 +168,7 @@ class AppHeader extends HBox {
                 label = new Label({ cls: "obs-count-badge", text: "0 obs" }),
 				new Button( { icon: "", menu: [
 					{ text: "Dark mode", checked: ( ) => app_data.settings.darkMode, click: ( ) => { app_data.settings.darkMode = !app_data.settings.darkMode; } },
+					{ text: "Déconnexion", click: ( ) => { authLogout().then( ( ) => Application.fireGlobal( AUTH_LOGOUT_MSG ) ); } },
 				]} ),
         ] );
 
@@ -376,6 +380,12 @@ class MainView extends VBox {
 	private async fetchStatus() {
         try {
             const res = await fetch(`${API}/status`, { signal: AbortSignal.timeout(5000) });
+            if (res.status === 401) {
+				// session gone (logout, expiry) — stop polling instead of spamming 401s
+				// forever in the background; AppShell switches back to the login screen.
+				Application.fireGlobal( AUTH_LOGOUT_MSG );
+				return;
+			}
             if (!res.ok) {
 				throw new Error( res.statusText );
 			}
@@ -415,14 +425,18 @@ class MainView extends VBox {
                 this.log("API disconnected");
             }
         }
-		finally {
-			this.setTimeout( "status", STATUS_FETCH_TIME, ( ) => this.fetchStatus() );
-		}
+		// not in a finally: the 401 branch above returns early, deliberately skipping
+		// this reschedule — see its comment.
+		this.setTimeout( "status", STATUS_FETCH_TIME, ( ) => this.fetchStatus() );
     }
 
 	private async fetchObs() {
         try {
 			const res = await fetch(`${API}/observations/recent`, { signal: AbortSignal.timeout(5000) });
+			if (res.status === 401) {
+				Application.fireGlobal( AUTH_LOGOUT_MSG );
+				return;
+			}
 			if (!res.ok) {
 				throw new Error( res.statusText );
 			}
@@ -430,13 +444,13 @@ class MainView extends VBox {
 			const obs = await res.json() as ObsRow[];
 			//this.renderObs( obs );
 			app_data.observations = obs;
-        } 
-		catch( e ) { 
+        }
+		catch( e ) {
 			this.showError( `obj fetch error`, e.toString() );
 		}
-		finally {
-			this.setTimeout( "obs", OBS_FETCH_TIME, ( ) => this.fetchObs() );
-		}
+		// not in a finally: the 401 branch above returns early, deliberately skipping
+		// this reschedule — see fetchStatus()'s matching comment.
+		this.setTimeout( "obs", OBS_FETCH_TIME, ( ) => this.fetchObs() );
     }
 
 	private async controlStart() {
@@ -498,17 +512,66 @@ class MainView extends VBox {
 	}
 }
 
+interface AppShellProps extends BoxProps {
+	onLoginSuccess: ( user: UserOut ) => void;
+}
+
+/**
+ * Persistent root view (the one and only setMainView() call — x4js's Application
+ * doesn't support swapping it, see connectWebSocket()'s caller for why this
+ * matters) that swaps its own content between LoginView and MainView, instead.
+ * MainView is created lazily, on first successful login/boot — its constructor
+ * already starts polling /status and /observations/recent, so building it any
+ * earlier would mean firing those (401, unauthenticated) from the login screen.
+ * A fresh MainView is built on every showMain() call rather than cached/reused:
+ * fetchStatus()/fetchObs() permanently stop rescheduling themselves once they hit
+ * a 401 (see their own comments) — reusing the same instance after a logout would
+ * mean its polling loop never resumes on the next login.
+ */
+
+class AppShell extends VBox {
+
+	constructor( props: AppShellProps ) {
+		super( { cls: "mainview", ...props } );
+
+		this.onGlobalEvent( ( ev: EvMessage ) => {
+			if( ev.msg === AUTH_LOGOUT_MSG ) {
+				this.showLogin( );
+			}
+		} );
+	}
+
+	showLogin( ) {
+		this.setContent( [ new LoginView( { flex: 1, onSuccess: ( this.props as AppShellProps ).onLoginSuccess } ) ] );
+	}
+
+	showMain( ) {
+		this.setContent( [ new MainView( { flex: 1 } ) ] );
+	}
+}
+
 class RosaceApp extends Application {
-    
+
     constructor( ) {
 		super( );
 
 		initTooltips( );
-		this.setMainView(
-			new MainView( { } )
-		)
 
-		this.connectWebSocket( );
+		const shell = new AppShell( { onLoginSuccess: ( ) => {
+			shell.showMain( );
+			this.connectWebSocket( );
+		} } );
+		this.setMainView( shell );
+
+		fetchCurrentUser( ).then( user => {
+			if( user ) {
+				shell.showMain( );
+				this.connectWebSocket( );
+			}
+			else {
+				shell.showLogin( );
+			}
+		} );
 
 		/*
 		if( __debug ) {

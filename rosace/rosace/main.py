@@ -22,7 +22,7 @@ import os
 import sys
 
 _HELP_TEXT = """\
-Usage: python -m rosace.main [config_path] [--check-config [config_path]]
+Usage: python -m rosace.main [config_path] [--check-config [config_path]] [--create-admin username]
 
   (no arguments)            Start the server using the active config, resolved in
                             priority order: ROSACE_CONFIG env var > <base_data_dir>/
@@ -39,6 +39,13 @@ Usage: python -m rosace.main [config_path] [--check-config [config_path]]
                             With no path, validates whatever would normally be
                             resolved; with a path, validates that file instead.
                             Prints [OK]/[FAIL] and exits 0/1.
+
+  --create-admin username  Bootstrap the very first admin account and exit — never
+                            starts the server. Prompts for the password (never
+                            passed as an argument, to keep it out of shell history
+                            and `ps`). Refuses if any account already exists: past
+                            this first bootstrap, account creation goes through the
+                            API (admin-only), not shell access to the machine.
 
   --help, -h                Show this message and exit.
 """
@@ -60,6 +67,28 @@ if __name__ == "__main__":
             sys.exit(1)
         print(f"[OK] config valid: {_checked_config._CONFIG_PATH}")
         sys.exit(0)
+    elif "--create-admin" in _argv:
+        _idx = _argv.index("--create-admin")
+        _username = _argv[_idx + 1] if _idx + 1 < len(_argv) else None
+        if not _username:
+            print("[FAIL] --create-admin requires a username")
+            sys.exit(1)
+        import asyncio
+        import getpass
+        _password = getpass.getpass("Password: ")
+
+        async def _bootstrap():
+            from rosace.auth import auth_db_init, ensure_first_admin
+            await auth_db_init()
+            await ensure_first_admin(_username, _password)
+
+        try:
+            asyncio.run(_bootstrap())
+        except Exception as e:
+            print(f"[FAIL] {e}")
+            sys.exit(1)
+        print(f"[OK] admin '{_username}' created")
+        sys.exit(0)
     elif _argv:
         os.environ["ROSACE_CONFIG"] = _argv[0]
 
@@ -73,17 +102,26 @@ from typing import Optional
 from contextlib import asynccontextmanager
 
 import yaml
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException,
+    Request, Response, UploadFile, WebSocket, WebSocketDisconnect,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .config     import SITE_NAME, SCHEDULER_RETRY_SECONDS
+from .config     import SITE_NAME, SCHEDULER_RETRY_SECONDS, SESSION_COOKIE_SECURE, SESSION_TTL_HOURS
 from .log_config import configure_logging
 
 configure_logging()
 
 from .log_broadcast import ws_log_handler
 
+from .auth import (
+    auth_db_init, get_current_user, require_admin,
+    UserCreate, UserOut, LoginRequest,
+    user_create, user_list, user_delete, _user_row_by_username, _verify_password,
+    session_create, session_delete, session_get_user, SESSION_COOKIE_NAME,
+)
 from .models   import (
     OrchestratorStage, Observation, SessionContext,
 )
@@ -116,6 +154,7 @@ log = logging.getLogger("spectro.main")
 async def lifespan(_app: FastAPI):
     await db_init()
     await targets_db_init()
+    await auth_db_init()
     ws_log_handler.bind_loop(asyncio.get_running_loop())
     logging.getLogger("spectro").addHandler(ws_log_handler)
     yield
@@ -126,6 +165,16 @@ app = FastAPI(
     version="0.5.0",
     lifespan=lifespan,
 )
+
+# Toute route posée sur "protected" exige une session valide ; "admin_router" exige
+# en plus is_admin. Par défaut fermé : seule /auth/login et le GUI statique (montés
+# directement sur "app" plus bas) restent publics — une nouvelle route doit choisir
+# consciemment de l'être, plutôt que l'inverse (liste blanche qu'on peut oublier
+# de mettre à jour). /ws (WebSocket) n'est délibérément pas de ce lot : une
+# HTTPException levée par Depends() ne ferme pas proprement un handshake WebSocket
+# — sa vérification est faite à la main, dans ws_logs() lui-même.
+protected = APIRouter(dependencies=[Depends(get_current_user)])
+admin_router = APIRouter(prefix="/auth/users", dependencies=[Depends(require_admin)])
 
 # ─────────────────────────────────────────────────────────────
 # État global du système
@@ -318,7 +367,7 @@ async def _session_runner_body():
 # Endpoints API
 # ─────────────────────────────────────────────────────────────
 
-@app.get("/status")
+@protected.get("/status")
 async def get_status():
     """Returns the current orchestrator state."""
     return {
@@ -329,19 +378,19 @@ async def get_status():
         "pending_post_obs_count": state.pending_post_obs,
     }
 
-@app.get("/observations/completed")
+@protected.get("/observations/completed")
 async def list_completed():
     """Returns the last 20 completed observations (in-memory cache)."""
     return {"completed": state.completed[-20:]}
 
 
-@app.get("/observations/recent")
+@protected.get("/observations/recent")
 async def list_recent_observations(limit: int | None = None):
     """Returns observations from the current astronomical day, with per-stage statuses and
     timestamps from the database. No limit by default — see db_get_recent_observations()."""
     return await db_get_recent_observations(limit)
 
-@app.get("/observations/{obs_id}")
+@protected.get("/observations/{obs_id}")
 async def get_observation(obs_id: str):
     """Récupère une observation complétée par son identifiant."""
     for obs in state.completed:
@@ -349,7 +398,7 @@ async def get_observation(obs_id: str):
             return obs
     raise HTTPException(status_code=404, detail="Observation non trouvée")
 
-@app.post("/control/start")
+@protected.post("/control/start")
 async def start_session(background_tasks: BackgroundTasks):
     """Démarre une nouvelle session d'observation. Refuse tant qu'une session
     précédente n'a pas complètement terminé son arrêt (session_active), pas
@@ -361,7 +410,7 @@ async def start_session(background_tasks: BackgroundTasks):
     background_tasks.add_task(session_runner)
     return {"message": "Session démarrée"}
 
-@app.post("/control/stop")
+@protected.post("/control/stop")
 async def stop_session():
     """Demande l'arrêt propre de la session (après l'observation en cours)."""
     state.is_running = False
@@ -373,7 +422,14 @@ WS_PING_INTERVAL = 30  # seconds — matches the 'ping' heartbeat convention of 
 
 @app.websocket("/ws")
 async def ws_logs(websocket: WebSocket):
-    """Streams spectro logger records (INFO+) to connected GUI clients, X4 'messaging' protocol."""
+    """Streams spectro logger records (INFO+) to connected GUI clients, X4 'messaging' protocol.
+    Not on the "protected" router (a Depends()-raised HTTPException doesn't close a WebSocket
+    handshake cleanly) — checked here instead, before accept(), same cookie as the REST routes."""
+    token = websocket.cookies.get(SESSION_COOKIE_NAME)
+    user = await session_get_user(token) if token else None
+    if user is None:
+        await websocket.close(code=1008)
+        return
     await websocket.accept(subprotocol="messaging")
     ws_log_handler.add_client(websocket)
     try:
@@ -392,7 +448,7 @@ async def ws_logs(websocket: WebSocket):
 # Endpoints — Recherche Simbad
 # ─────────────────────────────────────────────────────────────
 
-@app.get("/simbad/search", response_model=StarCreate)
+@protected.get("/simbad/search", response_model=StarCreate)
 async def simbad_search_endpoint(name: str):
     """
     Interroge Simbad et retourne les informations de l'étoile,
@@ -462,7 +518,7 @@ class StarImportResponse(Star):
     alias_added: bool  # True si `name` (le terme recherché) a été enregistré comme alias
 
 
-@app.post("/simbad/import", response_model=StarImportResponse)
+@protected.post("/simbad/import", response_model=StarImportResponse)
 async def simbad_import_endpoint(name: str, response: Response):
     """Ajoute une étoile à la base via Simbad — voir _import_star_from_simbad()."""
     try:
@@ -485,7 +541,7 @@ class StarImportResult(BaseModel):
     detail: Optional[str] = None
 
 
-@app.post("/stars/import-list", response_model=list[StarImportResult])
+@protected.post("/stars/import-list", response_model=list[StarImportResult])
 async def import_stars_from_file(file: UploadFile):
     """
     Importe une liste d'étoiles (un nom par ligne, fichier texte uploadé) —
@@ -518,7 +574,7 @@ class ProgramStarImportResult(BaseModel):
     detail: Optional[str] = None
 
 
-@app.post("/programs/import-list", response_model=list[ProgramStarImportResult])
+@protected.post("/programs/import-list", response_model=list[ProgramStarImportResult])
 async def import_program_stars_from_file(file: UploadFile):
     """
     Importe des liens programme <-> étoiles depuis un fichier YAML uploadé
@@ -570,12 +626,12 @@ if __name__ == "__main__":
 # qui ne concerne pas l'utilisateur (voir star_get_by_name : nom canonique
 # puis, en repli, table d'alias).
 
-@app.get("/stars", response_model=list[Star])
+@protected.get("/stars", response_model=list[Star])
 async def list_stars():
     """Liste toutes les étoiles."""
     return await star_list()
 
-@app.get("/stars/{name}", response_model=StarLookup)
+@protected.get("/stars/{name}", response_model=StarLookup)
 async def get_star(name: str):
     """Recherche une étoile par son nom (canonique ou alias)."""
     star = await star_get_by_name(name)
@@ -583,7 +639,7 @@ async def get_star(name: str):
         raise HTTPException(status_code=404, detail="Étoile non trouvée")
     return StarLookup(**star.model_dump(), queried_name=name)
 
-@app.put("/stars/{name}", response_model=Star)
+@protected.put("/stars/{name}", response_model=Star)
 async def update_star(name: str, star: StarCreate):
     """Met à jour une étoile, recherchée par son nom (canonique ou alias)."""
     existing = await star_get_by_name(name)
@@ -592,7 +648,7 @@ async def update_star(name: str, star: StarCreate):
     await star_update(existing.id, star)
     return await star_get(existing.id)
 
-@app.delete("/stars/{name}", status_code=204)
+@protected.delete("/stars/{name}", status_code=204)
 async def delete_star(name: str):
     """Supprime une étoile, recherchée par son nom (canonique ou alias)."""
     existing = await star_get_by_name(name)
@@ -600,7 +656,7 @@ async def delete_star(name: str):
         raise HTTPException(status_code=404, detail="Étoile non trouvée")
     await star_delete(existing.id)
 
-@app.get("/stars/{name}/programs", response_model=list[Program])
+@protected.get("/stars/{name}/programs", response_model=list[Program])
 async def get_star_programs(name: str):
     """Retourne les programmes auxquels appartient une étoile."""
     existing = await star_get_by_name(name)
@@ -613,18 +669,18 @@ async def get_star_programs(name: str):
 # ─────────────────────────────────────────────────────────────
 # Adressées par nom, jamais par id — même principe que pour les étoiles.
 
-@app.post("/programs", response_model=Program, status_code=201)
+@protected.post("/programs", response_model=Program, status_code=201)
 async def create_program(program: ProgramCreate):
     """Crée un programme scientifique."""
     prog_id = await program_insert(program)
     return await program_get(prog_id)
 
-@app.get("/programs", response_model=list[Program])
+@protected.get("/programs", response_model=list[Program])
 async def list_programs():
     """Liste tous les programmes."""
     return await program_list()
 
-@app.get("/programs/{name}", response_model=Program)
+@protected.get("/programs/{name}", response_model=Program)
 async def get_program(name: str):
     """Récupère un programme par son nom."""
     program = await program_get_by_name(name)
@@ -632,7 +688,7 @@ async def get_program(name: str):
         raise HTTPException(status_code=404, detail="Programme non trouvé")
     return program
 
-@app.delete("/programs/{name}", status_code=204)
+@protected.delete("/programs/{name}", status_code=204)
 async def delete_program(name: str):
     """Supprime un programme, recherché par son nom."""
     program = await program_get_by_name(name)
@@ -640,7 +696,7 @@ async def delete_program(name: str):
         raise HTTPException(status_code=404, detail="Programme non trouvé")
     await program_delete(program.id)
 
-@app.get("/programs/{name}/stars", response_model=list[StarInProgram])
+@protected.get("/programs/{name}/stars", response_model=list[StarInProgram])
 async def get_program_stars(name: str):
     """Retourne les étoiles d'un programme, avec leur temps de pose éventuel."""
     program = await program_get_by_name(name)
@@ -648,7 +704,7 @@ async def get_program_stars(name: str):
         raise HTTPException(status_code=404, detail="Programme non trouvé")
     return await program_get_stars(program.id)
 
-@app.post("/programs/{name}/stars/{star_name}", status_code=204)
+@protected.post("/programs/{name}/stars/{star_name}", status_code=204)
 async def add_star_to_program(name: str, star_name: str, exposure_time: Optional[float] = None):
     """Associe une étoile à un programme, avec un temps de pose optionnel
     spécifique à ce couple programme/étoile."""
@@ -660,7 +716,7 @@ async def add_star_to_program(name: str, star_name: str, exposure_time: Optional
         raise HTTPException(status_code=404, detail="Étoile non trouvée")
     await program_add_star(program.id, star.id, exposure_time)
 
-@app.delete("/programs/{name}/stars/{star_name}", status_code=204)
+@protected.delete("/programs/{name}/stars/{star_name}", status_code=204)
 async def remove_star_from_program(name: str, star_name: str):
     """Retire une étoile d'un programme."""
     program = await program_get_by_name(name)
@@ -670,6 +726,70 @@ async def remove_star_from_program(name: str, star_name: str):
     if not star:
         raise HTTPException(status_code=404, detail="Étoile non trouvée")
     await program_remove_star(program.id, star.id)
+
+# ─────────────────────────────────────────────────────────────
+# Endpoints — Authentification
+# ─────────────────────────────────────────────────────────────
+# Volontairement sur "app" directement, pas "protected" : il faut pouvoir se
+# connecter avant d'avoir une session. C'est la seule route API publique.
+
+@app.post("/auth/login", response_model=UserOut)
+async def login(credentials: LoginRequest, response: Response):
+    """Vérifie les identifiants et pose le cookie de session."""
+    row = await _user_row_by_username(credentials.username)
+    if row is None or not _verify_password(credentials.password, row["password_hash"]):
+        raise HTTPException(status_code=401, detail="Identifiants invalides")
+    token = await session_create(row["id"])
+    response.set_cookie(
+        SESSION_COOKIE_NAME, token,
+        httponly=True, samesite="lax", secure=SESSION_COOKIE_SECURE,
+        max_age=SESSION_TTL_HOURS * 3600,
+    )
+    return UserOut(username=row["username"], is_admin=bool(row["is_admin"]), created_at=row["created_at"])
+
+@app.post("/auth/logout", status_code=204)
+async def logout(request: Request, response: Response):
+    """Invalide la session côté serveur et efface le cookie."""
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if token:
+        await session_delete(token)
+    response.delete_cookie(SESSION_COOKIE_NAME)
+
+@protected.get("/auth/me", response_model=UserOut)
+async def get_me(user: UserOut = Depends(get_current_user)):
+    """Utilisateur actuellement connecté — utilisé par le GUI au démarrage
+    pour savoir s'il doit afficher l'écran de connexion ou l'application."""
+    return user
+
+# ─────────────────────────────────────────────────────────────
+# Endpoints — Gestion des comptes (admin uniquement)
+# ─────────────────────────────────────────────────────────────
+
+@admin_router.post("", response_model=UserOut, status_code=201)
+async def create_user(user: UserCreate):
+    """Crée un compte. Réservé aux admins — pas d'auto-inscription."""
+    try:
+        return await user_create(user)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+@admin_router.get("", response_model=list[UserOut])
+async def list_users():
+    return await user_list()
+
+@admin_router.delete("/{username}", status_code=204)
+async def delete_user(username: str, current: UserOut = Depends(require_admin)):
+    """Supprime un compte — refuse de se supprimer soi-même ou de supprimer
+    le dernier compte admin restant (on se couperait tout accès admin)."""
+    if username == current.username:
+        raise HTTPException(status_code=400, detail="impossible de se supprimer soi-même")
+    admins = [u for u in await user_list() if u.is_admin]
+    if len(admins) == 1 and admins[0].username == username:
+        raise HTTPException(status_code=400, detail="impossible de supprimer le dernier compte admin")
+    await user_delete(username)
+
+app.include_router(protected)
+app.include_router(admin_router)
 
 # ─────────────────────────────────────────────────────────────
 # Interface web (fichiers statiques du GUI)

@@ -63,6 +63,14 @@ class TestLoadProgrammeYaml:
             load_programme_yaml("xxx")
         assert "etoiles_be" in str(exc_info.value)
 
+    @pytest.mark.parametrize("bad_name", ["../evil", "foo/bar", "foo bar", "..", ""])
+    def test_raises_on_path_traversal_attempt(self, bad_name):
+        """Un nom qui pourrait s'échapper de PROGRAMMES_DIR est rejeté avant
+        toute résolution de chemin — pas de FileNotFoundError qui révèlerait
+        si le chemin traversé existe ou non."""
+        with pytest.raises(ValueError, match="invalide"):
+            load_programme_yaml(bad_name)
+
 
 class TestBuildPipeline:
     """Résolution dynamique par importlib — pas de registre central, un import
@@ -99,6 +107,14 @@ class TestBuildPipeline:
     def test_raises_on_unknown_kind(self):
         with pytest.raises(ValueError, match="bogus_kind"):
             build_pipeline(["slew"], "bogus_kind")
+
+    @pytest.mark.parametrize("bad_name", ["../evil", "foo/bar", "foo bar", "foo-bar"])
+    def test_raises_on_invalid_step_name(self, bad_name):
+        """Un nom d'étape invalide (YAML programme) est rejeté avant toute
+        tentative d'import — protège aussi les noms déclarés dans un YAML,
+        pas seulement le nom de programme lui-même."""
+        with pytest.raises(ValueError, match="invalide"):
+            build_pipeline([bad_name], "sequencer")
 
 
 class TestLoadPipelines:
@@ -271,3 +287,16 @@ class TestLoadSharingPlugin:
 
         with pytest.raises(ValueError, match="inexistant"):
             load_sharing_plugin("bad4")
+
+    def test_raises_on_invalid_sharing_name(self, tmp_path, monkeypatch):
+        import yaml as _yaml
+        from rosace.plugins import pipeline_loader
+
+        bad_yaml = tmp_path / "bad5.yaml"
+        bad_yaml.write_text(_yaml.dump({
+            "sequencer": ["slew"], "reduction": ["bias"], "sharing": "../evil",
+        }))
+        monkeypatch.setattr(pipeline_loader, "PROGRAMMES_DIR", tmp_path)
+
+        with pytest.raises(ValueError, match="invalide"):
+            load_sharing_plugin("bad5")

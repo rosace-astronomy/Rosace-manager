@@ -4,16 +4,24 @@ Fichier : ~/.rosace/databases/targets.db
 """
 
 import logging
+import re
 from typing import Optional
 
 import aiosqlite
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .config import DATABASES_DIR
 
 log = logging.getLogger("spectro.targets")
 
 TARGETS_DB_PATH = DATABASES_DIR / "targets.db"
+
+# Un nom de programme finit interpolé tel quel dans un chemin de fichier et un
+# chemin de module Python importé dynamiquement (plugins/pipeline_loader.py) —
+# restreint aux caractères qu'un composant de chemin/module Python peut
+# légitimement prendre (pas de '-', invalide dans un identifiant Python), pour
+# empêcher toute traversée de répertoire (ex. "../../etc").
+_PROGRAM_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 # ─────────────────────────────────────────────────────────────
 # Modèles
@@ -37,6 +45,14 @@ class ProgramCreate(BaseModel):
     """Champs fournis par l'utilisateur à la création d'un programme."""
     name: str
     description: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: str) -> str:
+        if not _PROGRAM_NAME_RE.fullmatch(v):
+            log.warning(f"[PROGRAMS] Nom de programme rejeté : {v!r} — caractères autorisés : lettres, chiffres, '_'")
+            raise ValueError("le nom ne peut contenir que des lettres, des chiffres et '_'")
+        return v
 
 class Program(ProgramCreate):
     """Programme tel que retourné par l'API (avec id généré par SQLite)."""

@@ -28,6 +28,8 @@ def tmp_data_dir(tmp_path_factory):
     import rosace.database as db_mod
     db_mod.DATABASES_DIR = tmp
     db_mod.DB_PATH        = tmp / "rosace.db"
+    import rosace.auth as auth_mod
+    auth_mod.DB_PATH = tmp / "rosace.db"
     import rosace.log_config as log_cfg_mod
     log_cfg_mod.LOG_DIR = tmp
     import rosace.plugins.init_session as init_session_mod

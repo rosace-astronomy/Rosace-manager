@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import re
 from pathlib import Path
 
 import yaml
@@ -51,6 +52,22 @@ log = logging.getLogger("spectro.pipeline_loader")
 
 # ── Répertoire contenant les fichiers de programme ────────────────────────────
 PROGRAMMES_DIR = Path(__file__).parents[1] / "programmes"
+
+# Un nom (de programme ou de sous-plugin) finit interpolé tel quel dans un
+# chemin de fichier et dans un chemin de module Python importé dynamiquement —
+# restreint aux caractères qu'un composant de chemin/module Python peut
+# légitimement prendre (pas de '-', invalide dans un identifiant Python), pour
+# empêcher toute traversée de répertoire (ex. "../../etc").
+_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
+
+
+def _validate_name(kind: str, name: str) -> str:
+    """Vérifie que "name" ne peut pas s'échapper d'un chemin de fichier/module. Lève ValueError sinon."""
+    if not _NAME_RE.fullmatch(name):
+        raise ValueError(
+            f"Nom {kind} {name!r} invalide — attendu : lettres, chiffres ou '_' uniquement"
+        )
+    return name
 
 
 def _resolve_module_and_class(kind: str, name: str) -> tuple[str, str]:
@@ -109,8 +126,10 @@ def list_programmes() -> list[str]:
 def load_programme_yaml(programme_name: str) -> dict:
     """
     Charge et retourne le contenu brut du YAML d'un programme.
-    Lève FileNotFoundError si le fichier n'existe pas.
+    Lève FileNotFoundError si le fichier n'existe pas, ValueError si programme_name
+    contient un caractère interdit (protection contre une traversée de répertoire).
     """
+    programme_name = _validate_name("programme", programme_name)
     path = PROGRAMMES_DIR / f"{programme_name}.yaml"
     if not path.exists():
         available = list_programmes()
@@ -134,7 +153,7 @@ def build_pipeline(step_names: list[str], kind: str) -> list:
     """
     pipeline = []
     for name in step_names:
-        name = name.strip().lower()
+        name = _validate_name(kind, name.strip().lower())
         plugin_class = _load_subplugin_class(kind, name)
         plugin_instance = plugin_class()
         pipeline.append(plugin_instance)
@@ -193,7 +212,7 @@ def load_sharing_plugin(programme_name: str):
     if "sharing" not in data:
         raise KeyError(f"Clé 'sharing' manquante dans le programme '{programme_name}'")
 
-    name = data["sharing"].strip().lower()
+    name = _validate_name("sharing", data["sharing"].strip().lower())
     plugin_class = _load_subplugin_class("sharing", name)
     log.info(f"[PIPELINE] Programme '{programme_name}' — sous-plugin sharing : {name} → {plugin_class.__name__}")
     return plugin_class()

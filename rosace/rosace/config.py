@@ -150,3 +150,9 @@ except ValueError as e:
 # Fichier texte (n'importe où sur le disque, pas nécessairement sous
 # BASE_DATA_DIR) que SCHEDULER lit pour choisir la prochaine cible.
 OBSERVATION_LIST_PATH = Path(_cfg["observation_list_path"]).expanduser()
+
+# ── Authentification ──────────────────────────────────────────────
+# Durée de vie d'une session (cookie) avant de redemander une connexion.
+SESSION_TTL_HOURS = _cfg["session_ttl_hours"]
+# Attribut 'Secure' du cookie de session — voir le commentaire dans config.yaml.
+SESSION_COOKIE_SECURE = _cfg["session_cookie_secure"]

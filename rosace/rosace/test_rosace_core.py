@@ -13,6 +13,7 @@ Dépendances :
 
 import asyncio
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -691,7 +692,7 @@ class TestTargetsDB:
         return StarCreate(name=name, ra=ra, dec=dec, magnitude_v=0.76,
                           spectral_type="A7V")
 
-    def _program(self, name="Programme A") -> ProgramCreate:
+    def _program(self, name="Programme_A") -> ProgramCreate:
         return ProgramCreate(name=name, description="Test programme")
 
     async def test_targets_db_init_enables_wal_mode(self):
@@ -802,20 +803,20 @@ class TestTargetsDB:
     # ── Programmes ───────────────────────────────────────────
 
     async def test_program_insert_and_get(self):
-        pid = await program_insert(self._program("Prog-X"))
+        pid = await program_insert(self._program("Prog_X"))
         prog = await program_get(pid)
         assert prog is not None
-        assert prog.name == "Prog-X"
+        assert prog.name == "Prog_X"
 
     async def test_program_get_nonexistent(self):
         prog = await program_get(999999)
         assert prog is None
 
     async def test_program_get_by_name(self):
-        await program_insert(self._program("Prog-ByName"))
-        prog = await program_get_by_name("Prog-ByName")
+        await program_insert(self._program("Prog_ByName"))
+        prog = await program_get_by_name("Prog_ByName")
         assert prog is not None
-        assert prog.name == "Prog-ByName"
+        assert prog.name == "Prog_ByName"
 
     async def test_program_get_by_name_missing(self):
         assert await program_get_by_name("PasDansLaBase") is None
@@ -838,7 +839,7 @@ class TestTargetsDB:
     async def test_program_add_and_get_stars(self):
         sid1 = await star_insert(self._star("S1", ra=10.0, dec=10.0))
         sid2 = await star_insert(self._star("S2", ra=20.0, dec=20.0))
-        pid  = await program_insert(self._program("P-Lien"))
+        pid  = await program_insert(self._program("P_Lien"))
         await program_add_star(pid, sid1)
         await program_add_star(pid, sid2)
         stars = await program_get_stars(pid)
@@ -848,7 +849,7 @@ class TestTargetsDB:
     async def test_program_add_star_idempotent(self):
         """Ajouter deux fois la même étoile ne crée pas de doublon."""
         sid = await star_insert(self._star("SIdem", ra=30.0, dec=5.0))
-        pid = await program_insert(self._program("P-Idem"))
+        pid = await program_insert(self._program("P_Idem"))
         await program_add_star(pid, sid)
         await program_add_star(pid, sid)
         stars = await program_get_stars(pid)
@@ -856,7 +857,7 @@ class TestTargetsDB:
 
     async def test_program_add_star_with_exposure_time(self):
         sid = await star_insert(self._star("SExp", ra=35.0, dec=5.0))
-        pid = await program_insert(self._program("P-Exp"))
+        pid = await program_insert(self._program("P_Exp"))
         await program_add_star(pid, sid, exposure_time=90.0)
         stars = await program_get_stars(pid)
         assert isinstance(stars[0], StarInProgram)
@@ -864,7 +865,7 @@ class TestTargetsDB:
 
     async def test_program_add_star_without_exposure_time_is_none(self):
         sid = await star_insert(self._star("SNoExp", ra=36.0, dec=5.0))
-        pid = await program_insert(self._program("P-NoExp"))
+        pid = await program_insert(self._program("P_NoExp"))
         await program_add_star(pid, sid)
         stars = await program_get_stars(pid)
         assert stars[0].exposure_time is None
@@ -872,7 +873,7 @@ class TestTargetsDB:
     async def test_program_add_star_upserts_exposure_time(self):
         """Un second appel sur le même couple programme/étoile met à jour le temps de pose."""
         sid = await star_insert(self._star("SUpsert", ra=37.0, dec=5.0))
-        pid = await program_insert(self._program("P-Upsert"))
+        pid = await program_insert(self._program("P_Upsert"))
         await program_add_star(pid, sid, exposure_time=60.0)
         await program_add_star(pid, sid, exposure_time=120.0)
         stars = await program_get_stars(pid)
@@ -881,7 +882,7 @@ class TestTargetsDB:
 
     async def test_program_remove_star(self):
         sid = await star_insert(self._star("SRemove", ra=40.0, dec=5.0))
-        pid = await program_insert(self._program("P-Remove"))
+        pid = await program_insert(self._program("P_Remove"))
         await program_add_star(pid, sid)
         await program_remove_star(pid, sid)
         stars = await program_get_stars(pid)
@@ -899,7 +900,7 @@ class TestTargetsDB:
     async def test_delete_star_cleans_program_links(self):
         """Supprimer une étoile retire aussi ses entrées program_stars."""
         sid = await star_insert(self._star("SClean", ra=60.0, dec=5.0))
-        pid = await program_insert(self._program("P-Clean"))
+        pid = await program_insert(self._program("P_Clean"))
         await program_add_star(pid, sid)
         await star_delete(sid)
         stars = await program_get_stars(pid)
@@ -908,7 +909,7 @@ class TestTargetsDB:
     async def test_delete_program_cleans_star_links(self):
         """Supprimer un programme retire aussi ses entrées program_stars."""
         sid = await star_insert(self._star("SPClean", ra=70.0, dec=5.0))
-        pid = await program_insert(self._program("PP-Clean"))
+        pid = await program_insert(self._program("PP_Clean"))
         await program_add_star(pid, sid)
         await program_delete(pid)
         progs = await star_get_programs(sid)
@@ -1438,7 +1439,41 @@ class TestApiEndpoints:
         main_mod.state.session_active = False
         main_mod.state.stage = OrchestratorStage.IDLE
 
+    _TEST_ADMIN_USER = "pytest_admin"
+    _TEST_ADMIN_PASS = "pytest_password"
+
+    def _ensure_test_admin(self):
+        """Provisions a fixed admin account directly against the DB (bypassing
+        HTTP/lifespan — the tmp rosace.db is session-scoped, shared across every
+        test in this class, so a second call just hits the already-exists case)."""
+        import asyncio
+        from rosace.auth import auth_db_init, user_create, UserCreate
+
+        async def _ensure():
+            await auth_db_init()
+            try:
+                await user_create(UserCreate(
+                    username=self._TEST_ADMIN_USER, password=self._TEST_ADMIN_PASS, is_admin=True,
+                ))
+            except ValueError:
+                pass  # already provisioned by an earlier test
+
+        asyncio.run(_ensure())
+
     def _client(self):
+        """A TestClient already logged in as a fixed test admin — every existing
+        test in this class was written before auth existed and expects an
+        authenticated client with zero per-test changes; see _anon_client() for
+        the (few) tests that specifically want to exercise the unauthenticated path."""
+        from fastapi.testclient import TestClient
+        from rosace.main import app
+
+        self._ensure_test_admin()
+        client = TestClient(app)
+        client.post("/auth/login", json={"username": self._TEST_ADMIN_USER, "password": self._TEST_ADMIN_PASS})
+        return client
+
+    def _anon_client(self):
         from fastapi.testclient import TestClient
         from rosace.main import app
         return TestClient(app)
@@ -1701,6 +1736,36 @@ class TestApiEndpoints:
         assert results[("BulkProgramTest", "UnknownStarBulkTest")]["status"] == "star_not_found"
         assert results[("UnknownProgramBulkTest", "BulkLinkStarTest")]["status"] == "program_not_found"
 
+    def test_create_program_rejects_path_traversal_name(self):
+        """ProgramCreate.name feeds a file path and a Python import path
+        downstream (pipeline_loader.py) — rejected at the API boundary before
+        it ever reaches targets.db, with a clear log trail for the operator.
+        Asserted via a handler attached directly to the emitting logger, not
+        caplog/capsys/capfd: the spectro logger has propagate=0 (conf/logging.cfg,
+        deliberately, to avoid duplicate output via root), so its records never
+        reach caplog's root-attached handler; and its consoleHandler was bound
+        to sys.stdout at import time, before pytest's own capture takes over,
+        so capsys/capfd don't see it either."""
+        class _Collector(logging.Handler):
+            def __init__(self):
+                super().__init__()
+                self.messages = []
+
+            def emit(self, record):
+                self.messages.append(record.getMessage())
+
+        collector = _Collector()
+        target_logger = logging.getLogger("spectro.targets")
+        target_logger.addHandler(collector)
+        try:
+            with self._client() as client:
+                res = client.post("/programs", json={"name": "../evil", "description": "test"})
+        finally:
+            target_logger.removeHandler(collector)
+
+        assert res.status_code == 422
+        assert any("Nom de programme rejeté" in m for m in collector.messages)
+
     def test_observations_recent_endpoint(self):
         with self._client() as client:
             res = client.get("/observations/recent?limit=5")
@@ -1724,3 +1789,152 @@ class TestApiEndpoints:
         assert message["msg"] == "log.create"
         texts = [line["text"] for line in message["params"]["lines"]]
         assert any("hello over websocket" in t for t in texts)
+
+
+# ═════════════════════════════════════════════════════════════
+# GROUPE 8 — Authentification (auth.py)
+# ═════════════════════════════════════════════════════════════
+
+class TestAuthRoutes:
+    """/auth/login, /auth/logout, /auth/me — via TestApiEndpoints's own client
+    helpers (same tmp DB, same fixed test admin)."""
+
+    def _client(self):
+        return TestApiEndpoints()._client()
+
+    def _anon_client(self):
+        return TestApiEndpoints()._anon_client()
+
+    def test_login_success_sets_cookie_and_returns_user(self):
+        with self._anon_client() as client:
+            TestApiEndpoints()._ensure_test_admin()
+            res = client.post("/auth/login", json={
+                "username": TestApiEndpoints._TEST_ADMIN_USER,
+                "password": TestApiEndpoints._TEST_ADMIN_PASS,
+            })
+        assert res.status_code == 200
+        assert res.json()["username"] == TestApiEndpoints._TEST_ADMIN_USER
+        assert res.json()["is_admin"] is True
+        assert "rosace_session" in res.cookies
+
+    def test_login_wrong_password_returns_401(self):
+        with self._anon_client() as client:
+            TestApiEndpoints()._ensure_test_admin()
+            res = client.post("/auth/login", json={
+                "username": TestApiEndpoints._TEST_ADMIN_USER, "password": "not the password",
+            })
+        assert res.status_code == 401
+
+    def test_login_unknown_user_returns_401(self):
+        with self._anon_client() as client:
+            res = client.post("/auth/login", json={"username": "nobody", "password": "whatever"})
+        assert res.status_code == 401
+
+    def test_logout_clears_cookie_and_invalidates_session(self):
+        with self._client() as client:
+            res = client.post("/auth/logout")
+            assert res.status_code == 204
+            # the session cookie is gone client-side, so this request carries none —
+            # this is the same 401 path as test_protected_route_without_cookie below
+            after = client.get("/status")
+        assert after.status_code == 401
+
+    def test_me_returns_current_user(self):
+        with self._client() as client:
+            res = client.get("/auth/me")
+        assert res.status_code == 200
+        assert res.json()["username"] == TestApiEndpoints._TEST_ADMIN_USER
+
+
+class TestAuthDependencies:
+    """Route protection itself — the "protected"/"admin_router" wiring in main.py."""
+
+    def test_protected_route_without_cookie_returns_401(self):
+        with TestApiEndpoints()._anon_client() as client:
+            res = client.get("/status")
+        assert res.status_code == 401
+
+    def test_ws_without_cookie_closes_connection(self):
+        with TestApiEndpoints()._anon_client() as client:
+            with pytest.raises(Exception):  # starlette.websockets.WebSocketDisconnect
+                with client.websocket_connect("/ws", subprotocols=["messaging"]):
+                    pass
+
+    def test_admin_route_rejects_non_admin_user(self):
+        import rosace.auth as auth_mod
+
+        async def _make_plain_user():
+            try:
+                await auth_mod.user_create(auth_mod.UserCreate(
+                    username="plain_user", password="whatever_pw", is_admin=False,
+                ))
+            except ValueError:
+                pass  # already provisioned by an earlier run
+
+        asyncio.run(_make_plain_user())
+
+        with TestApiEndpoints()._anon_client() as client:
+            client.post("/auth/login", json={"username": "plain_user", "password": "whatever_pw"})
+            res = client.get("/auth/users")
+        assert res.status_code == 403
+
+    def test_admin_route_accepts_admin_user(self):
+        with TestApiEndpoints()._client() as client:
+            res = client.get("/auth/users")
+        assert res.status_code == 200
+        usernames = [u["username"] for u in res.json()]
+        assert TestApiEndpoints._TEST_ADMIN_USER in usernames
+
+
+class TestCreateAdminCLI:
+    """`python -m rosace.main --create-admin username` — bootstraps the very
+    first admin and exits, never starts the server. Subprocess-based, same
+    shape as TestCheckConfigCLI — but unlike --check-config (read-only), this
+    one really writes to a database, so each test points ROSACE_CONFIG at its
+    own fresh tmp_path rather than touching the real active config."""
+
+    def _write_tmp_config(self, tmp_path: Path) -> Path:
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(f"""
+base_data_dir: {tmp_path / "data"}
+databases_dir: databases
+log_dir: log
+observations_dir: observations
+site_name: TestSite
+active_hardware: hardware_indi_simu
+scheduler_retry_seconds: 60
+sequencer_backend: internal
+hardware_connect_timeout_seconds: 5
+observation_list_path: {tmp_path / "ObservationList.txt"}
+active_scheduler: blank
+session_ttl_hours: 336
+session_cookie_secure: false
+""")
+        return config_path
+
+    def _run(self, tmp_path, *extra_args, password="testpassword123"):
+        config_path = self._write_tmp_config(tmp_path)
+        return subprocess.run(
+            [sys.executable, "-m", "rosace.main", "--create-admin", *extra_args],
+            capture_output=True, text=True, input=f"{password}\n",
+            env={**os.environ, "ROSACE_CONFIG": str(config_path)},
+        )
+
+    def test_missing_username_fails_fast(self, tmp_path):
+        result = self._run(tmp_path)  # no username after --create-admin
+        assert result.returncode != 0
+        assert "[FAIL]" in result.stdout
+
+    def test_creates_first_admin_and_exits_zero(self, tmp_path):
+        result = self._run(tmp_path, "night_owl")
+        assert result.returncode == 0
+        assert "[OK]" in result.stdout
+        assert "night_owl" in result.stdout
+
+    def test_refuses_once_an_admin_already_exists(self, tmp_path):
+        first = self._run(tmp_path, "first_admin")
+        assert first.returncode == 0
+
+        second = self._run(tmp_path, "second_admin")
+        assert second.returncode != 0
+        assert "[FAIL]" in second.stdout
