@@ -1,5 +1,5 @@
 import { VBox, HBox, Button, Label, Application, BoxProps, Image, Listbox, ListItem,
-	SimpleText, SimpleTextArea, Notification, Tag, initTooltips, makeState, asap, EvMessage,
+	SimpleText, SimpleTextArea, Notification, Tag, initTooltips, makeState, asap, EvMessage, HSizer,
 	} from "x4js";
 
 import "./main.scss";
@@ -19,6 +19,11 @@ import "@fontsource/montserrat/700.css"
 
 const STAGES  			= ["scheduler", "sequencer", "reduction", "sharing", "archive" ] as const;
 type StageType = typeof STAGES[number]
+
+// "scheduler" is never shown per-observation: an observation only appears once its target is
+// known, i.e. once SCHEDULER has already completed — so its tag would always read "done".
+// STAGES itself keeps "scheduler" (used elsewhere to recognize backend stage transitions).
+const DISPLAY_STAGES 	= STAGES.filter( s => s !== "scheduler" );
 
 // Toutes les valeurs possibles renvoyées par /status (backend OrchestratorStage)
 type OrchestratorStageType = "idle" | "init_session" | StageType | "close_session" | "error";
@@ -187,7 +192,7 @@ class MainView extends VBox {
 		this.setContent( [
 			new AppHeader( { } ),
 
-			new HBox( { flex: 1, content: [
+			new HBox( { cls: "main-split", flex: 1, content: [
 				new VBox( { cls: "left-col", flex: 1, content: [
 					//<todo: x4btngroup
 					new HBox( { cls: "controls-bar", content: [
@@ -207,8 +212,9 @@ class MainView extends VBox {
 						new Label({ cls: "title", text: "Journal" }),
 						new SimpleTextArea({ cls: "log-box", id: "logger", flex: 1, readonly: true, resize: false }),
 					]}),
-					
+
 				]}),
+				new HSizer(),
 				new VBox({ cls: "right-col", flex: 1, content: [
 					new VBox({ cls: "panel spectre image-placeholder", flex: 1, content: [
 						new Label({ cls: "title", text: "Spectre" })
@@ -258,7 +264,7 @@ class MainView extends VBox {
         this.obs_list.setItems( rows.map( obs => {
 			const time = new Date(obs.created_at).toLocaleTimeString("fr-FR");
 
-			const stages = STAGES.map( (key) => {
+			const stages = DISPLAY_STAGES.map( (key) => {
 				const info    = obs.stages[key];
 				if( !info ) {
 					return new Tag({
@@ -280,9 +286,10 @@ class MainView extends VBox {
 				}
 			});
 
-			// Nom utilisé pour interroger la base (ex. "Vega") en gras ; nom canonique
-			// (ex. "* alf Lyr") entre parenthèses seulement s'il diffère du premier —
-			// la case existe toujours (texte vide sinon) pour garder les colonnes alignées.
+			// Name used to query the catalogue (e.g. "Vega"), shown in bold; the canonical
+			// name (e.g. "* alf Lyr") follows in parentheses, only when it differs from it.
+			// Both share a single "obs-name" column — the canonical span is just empty text
+			// when there's nothing to add, so the column doesn't jump around.
 			const displayName   = obs.queried_name || obs.target_name;
 			const showCanonical = !!obs.queried_name && obs.queried_name !== obs.target_name;
 			const canonicalText = showCanonical ? `(${obs.target_name})` : "";
@@ -294,8 +301,10 @@ class MainView extends VBox {
 				cls: 'obs-row',
 				sub_cols: [
 					new SimpleText({ cls: "obs-priority",  text: priorityText }),
-					new SimpleText({ cls: "obs-target",    text: displayName }),
-					new SimpleText({ cls: "obs-canonical", text: canonicalText }),
+					new HBox({ cls: "obs-name", content: [
+						new SimpleText({ cls: "obs-target",    text: displayName }),
+						new SimpleText({ cls: "obs-canonical", text: canonicalText }),
+					] }),
 					new SimpleText({ cls: "obs-id",        text: obs.id }),
 					new SimpleText({ cls: "obs-time",      text: time }),
 					new HBox({ cls: "obs-stages",  content: stages }),
