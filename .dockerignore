@@ -1,0 +1,12 @@
+rosace-manager/
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+.pytest_cache/
+rosace/build/
+rosace/dist/
+rosace/rosace/gui/node_modules/
+rosace/rosace/gui/bin/
+.git/
+.vscode/
+.idea/
