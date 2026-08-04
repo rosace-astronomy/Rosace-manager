@@ -157,6 +157,30 @@ body {
 		padding: 0.2rem 0.9rem;
 		color: var(--green);
 	}
+
+	#logout, #darkmode {
+		color: white;
+
+		// Button footprint pinned explicitly (≈ the default 8px padding + 1.4em icon
+		// these had before) so dropping the padding to grow the icon doesn't also
+		// shrink the button — only the icon inside it grows.
+		width: 2.4em;
+		height: 2.4em;
+		padding: 0em;
+
+		#icon {
+			width: 100%;
+			height: 100%;
+		}
+	}
+
+	#logout {
+		background-color: var(--green);
+	}
+
+	#darkmode {
+		background-color: black;
+	}
 }
 
 // Draggable divider (x4js's HSizer) between the left column (Observations/Journal)
@@ -419,7 +443,9 @@ body {
 		gap: 2rem;
 
 		.login-title {
-			text-align: center;
+			// Centering itself is done via the align:"center" prop (auth.ts), which
+			// adds x4js's own .al-center class (justify-content) — a Label is an hbox
+			// internally, so a plain text-align here would have no effect on it.
 			font-size: 1.8rem;
 			color: var(--accent);
 			margin-bottom: 0.5rem;
@@ -434,12 +460,32 @@ body {
 		flex-direction: column;
 		gap: 1.75rem;
 
+		// x4js's own .x4form class defaults to flex-grow:1/flex-basis:0 (meant for a
+		// form that fills a definite-height parent), combined with .x4box's min-height:0
+		// (which disables flexbox's normal "don't shrink below content size" guard).
+		// Inside .login-panel, whose own height is auto/content-driven (not definite),
+		// that combination let the form collapse under its own content instead of
+		// sizing to it — the border ended up too short, content overflowing below it.
+		// flex: 0 0 auto forces content-based sizing instead (same fix already used
+		// elsewhere in this file, e.g. below, for the same underlying x4js default).
+		flex: 0 0 auto;
+
+		// Frame around the fields/button, added directly here rather than via the
+		// shared .panel class: .panel sets overflow:hidden, which is what clipped
+		// .login-panel's content under the abs-position + transform centering above
+		// (see the comment on .login-panel) — a plain border/radius has no such risk.
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		padding: 2rem;
+
 		.field {
 			gap: 0.5rem;
+			align-items: center;
 
 			.x4label {
 				font-size: 1rem;
 				color: var(--muted);
+				text-align: center;
 			}
 
 			.x4input {

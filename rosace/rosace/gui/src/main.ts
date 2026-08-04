@@ -13,6 +13,8 @@ import seq_icon from "./assets/sequence.svg";
 import red_icon from "./assets/flask.svg";
 import check_icon from "./assets/circle-check.svg";
 import error_icon from "./assets/circle-exclamation.svg";
+import logout_icon from "./assets/logout.svg";
+import moon_icon from "./assets/moon.svg";
 
 import "@fontsource/montserrat/400.css"
 import "@fontsource/montserrat/700.css"
@@ -166,10 +168,10 @@ class AppHeader extends HBox {
 				] }),
                 new HBox({ cls: "pipeline-bar", content: chips }),
                 label = new Label({ cls: "obs-count-badge", text: "0 obs" }),
-				new Button( { icon: "", menu: [
+				new Button( { id: "darkmode", icon: moon_icon, tooltip: "Réglages", menu: [
 					{ text: "Dark mode", checked: ( ) => app_data.settings.darkMode, click: ( ) => { app_data.settings.darkMode = !app_data.settings.darkMode; } },
-					{ text: "Déconnexion", click: ( ) => { authLogout().then( ( ) => Application.fireGlobal( AUTH_LOGOUT_MSG ) ); } },
 				]} ),
+				new Button( { id: "logout", icon: logout_icon, tooltip: "Déconnexion", click: ( ) => { authLogout().then( ( ) => Application.fireGlobal( AUTH_LOGOUT_MSG ) ); } } ),
         ] );
 
 		app_data.watch( "status.completed_count", e => {

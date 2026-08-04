@@ -63,7 +63,7 @@ export class LoginView extends VBox {
 
 		this.setContent( [
 			new VBox( { cls: "login-panel", content: [
-				new Label( { cls: "login-title", text: "Connexion" } ),
+				new Label( { cls: "login-title", text: "Connexion", align: "center" } ),
 				this.form = new Form( { cls: "login-form", content: [
 					new VBox( { cls: "field", content: [
 						new Label( { text: "Identifiant" } ),
