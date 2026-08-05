@@ -1901,6 +1901,10 @@ databases_dir: databases
 log_dir: log
 observations_dir: observations
 site_name: TestSite
+site_latitude_deg: 45.0
+site_longitude_deg: 5.0
+site_elevation_m: 950
+min_target_altitude_deg: 10
 active_hardware: hardware_indi_simu
 scheduler_retry_seconds: 60
 sequencer_backend: internal

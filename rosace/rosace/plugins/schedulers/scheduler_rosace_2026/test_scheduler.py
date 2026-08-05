@@ -28,12 +28,33 @@ def _write_observation_list(tmp_path, content: str):
     return path
 
 
+class TestTargetAltitudeDeg:
+    """Teste _target_altitude_deg() elle-même, pas SchedulerPlugin. Le pôle céleste
+    nord (dec=90°) est à une hauteur constamment égale à la latitude du site, quelle
+    que soit l'heure — le seul cas simple qui ne dépend pas de l'instant du test."""
+
+    def test_north_celestial_pole_altitude_equals_site_latitude(self):
+        from rosace.config import SITE_LATITUDE_DEG
+
+        altitude = scheduler_mod._target_altitude_deg(ra_deg=0.0, dec_deg=90.0)
+
+        assert altitude == pytest.approx(SITE_LATITUDE_DEG, abs=0.1)
+
+
 class TestSchedulerPlugin:
 
     @pytest_asyncio.fixture(autouse=True)
     async def init_db(self):
         await db_init()
         await targets_db_init()
+
+    @pytest.fixture(autouse=True)
+    def _always_observable(self, monkeypatch):
+        """Every test in this class gets a target well above MIN_TARGET_ALTITUDE_DEG
+        by default — real sky altitude depends on the current date/time, which
+        would make unrelated tests flaky. Tests for the altitude check itself
+        override this with their own monkeypatch."""
+        monkeypatch.setattr(scheduler_mod, "_target_altitude_deg", lambda ra, dec: 45.0)
 
     async def _make_session(self) -> SessionContext:
         session = SessionContext(site_name="Test")
@@ -232,6 +253,68 @@ class TestSchedulerPlugin:
 
         assert obs.scheduler_data["exposure"].exposure_time is None
         assert_scheduler_contract(obs)
+
+    async def test_skips_target_below_minimum_altitude(self, tmp_path, monkeypatch):
+        sid = await star_insert(StarCreate(name="TooLowStar", ra=1.0, dec=1.0))
+        pid = await program_insert(ProgramCreate(name="AltitudeProgram"))
+        await program_add_star(pid, sid)
+
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n1, AltitudeProgram, TooLowStar, x\n"
+        ))
+        monkeypatch.setattr(scheduler_mod, "_target_altitude_deg", lambda ra, dec: 5.0)  # below the 10° default
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"] is None
+
+    async def test_low_altitude_target_lets_lower_priority_through(self, tmp_path, monkeypatch):
+        """La cible de priorité 1 est sous la hauteur minimale — la cible de
+        priorité 2, elle, est observable et doit être sélectionnée à la place."""
+        sid_low_alt = await star_insert(StarCreate(name="TooLowPriority1", ra=1.0, dec=1.0))
+        sid_high_alt = await star_insert(StarCreate(name="ObservablePriority2", ra=2.0, dec=2.0))
+        pid = await program_insert(ProgramCreate(name="MixedAltitudeProgram"))
+        await program_add_star(pid, sid_low_alt)
+        await program_add_star(pid, sid_high_alt)
+
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path,
+            "Priority, Program, Star, commentaire\n"
+            "1, MixedAltitudeProgram, TooLowPriority1, x\n"
+            "2, MixedAltitudeProgram, ObservablePriority2, x\n"
+        ))
+        monkeypatch.setattr(
+            scheduler_mod, "_target_altitude_deg",
+            lambda ra, dec: 5.0 if ra == 1.0 else 45.0,
+        )
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"].name == "ObservablePriority2"
+        assert_scheduler_contract(obs)
+
+    async def test_below_threshold_target_is_not_marked_consumed(self, tmp_path, monkeypatch):
+        """Une cible ignorée pour hauteur insuffisante doit rester proposable
+        dès qu'elle redevient observable — ce n'est pas une observation manquée."""
+        sid = await star_insert(StarCreate(name="LaterObservableStar", ra=1.0, dec=1.0))
+        pid = await program_insert(ProgramCreate(name="LaterObservableProgram"))
+        await program_add_star(pid, sid)
+
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n1, LaterObservableProgram, LaterObservableStar, x\n"
+        ))
+
+        session = await self._make_session()
+
+        monkeypatch.setattr(scheduler_mod, "_target_altitude_deg", lambda ra, dec: 5.0)
+        obs1 = await SchedulerPlugin().run(self._make_obs(session.session_id))
+        assert obs1.scheduler_data["target"] is None
+
+        monkeypatch.setattr(scheduler_mod, "_target_altitude_deg", lambda ra, dec: 45.0)
+        obs2 = await SchedulerPlugin().run(self._make_obs(session.session_id))
+        assert obs2.scheduler_data["target"].name == "LaterObservableStar"
 
     async def test_missing_observation_list_file_raises_fatal_error(self, tmp_path, monkeypatch):
         monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", tmp_path / "DoesNotExist.txt")

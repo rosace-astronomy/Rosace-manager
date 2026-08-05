@@ -24,6 +24,17 @@ observations_dir: observations
 # Exposed as SITE_NAME in config.py.
 site_name: St-Pancrasse
 
+# Site location, used by scheduler_rosace_2026 to compute a target's current
+# altitude. Longitude is signed, East positive (e.g. 5.0 = 5° East).
+# Exposed as SITE_LATITUDE_DEG / SITE_LONGITUDE_DEG / SITE_ELEVATION_M.
+site_latitude_deg: 45.0
+site_longitude_deg: 5.0 # East positive
+site_elevation_m: 950
+
+# Minimum altitude (degrees) for scheduler_rosace_2026 to consider a target
+# currently observable. Exposed as MIN_TARGET_ALTITUDE_DEG in config.py.
+min_target_altitude_deg: 10
+
 # Name (without extension) of the active hardware profile in conf/ — only
 # consulted when sequencer_backend (below) is 'indi'.
 # Exposed as ACTIVE_HARDWARE / HARDWARE_CONFIG_PATH in config.py.

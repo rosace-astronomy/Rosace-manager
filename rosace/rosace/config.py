@@ -57,6 +57,14 @@ OBSERVATIONS_DIR = BASE_DATA_DIR / _cfg["observations_dir"]
 # Nom générique utilisé pour nommer les répertoires de session.
 SITE_NAME = _cfg["site_name"]
 
+# Position géographique du site (longitude signée, Est positif) et hauteur
+# minimale (degrés) pour qu'une cible soit considérée observable — utilisées
+# par scheduler_rosace_2026 pour son calcul de visibilité (AltAz, AstroPy).
+SITE_LATITUDE_DEG = _cfg["site_latitude_deg"]
+SITE_LONGITUDE_DEG = _cfg["site_longitude_deg"]
+SITE_ELEVATION_M = _cfg["site_elevation_m"]
+MIN_TARGET_ALTITUDE_DEG = _cfg["min_target_altitude_deg"]
+
 # ── Configuration matérielle active ────────────────────────────
 # Nom du fichier YAML dans conf/ (sans extension) décrivant le hardware à utiliser.
 # Permet de basculer entre plusieurs configurations (simulateur, observatoire réel…)

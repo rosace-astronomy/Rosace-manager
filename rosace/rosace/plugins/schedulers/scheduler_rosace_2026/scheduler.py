@@ -1,15 +1,40 @@
 import csv
 import logging
 
+import astropy.units as u
+from astropy.coordinates import AltAz, EarthLocation, SkyCoord
+from astropy.time import Time
+from astropy.utils.iers import conf as _iers_conf
 from pydantic import ValidationError
 
-from ....config import OBSERVATION_LIST_PATH
+from ....config import (
+    OBSERVATION_LIST_PATH, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, SITE_ELEVATION_M,
+    MIN_TARGET_ALTITUDE_DEG,
+)
 from ....database import db_count_observations_for_target
 from ....models import Observation, Target, ExposureConfig
 from ....targets import program_get_by_name, star_get_by_name, program_get_stars
 from .. import SchedulerFatalError
 
 log = logging.getLogger("spectro.plugin.scheduler")
+
+# No internet access assumed on the observing site — a fresh IERS bulletin
+# download would otherwise be attempted (and could stall/fail) the first time
+# an AltAz transform runs. The bundled, non-downloaded IERS-B table is precise
+# to well under 1 arcsecond, irrelevant next to MIN_TARGET_ALTITUDE_DEG.
+_iers_conf.auto_download = False
+
+_SITE_LOCATION = EarthLocation.from_geodetic(
+    lon=SITE_LONGITUDE_DEG * u.deg, lat=SITE_LATITUDE_DEG * u.deg, height=SITE_ELEVATION_M * u.m
+)
+
+
+def _target_altitude_deg(ra_deg: float, dec_deg: float) -> float:
+    """Current altitude (degrees) of an ICRS (RA, Dec) coordinate above the
+    site's horizon, right now."""
+    target = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="icrs")
+    altaz = target.transform_to(AltAz(obstime=Time.now(), location=_SITE_LOCATION))
+    return altaz.alt.deg
 
 
 def _read_observation_list(path) -> list[dict]:
@@ -71,8 +96,13 @@ class SchedulerPlugin:
     de fois où cette cible a déjà été observée cette nuit astronomique
     (rosace.db, toutes sessions confondues — un arrêt/redémarrage de session
     ne remet pas le compteur à zéro) : si ce rang a déjà été honoré, la ligne
-    est ignorée et on passe à la suivante. Aucune visibilité astronomique
-    réelle n'est vérifiée pour l'instant (hauteur…) — chantier futur.
+    est ignorée et on passe à la suivante. Sinon, sa hauteur actuelle
+    au-dessus de l'horizon (AstroPy, site défini par SITE_LATITUDE_DEG/
+    SITE_LONGITUDE_DEG/SITE_ELEVATION_M) est comparée à MIN_TARGET_ALTITUDE_DEG :
+    si elle est trop basse, la ligne est ignorée et on passe à la suivante
+    (pas d'observation "consommée" pour autant). Vérification de hauteur
+    uniquement — pas de contrôle jour/nuit (soleil sous l'horizon) : reste un
+    chantier séparé.
 
     Un fichier de plan absent/mal formé, ou une donnée invalide dans
     targets.db (ex. exposure_time non numérique), lève SchedulerFatalError
@@ -141,6 +171,14 @@ class SchedulerPlugin:
                 continue  # cette occurrence précise a déjà été honorée cette nuit
 
             star = item["star"]
+            altitude = _target_altitude_deg(star.ra, star.dec)
+            if altitude < MIN_TARGET_ALTITUDE_DEG:
+                log.info(
+                    f"[SCHEDULER] {star.name} sous la hauteur minimale "
+                    f"({altitude:.1f}° < {MIN_TARGET_ALTITUDE_DEG}°), ligne ignorée"
+                )
+                continue
+
             obs.scheduler_data["target"] = Target(
                 name=star.name, ra=star.ra, dec=star.dec, magnitude_v=star.magnitude_v,
             )
