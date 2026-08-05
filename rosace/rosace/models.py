@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Callable, Optional, Protocol, runtime_checkable
 import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -103,6 +103,22 @@ class Observation(BaseModel):
     # (see model_copy(deep=True, update={"hardware": {}}) in main.py — deep-copying
     # a live device connection is meaningless and likely to break).
     hardware: dict[str, Any] = Field(default_factory=dict, exclude=True)
+
+    # Live callback, set by session_runner() (main.py) on every freshly-created
+    # Observation — lets a sub-plugin whose own work spans several internal
+    # steps (e.g. expose.py's multi-sub-exposure loop) notice a stop request
+    # between two of its own steps, not just between stages. None outside a
+    # real session run (e.g. in tests) — callers must check for that. Same
+    # "live, not persisted" pattern as hardware above: a plain callable can't
+    # be deep-copied either, so it's also cleared before session_runner()'s
+    # model_copy(deep=True) handoff to the background post-obs task (which has
+    # no use for it — post-obs stages don't loop against a stop request).
+    # Deliberately NOT main.state passed directly: no plugin should import
+    # main.py (see CLAUDE.md's "never block" section) — this is the one
+    # narrow, read-only question ("should I stop now?") a plugin may ask,
+    # handed to it the same way hardware is, not by reaching for the
+    # orchestrator itself.
+    stop_check: Optional[Callable[[], bool]] = Field(default=None, exclude=True)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

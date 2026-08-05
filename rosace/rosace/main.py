@@ -300,6 +300,7 @@ async def _session_runner_body():
                         session_id=session.session_id,
                         obs_dir=str(session_dir),
                         hardware=session.hardware,
+                        stop_check=lambda: not state.is_running,
                     )
                 else:
                     await db_set_stage_status(obs.id, stage, "running")
@@ -341,10 +342,28 @@ async def _session_runner_body():
         else:
             # SEQUENCER succeeded: record observation and launch post-obs in background
             state.completed.append(obs)
-            # hardware excluded from the deep copy: REDUCTION/SHARING/ARCHIVE never
-            # touch it, and deep-copying a live device connection is meaningless
-            # (and likely to break — see Observation.hardware's docstring).
-            post_obs_copy = obs.model_copy(deep=True, update={"hardware": {}})
+            try:
+                # model_copy(deep=True, update=...) deep-copies EVERY field first and
+                # only applies `update` afterward — passing update={"hardware": {}}
+                # does NOT skip deep-copying the live hardware dict first, it still
+                # tries to copy.deepcopy() each connected adapter (sockets/locks
+                # inside), which raises. Clearing hardware before the copy (and
+                # restoring it right after, in case anything below still reads obs)
+                # avoids ever handing a live device connection to copy.deepcopy().
+                live_hardware = obs.hardware
+                obs.hardware = {}
+                post_obs_copy = obs.model_copy(deep=True)
+                obs.hardware = live_hardware
+            except Exception as e:
+                # Must not be allowed to propagate uncaught: this block runs outside
+                # the per-stage try/except above, so an unhandled exception here would
+                # silently kill the whole session_runner() task — state.is_running
+                # would never be reset, leaving the GUI showing a session that looks
+                # both running and not running at once. The observation itself already
+                # succeeded (SEQUENCER done); only its post-obs record-keeping is lost.
+                log.error(f"[ORCHESTRATOR] Failed to prepare post-obs copy for {obs.id}: {e}")
+                obs = None
+                continue
             task = asyncio.create_task(run_post_obs(post_obs_copy))
             post_obs_tasks.append(task)
             obs = None

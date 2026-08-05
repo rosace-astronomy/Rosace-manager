@@ -10,15 +10,18 @@ capture_guide_image() wraps a guiding-role camera's expose()-then-writeto()
 sequence — the same pattern expose.py already uses for the science camera
 (see hardware/camera.py for the generic Camera contract).
 
-TODO (separate chantier, not built yet): a science-camera exposure-time
-helper computing exposure duration from a target's magnitude
-(exposure_time_mag0 * 10**(magnitude / 2.5)), splitting into several
-sub-exposures once the computed duration exceeds a configured maximum —
-belongs here once it's built, next to capture_guide_image().
+compute_exposure_plan() computes the (per-exposure duration, count) needed
+for a target's magnitude — maps directly onto ExposureConfig.exposure_time/
+num_exposures. Splits into several equal, max-duration sub-exposures rather
+than one long one once the raw computed duration would exceed the
+configured maximum (e.g. a raw 700s at a 300s max becomes count=3 at 300s
+each, not one 700s exposure) — used by expose.py whenever a programme
+doesn't set an explicit exposure_time.
 """
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -32,3 +35,17 @@ async def capture_guide_image(
     path = Path(obs_dir) / filename
     image.writeto(path, overwrite=True)
     return path
+
+
+def compute_exposure_plan(
+    magnitude: float, exposure_time_mag0: float, max_exposure_time: float
+) -> tuple[float, int]:
+    """(per-exposure duration in seconds, count) for a target of the given
+    magnitude: exposure_time_mag0 * 10**(magnitude / 2.5), split into several
+    equal max_exposure_time-long exposures once that raw value exceeds
+    max_exposure_time (e.g. a raw 700s at a 300s max -> (300.0, 3))."""
+    exposure_time = exposure_time_mag0 * 10 ** (magnitude / 2.5)
+    if exposure_time <= max_exposure_time:
+        return exposure_time, 1
+    count = math.ceil(exposure_time / max_exposure_time)
+    return max_exposure_time, count

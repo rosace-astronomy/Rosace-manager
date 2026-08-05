@@ -87,6 +87,12 @@ HARDWARE_CONNECT_TIMEOUT_SECONDS = _cfg["hardware_connect_timeout_seconds"]
 # Temps de pose par défaut de la caméra de guidage (sequencer_backend=indi).
 GUIDE_EXPOSURE_TIME_SECONDS = _cfg["guide_exposure_time_seconds"]
 
+# ── Exposition scientifique ─────────────────────────────────────
+# Temps de pose (mag 0) et durée max d'une sous-pose — voir
+# acquisition_helpers.py::compute_exposure_plan().
+EXPOSURE_TIME_MAG0_SECONDS = _cfg["exposure_time_mag0_seconds"]
+MAX_EXPOSURE_TIME_SECONDS = _cfg["max_exposure_time_seconds"]
+
 # ── Backend d'exécution SEQUENCER ────────────────────────────────
 # "internal" : simulation interne, sans dépendance externe (démonstrateur niveau 1).
 # "indi"     : protocole INDI/PHD2 réel, piloté par ACTIVE_HARDWARE/HARDWARE_CONFIG_PATH

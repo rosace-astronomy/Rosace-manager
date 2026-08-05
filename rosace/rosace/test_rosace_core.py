@@ -1420,6 +1420,95 @@ class TestSessionRunner:
         assert active_during_run == [True]
         assert main_mod.state.session_active is False
 
+    async def test_stop_check_reflects_is_running(self, monkeypatch, tmp_path):
+        """Chaque Observation fraîchement créée reçoit un stop_check() qui reflète
+        state.is_running en direct — utilisé par des sous-plugins comme expose.py
+        pour s'interrompre entre deux de leurs propres sous-étapes."""
+        import rosace.main as main_mod
+
+        captured_stop_check = []
+
+        class FakeInit:
+            async def run(self, ctx):
+                ctx.session_dir = str(tmp_path)
+                return ctx
+
+        class FakeScheduler:
+            async def run(self, obs):
+                captured_stop_check.append(obs.stop_check)
+                main_mod.state.is_running = False
+                return obs
+
+        class FakeClose:
+            async def run(self, ctx): return ctx
+
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.INIT_SESSION, FakeInit())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SCHEDULER, FakeScheduler())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.CLOSE_SESSION, FakeClose())
+
+        main_mod.state.is_running = True
+        await main_mod.session_runner()
+
+        assert len(captured_stop_check) == 1
+        stop_check = captured_stop_check[0]
+        assert callable(stop_check)
+        assert stop_check() is True  # state.is_running was flipped to False by FakeScheduler
+
+    async def test_live_hardware_is_not_deep_copied_into_post_obs_task(self, monkeypatch, tmp_path):
+        """Régression : model_copy(deep=True, update={"hardware": {}}) essayait quand
+        même de deep-copier obs.hardware avant d'appliquer update — copy.deepcopy()
+        sur un objet non copiable (ex. un threading.Lock, comme dans un adaptateur
+        INDI réel) levait une exception non rattrapée dans le bloc for...else, qui
+        tuait silencieusement toute la boucle session_runner() (state.is_running
+        restait bloqué à True pour toujours). Ce test reproduit l'ingrédient exact
+        (hardware non copiable) et vérifie que la session va bien jusqu'à
+        CLOSE_SESSION, et que REDUCTION est bien atteint en arrière-plan."""
+        import threading
+        import rosace.main as main_mod
+
+        reduction_calls = []
+        close_called = []
+
+        class FakeInit:
+            async def run(self, ctx):
+                ctx.session_dir = str(tmp_path)
+                return ctx
+
+        class FakeScheduler:
+            async def run(self, obs):
+                obs.scheduler_data["target"] = Target(name="TestStar", ra=0.0, dec=0.0)
+                return obs
+
+        class FakeSequencer:
+            async def run(self, obs):
+                obs.hardware = {"mount": threading.Lock()}  # not deep-copyable
+                main_mod.state.is_running = False  # one observation is enough for this test
+                return obs
+
+        class FakeReduction:
+            async def run(self, obs):
+                reduction_calls.append(obs.id)
+                return obs
+
+        class FakeClose:
+            async def run(self, ctx):
+                close_called.append(True)
+                return ctx
+
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.INIT_SESSION, FakeInit())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SCHEDULER, FakeScheduler())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SEQUENCER, FakeSequencer())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.REDUCTION, FakeReduction())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.CLOSE_SESSION, FakeClose())
+
+        main_mod.state.is_running = True
+        await main_mod.session_runner()
+
+        assert len(main_mod.state.completed) == 1
+        assert reduction_calls == [main_mod.state.completed[0].id]
+        assert close_called == [True]
+        assert main_mod.state.is_running is False  # not stuck True
+
 
 # ═════════════════════════════════════════════════════════════
 # GROUPE 7 — Endpoints FastAPI (TestClient, lifespan réel)
@@ -1910,6 +1999,8 @@ scheduler_retry_seconds: 60
 sequencer_backend: internal
 hardware_connect_timeout_seconds: 5
 guide_exposure_time_seconds: 0.3
+exposure_time_mag0_seconds: 1.0
+max_exposure_time_seconds: 300
 observation_list_path: {tmp_path / "ObservationList.txt"}
 active_scheduler: blank
 session_ttl_hours: 336

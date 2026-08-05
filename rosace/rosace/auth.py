@@ -53,12 +53,15 @@ class LoginRequest(BaseModel):
 
 async def auth_db_init() -> None:
     """Crée les tables d'authentification si elles n'existent pas — même
-    fichier que database.py (rosace.db), le mode WAL y est déjà activé.
-    Crée aussi DATABASES_DIR : contrairement à database.py::db_init(), qui
-    tourne toujours en premier dans lifespan(), auth_db_init() peut aussi être
-    appelée seule (CLI --create-admin, sur une installation flambant neuve)."""
+    fichier que database.py (rosace.db). Crée aussi DATABASES_DIR et
+    positionne le mode WAL lui-même plutôt que de compter sur db_init() pour
+    l'avoir déjà fait : contrairement à database.py::db_init(), qui tourne
+    toujours en premier dans lifespan(), auth_db_init() peut aussi être
+    appelée seule (CLI --create-admin, sur une installation flambant neuve,
+    donc potentiellement avant que db_init() n'ait jamais tourné sur ce fichier)."""
     DATABASES_DIR.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
