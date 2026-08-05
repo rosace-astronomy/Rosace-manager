@@ -16,4 +16,4 @@ reduction:
   - flat
   - extract
 
-sharing: blank
+sharing: blank_share

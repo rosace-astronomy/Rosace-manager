@@ -1,0 +1,56 @@
+"""
+Sous-plugin SEQUENCER — Pointage télescope 72ED + image de guidage
+Backend "indi" uniquement — première version "mode simple" (voir CLAUDE.md /
+memory : un mode "complexe" est prévu plus tard, sous forme d'un autre
+sous-plugin, ex. pointing_72ed_02).
+
+Pointe la monture via obs.hardware["mount"], puis capture une image de
+guidage via obs.hardware["guiding_camera"] (fonction générique
+acquisition_helpers.capture_guide_image) pour vérifier visuellement le
+pointage. Ne démarre PAS le guidage PHD2 lui-même — le protocole PHD2 réel
+(calibration, dithering, start/stop) est un chantier séparé, non encore
+implémenté (hardware_connectivity.py ne fait aujourd'hui qu'un contrôle de
+joignabilité TCP).
+"""
+
+from __future__ import annotations
+
+import logging
+
+from ....config import GUIDE_EXPOSURE_TIME_SECONDS
+from ....models import Observation
+from ...sub_plugin_base import SubPlugin
+from ..acquisition_helpers import capture_guide_image
+
+log = logging.getLogger("spectro.subplugin.pointing_72ed_01")
+
+
+class Pointing72ed01Plugin(SubPlugin):
+    """Pointe le télescope 72ED et capture une image de guidage pour vérification."""
+
+    async def execute(self, obs: Observation) -> Observation:
+        target = obs.scheduler_data.get("target")
+        if not target:
+            raise RuntimeError("POINTING_72ED_01 : target manquant dans scheduler_data")
+
+        if not obs.obs_dir:
+            raise RuntimeError("POINTING_72ED_01 : répertoire d'observation (obs_dir) non défini")
+
+        log.info(f"[POINTING_72ED_01] Pointage vers {target.name}")
+        mount = obs.hardware["mount"]
+        await mount.slew_to(target.ra, target.dec)
+
+        guiding_camera = obs.hardware["guiding_camera"]
+        guide_image_path = await capture_guide_image(
+            guiding_camera, GUIDE_EXPOSURE_TIME_SECONDS, obs.obs_dir,
+        )
+
+        obs.sequencer_data["pointing_72ed_01"] = {
+            "target": target.name,
+            "guide_image": str(guide_image_path),
+        }
+        log.info(
+            f"[POINTING_72ED_01] Télescope en position sur {target.name}, "
+            f"image de guidage : {guide_image_path}"
+        )
+        return obs

@@ -83,7 +83,7 @@ class TestSequencerPlugin:
         assert result.program_steps == {
             "sequencer": ["slew", "focus", "expose"],
             "reduction": ["bias", "dark", "flat", "extract"],
-            "sharing": "blank",
+            "sharing": "blank_share",
         }
 
     async def test_loads_pipeline_for_observation_programme(self, monkeypatch):

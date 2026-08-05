@@ -1905,6 +1905,7 @@ active_hardware: hardware_indi_simu
 scheduler_retry_seconds: 60
 sequencer_backend: internal
 hardware_connect_timeout_seconds: 5
+guide_exposure_time_seconds: 0.3
 observation_list_path: {tmp_path / "ObservationList.txt"}
 active_scheduler: blank
 session_ttl_hours: 336
@@ -1917,6 +1918,13 @@ session_cookie_secure: false
         return subprocess.run(
             [sys.executable, "-m", "rosace.main", "--create-admin", *extra_args],
             capture_output=True, text=True, input=f"{password}\n",
+            # getpass.getpass() opens /dev/tty directly when the process has a
+            # controlling terminal (e.g. running pytest from an interactive shell),
+            # bypassing the piped input= above entirely and blocking on real input.
+            # start_new_session detaches this subprocess from that terminal so
+            # getpass falls back to stdin, like it already does when pytest itself
+            # has no controlling terminal (e.g. CI).
+            start_new_session=True,
             env={**os.environ, "ROSACE_CONFIG": str(config_path)},
         )
 

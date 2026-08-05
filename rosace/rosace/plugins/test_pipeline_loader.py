@@ -16,6 +16,7 @@ from rosace.plugins.pipeline_loader import (
     load_pipelines,
     load_sharing_plugin,
     list_programmes,
+    validate_subplugin_catalogue,
 )
 
 
@@ -262,7 +263,7 @@ class TestLoadSharingPlugin:
 
     def test_loads_blank_for_demo(self):
         sub = load_sharing_plugin("demo")
-        assert sub.__class__.__name__ == "BlankPlugin"
+        assert sub.__class__.__name__ == "BlankSharePlugin"
 
     def test_raises_if_sharing_key_missing(self, tmp_path, monkeypatch):
         import yaml as _yaml
@@ -300,3 +301,56 @@ class TestLoadSharingPlugin:
 
         with pytest.raises(ValueError, match="invalide"):
             load_sharing_plugin("bad5")
+
+
+class TestValidateSubpluginCatalogue:
+    """validate_subplugin_catalogue() — startup check for the real, on-disk sub-plugin
+    directories. Fake families are built under tmp_path per test so each case is
+    isolated from the real catalogue (which is also exercised for free: every other
+    test in this file only runs because plugins/__init__.py already calls this
+    function successfully against the real directories at import time)."""
+
+    @staticmethod
+    def _make_family(root: Path, family: str, subplugin_names: list[str]) -> Path:
+        family_dir = root / family
+        family_dir.mkdir(parents=True)
+        for name in subplugin_names:
+            (family_dir / name).mkdir()
+            (family_dir / name / "__init__.py").touch()
+        return family_dir
+
+    def test_passes_on_distinct_lowercase_names(self, tmp_path, monkeypatch):
+        from rosace.plugins import pipeline_loader
+
+        monkeypatch.setattr(pipeline_loader, "_SUBPLUGIN_FAMILY_DIRS", {
+            "sequencer": self._make_family(tmp_path, "sequencer", ["slew", "pointing_72ed_01"]),
+            "reduction": self._make_family(tmp_path, "reduction", ["bias"]),
+            "sharing":   self._make_family(tmp_path, "sharing", ["blank_share"]),
+        })
+
+        validate_subplugin_catalogue()  # must not raise
+
+    def test_raises_on_uppercase_directory_name(self, tmp_path, monkeypatch):
+        from rosace.plugins import pipeline_loader
+
+        monkeypatch.setattr(pipeline_loader, "_SUBPLUGIN_FAMILY_DIRS", {
+            "sequencer": self._make_family(tmp_path, "sequencer", ["Pointing_72ED_01"]),
+            "reduction": self._make_family(tmp_path, "reduction", []),
+            "sharing":   self._make_family(tmp_path, "sharing", []),
+        })
+
+        with pytest.raises(RuntimeError, match="not all-lowercase"):
+            validate_subplugin_catalogue()
+
+    def test_raises_on_cross_family_name_collision(self, tmp_path, monkeypatch):
+        from rosace.plugins import pipeline_loader
+
+        monkeypatch.setattr(pipeline_loader, "_SUBPLUGIN_FAMILY_DIRS", {
+            "sequencer": self._make_family(tmp_path, "sequencer", ["dark"]),
+            "reduction": self._make_family(tmp_path, "reduction", ["dark"]),
+            "sharing":   self._make_family(tmp_path, "sharing", []),
+        })
+
+        with pytest.raises(RuntimeError, match="collision") as exc_info:
+            validate_subplugin_catalogue()
+        assert "'dark' exists in both sequencer and reduction" in str(exc_info.value)

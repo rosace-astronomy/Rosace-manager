@@ -17,4 +17,4 @@ reduction:
   - flat        # Correction flat-field
   - extract     # Extraction spectre 1D
 
-sharing: blank
+sharing: blank_share

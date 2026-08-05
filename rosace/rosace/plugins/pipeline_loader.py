@@ -76,7 +76,7 @@ def _resolve_module_and_class(kind: str, name: str) -> tuple[str, str]:
     sous-plugin déclaré "name" dans un programme, selon "kind" ('sequencer',
     'reduction' ou 'sharing') et, pour 'sequencer' uniquement, SEQUENCER_BACKEND.
     """
-    class_name = f"{name.capitalize()}Plugin"
+    class_name = "".join(word.capitalize() for word in name.split("_")) + "Plugin"
 
     if kind == "sequencer":
         if SEQUENCER_BACKEND == "internal":
@@ -114,6 +114,97 @@ def _load_subplugin_class(kind: str, name: str) -> type:
         raise ValueError(
             f"Sous-plugin {kind} '{name}' introuvable : classe '{class_name}' absente de '{module_path}'"
         ) from e
+
+
+# ── Sub-plugin catalogue startup check ─────────────────────────────────────────
+# The set of sub-plugin directories on disk (sequencer_plugins/, reduction_plugins/,
+# sharing_plugins/) is never enumerated centrally — pipeline_loader.py resolves each
+# one individually, by name, only when a programme YAML declares it. That means two
+# naming mistakes would otherwise go unnoticed until they broke something at runtime
+# instead of failing clearly at startup: an uppercase directory name (never reachable,
+# since build_pipeline()/load_sharing_plugin() lowercase whatever name they read from
+# a programme YAML before resolving a module path) and the same name reused across
+# families (mechanically harmless — sequencer_data/reduction_data/sharing_data are
+# separate casiers — but ambiguous to a human reading a programme YAML or observation
+# dossier). validate_subplugin_catalogue() checks both, once, at server startup.
+
+_SUBPLUGIN_FAMILY_DIRS = {
+    "sequencer": Path(__file__).parent / "sequencer_plugins",
+    "reduction": Path(__file__).parent / "reduction_plugins",
+    "sharing":   Path(__file__).parent / "sharing_plugins",
+}
+
+
+def _discover_subplugin_names(family_dir: Path) -> set[str]:
+    """A sub-plugin is any subdirectory of family_dir containing its own __init__.py."""
+    return {
+        entry.name
+        for entry in family_dir.iterdir()
+        if entry.is_dir() and (entry / "__init__.py").is_file()
+    }
+
+
+def validate_subplugin_catalogue() -> None:
+    """
+    Raises RuntimeError if any sub-plugin directory name (under sequencer_plugins/,
+    reduction_plugins/, sharing_plugins/) is not all-lowercase, or if the same name
+    is used in more than one of the three families. Called once from plugins/__init__.py
+    at server startup.
+
+    Both rules are deliberate design choices, not crash-safety padding — see the
+    module-level comment above for the reasoning — so both error messages spell out
+    explicitly that this is expected, documented behavior, not a broken installation.
+    """
+    names_by_family = {
+        kind: _discover_subplugin_names(family_dir)
+        for kind, family_dir in _SUBPLUGIN_FAMILY_DIRS.items()
+    }
+
+    not_lowercase = sorted(
+        f"{kind}/{name}"
+        for kind, names in names_by_family.items()
+        for name in names
+        if name != name.lower()
+    )
+    if not_lowercase:
+        raise RuntimeError(
+            "Rosace startup check failed: sub-plugin directory name(s) not all-lowercase: "
+            f"{', '.join(not_lowercase)}. This is NOT a sign of a broken installation — "
+            "Rosace deliberately requires every sub-plugin directory to be all-lowercase "
+            "(letters, digits, underscores), because build_pipeline()/load_sharing_plugin() "
+            "lowercase whatever name a programme YAML declares before resolving it to a "
+            "module path: an uppercase directory could never be found this way, and two "
+            "directories differing only by case would be silently treated as the same "
+            "sub-plugin. To fix: rename the directory above (and its module/class names "
+            "inside) to all-lowercase."
+        )
+
+    first_family_of: dict[str, str] = {}
+    collisions: dict[str, list[str]] = {}
+    for kind, names in names_by_family.items():
+        for name in names:
+            if name in first_family_of:
+                collisions.setdefault(name, [first_family_of[name]]).append(kind)
+            else:
+                first_family_of[name] = kind
+
+    if collisions:
+        details = "; ".join(
+            f"'{name}' exists in both {' and '.join(kinds)}"
+            for name, kinds in sorted(collisions.items())
+        )
+        raise RuntimeError(
+            "Rosace startup check failed: sub-plugin name collision across families "
+            f"({details}). This is NOT a sign of a broken installation — Rosace "
+            "deliberately forbids reusing a sub-plugin name across sequencer_plugins/, "
+            "reduction_plugins/ and sharing_plugins/, even though it would technically "
+            "still run correctly (each family writes to its own casier in the observation "
+            "dossier). The reason is readability: a shared name makes programme YAML files "
+            "and observation dossiers ambiguous to a human reader (e.g. is 'dark' the "
+            "capture step or the processing step?). To fix: rename one of the conflicting "
+            "sub-plugin directories listed above (and its module/class names inside) to "
+            "something more specific."
+        )
 
 
 # ── Fonctions publiques ────────────────────────────────────────────────────────

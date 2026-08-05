@@ -75,6 +75,10 @@ SCHEDULER_RETRY_SECONDS = _cfg["scheduler_retry_seconds"]
 # la vérification de connectivité en début de session (voir hardware_connectivity.py).
 HARDWARE_CONNECT_TIMEOUT_SECONDS = _cfg["hardware_connect_timeout_seconds"]
 
+# ── Guidage ───────────────────────────────────────────────────────
+# Temps de pose par défaut de la caméra de guidage (sequencer_backend=indi).
+GUIDE_EXPOSURE_TIME_SECONDS = _cfg["guide_exposure_time_seconds"]
+
 # ── Backend d'exécution SEQUENCER ────────────────────────────────
 # "internal" : simulation interne, sans dépendance externe (démonstrateur niveau 1).
 # "indi"     : protocole INDI/PHD2 réel, piloté par ACTIVE_HARDWARE/HARDWARE_CONFIG_PATH
