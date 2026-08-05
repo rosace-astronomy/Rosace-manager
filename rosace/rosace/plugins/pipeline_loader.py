@@ -5,7 +5,7 @@ Lit un fichier YAML de programme scientifique et instancie les sous-plugins
 dans l'ordre déclaré, pour le séquenceur et pour la réduction.
 
 Structure attendue du YAML :
-    programme: nom_du_programme
+    program: nom_du_programme
     sequencer:
       - slew
       - focus
@@ -19,8 +19,8 @@ Structure attendue du YAML :
 
 Usage :
     from .pipeline_loader import load_pipelines, load_sharing_plugin
-    seq_pipeline, red_pipeline = load_pipelines(programme)
-    sharing_plugin = load_sharing_plugin(programme)
+    seq_pipeline, red_pipeline = load_pipelines(program)
+    sharing_plugin = load_sharing_plugin(program)
 
 Chargement dynamique par convention de nommage — pas de registre central à
 maintenir (contrairement à l'ancienne approche) : un sous-plugin déclaré
@@ -51,7 +51,7 @@ from ..config import SEQUENCER_BACKEND
 log = logging.getLogger("spectro.pipeline_loader")
 
 # ── Répertoire contenant les fichiers de programme ────────────────────────────
-PROGRAMMES_DIR = Path(__file__).parents[1] / "programmes"
+PROGRAMS_DIR = Path(__file__).parents[1] / "programs"
 
 # Un nom (de programme ou de sous-plugin) finit interpolé tel quel dans un
 # chemin de fichier et dans un chemin de module Python importé dynamiquement —
@@ -119,13 +119,13 @@ def _load_subplugin_class(kind: str, name: str) -> type:
 # ── Sub-plugin catalogue startup check ─────────────────────────────────────────
 # The set of sub-plugin directories on disk (sequencer_plugins/, reduction_plugins/,
 # sharing_plugins/) is never enumerated centrally — pipeline_loader.py resolves each
-# one individually, by name, only when a programme YAML declares it. That means two
+# one individually, by name, only when a program YAML declares it. That means two
 # naming mistakes would otherwise go unnoticed until they broke something at runtime
 # instead of failing clearly at startup: an uppercase directory name (never reachable,
 # since build_pipeline()/load_sharing_plugin() lowercase whatever name they read from
-# a programme YAML before resolving a module path) and the same name reused across
+# a program YAML before resolving a module path) and the same name reused across
 # families (mechanically harmless — sequencer_data/reduction_data/sharing_data are
-# separate casiers — but ambiguous to a human reading a programme YAML or observation
+# separate casiers — but ambiguous to a human reading a program YAML or observation
 # dossier). validate_subplugin_catalogue() checks both, once, at server startup.
 
 _SUBPLUGIN_FAMILY_DIRS = {
@@ -172,7 +172,7 @@ def validate_subplugin_catalogue() -> None:
             f"{', '.join(not_lowercase)}. This is NOT a sign of a broken installation — "
             "Rosace deliberately requires every sub-plugin directory to be all-lowercase "
             "(letters, digits, underscores), because build_pipeline()/load_sharing_plugin() "
-            "lowercase whatever name a programme YAML declares before resolving it to a "
+            "lowercase whatever name a program YAML declares before resolving it to a "
             "module path: an uppercase directory could never be found this way, and two "
             "directories differing only by case would be silently treated as the same "
             "sub-plugin. To fix: rename the directory above (and its module/class names "
@@ -199,7 +199,7 @@ def validate_subplugin_catalogue() -> None:
             "deliberately forbids reusing a sub-plugin name across sequencer_plugins/, "
             "reduction_plugins/ and sharing_plugins/, even though it would technically "
             "still run correctly (each family writes to its own casier in the observation "
-            "dossier). The reason is readability: a shared name makes programme YAML files "
+            "dossier). The reason is readability: a shared name makes program YAML files "
             "and observation dossiers ambiguous to a human reader (e.g. is 'dark' the "
             "capture step or the processing step?). To fix: rename one of the conflicting "
             "sub-plugin directories listed above (and its module/class names inside) to "
@@ -209,23 +209,23 @@ def validate_subplugin_catalogue() -> None:
 
 # ── Fonctions publiques ────────────────────────────────────────────────────────
 
-def list_programmes() -> list[str]:
+def list_programs() -> list[str]:
     """Retourne les noms des programmes disponibles (sans extension)."""
-    return sorted(p.stem for p in PROGRAMMES_DIR.glob("*.yaml"))
+    return sorted(p.stem for p in PROGRAMS_DIR.glob("*.yaml"))
 
 
-def load_programme_yaml(programme_name: str) -> dict:
+def load_program_yaml(program_name: str) -> dict:
     """
     Charge et retourne le contenu brut du YAML d'un programme.
-    Lève FileNotFoundError si le fichier n'existe pas, ValueError si programme_name
+    Lève FileNotFoundError si le fichier n'existe pas, ValueError si program_name
     contient un caractère interdit (protection contre une traversée de répertoire).
     """
-    programme_name = _validate_name("programme", programme_name)
-    path = PROGRAMMES_DIR / f"{programme_name}.yaml"
+    program_name = _validate_name("program", program_name)
+    path = PROGRAMS_DIR / f"{program_name}.yaml"
     if not path.exists():
-        available = list_programmes()
+        available = list_programs()
         raise FileNotFoundError(
-            f"Programme '{programme_name}' introuvable dans {PROGRAMMES_DIR}. "
+            f"Programme '{program_name}' introuvable dans {PROGRAMS_DIR}. "
             f"Programmes disponibles : {available}"
         )
     with open(path, encoding="utf-8") as f:
@@ -255,28 +255,28 @@ def build_pipeline(step_names: list[str], kind: str) -> list:
     return pipeline
 
 
-def load_pipelines(programme_name: str) -> tuple[list, list]:
+def load_pipelines(program_name: str) -> tuple[list, list]:
     """
     Charge le programme YAML et retourne (sequencer_pipeline, reduction_pipeline).
 
-    :param programme_name: Nom du fichier YAML sans extension (ex. 'demo')
+    :param program_name: Nom du fichier YAML sans extension (ex. 'demo')
     :returns: (liste de sous-plugins séquenceur, liste de sous-plugins réduction)
     :raises FileNotFoundError: Programme YAML introuvable
     :raises ValueError: Sous-plugin déclaré dans le YAML mais introuvable
     :raises KeyError: Clés 'sequencer' ou 'reduction' manquantes dans le YAML
     """
-    data = load_programme_yaml(programme_name)
+    data = load_program_yaml(program_name)
 
     if "sequencer" not in data:
-        raise KeyError(f"Clé 'sequencer' manquante dans le programme '{programme_name}'")
+        raise KeyError(f"Clé 'sequencer' manquante dans le programme '{program_name}'")
     if "reduction" not in data:
-        raise KeyError(f"Clé 'reduction' manquante dans le programme '{programme_name}'")
+        raise KeyError(f"Clé 'reduction' manquante dans le programme '{program_name}'")
 
     seq_steps = data["sequencer"]
     red_steps = data["reduction"]
 
     log.info(
-        f"[PIPELINE] Programme '{programme_name}' chargé — "
+        f"[PIPELINE] Programme '{program_name}' chargé — "
         f"séquenceur : {seq_steps}, réduction : {red_steps}"
     )
 
@@ -286,7 +286,7 @@ def load_pipelines(programme_name: str) -> tuple[list, list]:
     return seq_pipeline, red_pipeline
 
 
-def load_sharing_plugin(programme_name: str):
+def load_sharing_plugin(program_name: str):
     """
     Charge le programme YAML et retourne l'unique sous-plugin SHARING déclaré
     — contrairement à sequencer/reduction, la clé "sharing" est singulière
@@ -298,12 +298,12 @@ def load_sharing_plugin(programme_name: str):
     :raises ValueError: Sous-plugin déclaré dans le YAML mais introuvable
     :raises KeyError: Clé 'sharing' manquante dans le YAML
     """
-    data = load_programme_yaml(programme_name)
+    data = load_program_yaml(program_name)
 
     if "sharing" not in data:
-        raise KeyError(f"Clé 'sharing' manquante dans le programme '{programme_name}'")
+        raise KeyError(f"Clé 'sharing' manquante dans le programme '{program_name}'")
 
     name = _validate_name("sharing", data["sharing"].strip().lower())
     plugin_class = _load_subplugin_class("sharing", name)
-    log.info(f"[PIPELINE] Programme '{programme_name}' — sous-plugin sharing : {name} → {plugin_class.__name__}")
+    log.info(f"[PIPELINE] Programme '{program_name}' — sous-plugin sharing : {name} → {plugin_class.__name__}")
     return plugin_class()

@@ -14,10 +14,10 @@ CLAUDE.md) and populate obs.scheduler_data with exactly these keys:
                     pick the target (may differ from target.name — an alias,
                     a hardcoded label, whatever is meaningful to this
                     scheduler's own logic/UI display).
-    programme    : str                   — the scientific programme this
+    program    : str                   — the scientific program this
                     observation is attached to, for bookkeeping in
                     rosace.db. Does not have to be a real targets.db
-                    programme (see below).
+                    program (see below).
     priority     : int                   — this observation's priority,
                     only meaningful relative to other targets from the same
                     scheduling pass; purely informational downstream.
@@ -37,9 +37,9 @@ used by this plugin's own tests instead — keep it that way for your own
 scheduler too: check the contract in tests, not in the plugin itself).
 
 This plugin never touches targets.db — the three targets below are
-hardcoded, valid Target instances. "Be_stars" is used as the programme label
+hardcoded, valid Target instances. "Be_stars" is used as the program label
 purely as a placeholder (these three stars are not actually Be stars) — a
-real scheduler would normally set whatever programme it is actually
+real scheduler would normally set whatever program it is actually
 scheduling for.
 
 TO WRITE YOUR OWN SCHEDULER
@@ -65,8 +65,8 @@ from ....models import Observation, Target, ExposureConfig
 
 log = logging.getLogger("spectro.plugin.scheduler.blank")
 
-# Placeholder programme label — see module docstring.
-_PROGRAMME = "Be_stars"
+# Placeholder program label — see module docstring.
+_PROGRAM = "Be_stars"
 
 _TARGETS = [
     Target(name="Vega", ra=279.234735, dec=38.783611, magnitude_v=0.03),
@@ -82,13 +82,13 @@ class BlankPlugin:
 
     async def run(self, obs: Observation) -> Observation:
         for priority, target in enumerate(_TARGETS, start=1):
-            already_observed = await db_count_observations_for_target(_PROGRAMME, target.name)
+            already_observed = await db_count_observations_for_target(_PROGRAM, target.name)
             if already_observed >= 1:
                 continue
 
             obs.scheduler_data["target"] = target
             obs.scheduler_data["queried_name"] = target.name
-            obs.scheduler_data["programme"] = _PROGRAMME
+            obs.scheduler_data["program"] = _PROGRAM
             obs.scheduler_data["priority"] = priority
             obs.scheduler_data["exposure"] = ExposureConfig(exposure_time=None)
             log.info(f"[SCHEDULER:blank] Target selected: {target.name}")

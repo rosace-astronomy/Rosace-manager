@@ -1,12 +1,12 @@
 """
 Plugin REDUCTION — Orchestrateur de la chaîne de réduction.
 Le pipeline (liste de sous-plugins) est chargé dynamiquement depuis le YAML
-du programme scientifique de l'observation (obs.scheduler_data["programme"]),
+du programme scientifique de l'observation (obs.scheduler_data["program"]),
 posé par SCHEDULER — donc rechargé à chaque observation, pas une fois pour
 toutes au démarrage.
 
 Structure :
-    programmes/<programme>.yaml  →  pipeline_loader  →  [Bias, Dark, Flat, Extract, …]
+    programs/<program>.yaml  →  pipeline_loader  →  [Bias, Dark, Flat, Extract, …]
 """
 
 import logging
@@ -28,14 +28,14 @@ class ReductionPlugin:
         if not raw_files:
             raise RuntimeError("REDUCTION : aucun fichier brut (sequencer_data['expose']['raw_files'] vide)")
 
-        programme = obs.scheduler_data.get("programme")
-        if not programme:
-            raise RuntimeError("REDUCTION : programme manquant dans scheduler_data")
+        program = obs.scheduler_data.get("program")
+        if not program:
+            raise RuntimeError("REDUCTION : program manquant dans scheduler_data")
 
-        _, red_pipeline = load_pipelines(programme)
+        _, red_pipeline = load_pipelines(program)
         steps = [s.__class__.__name__ for s in red_pipeline]
         log.info(
-            f"[REDUCTION] Début réduction '{programme}' — "
+            f"[REDUCTION] Début réduction '{program}' — "
             f"{len(raw_files)} fichier(s) brut(s), étapes : {steps}"
         )
 

@@ -86,7 +86,7 @@ class TestSchedulerPlugin:
 
         assert obs.scheduler_data["target"].name == "alf Lyr"  # nom canonique
         assert obs.scheduler_data["queried_name"] == "VegaSingleTargetTest"  # nom tel qu'écrit dans le fichier
-        assert obs.scheduler_data["programme"] == "Be_stars"
+        assert obs.scheduler_data["program"] == "Be_stars"
         assert obs.scheduler_data["exposure"].exposure_time == pytest.approx(45.0)
         assert_scheduler_contract(obs)
 

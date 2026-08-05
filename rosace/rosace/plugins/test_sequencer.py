@@ -19,7 +19,7 @@ def _make_obs(with_scheduler_data=True, obs_dir="/tmp/whatever") -> Observation:
     if with_scheduler_data:
         obs.scheduler_data["target"] = Target(name="Vega", ra=279.23, dec=38.78)
         obs.scheduler_data["exposure"] = ExposureConfig(exposure_time=10.0)
-        obs.scheduler_data["programme"] = "etoiles_be"
+        obs.scheduler_data["program"] = "etoiles_be"
     return obs
 
 
@@ -58,7 +58,7 @@ class TestSequencerPlugin:
         ]
         monkeypatch.setattr(
             "rosace.plugins.sequencer.load_pipelines",
-            lambda programme: (fake_pipeline, []),
+            lambda program: (fake_pipeline, []),
         )
 
         obs = _make_obs()
@@ -73,10 +73,10 @@ class TestSequencerPlugin:
         SHARING était prévu si l'observation plante avant qu'il ne tourne."""
         monkeypatch.setattr(
             "rosace.plugins.sequencer.load_pipelines",
-            lambda programme: ([], []),
+            lambda program: ([], []),
         )
 
-        obs = _make_obs()  # programme = "etoiles_be"
+        obs = _make_obs()  # program = "etoiles_be"
         result = await SequencerPlugin().run(obs)
 
         assert result.program_file == "etoiles_be.yaml"
@@ -86,20 +86,20 @@ class TestSequencerPlugin:
             "sharing": "blank_share",
         }
 
-    async def test_loads_pipeline_for_observation_programme(self, monkeypatch):
-        seen_programme = []
+    async def test_loads_pipeline_for_observation_program(self, monkeypatch):
+        seen_program = []
 
-        def fake_load_pipelines(programme):
-            seen_programme.append(programme)
+        def fake_load_pipelines(program):
+            seen_program.append(program)
             return [], []
 
         monkeypatch.setattr("rosace.plugins.sequencer.load_pipelines", fake_load_pipelines)
 
         obs = _make_obs()
-        obs.scheduler_data["programme"] = "nova_monitoring"
+        obs.scheduler_data["program"] = "nova_monitoring"
         await SequencerPlugin().run(obs)
 
-        assert seen_programme == ["nova_monitoring"]
+        assert seen_program == ["nova_monitoring"]
 
     async def test_subplugin_error_propagates(self, monkeypatch):
         calls: list[str] = []
@@ -110,7 +110,7 @@ class TestSequencerPlugin:
         ]
         monkeypatch.setattr(
             "rosace.plugins.sequencer.load_pipelines",
-            lambda programme: (fake_pipeline, []),
+            lambda program: (fake_pipeline, []),
         )
 
         obs = _make_obs()

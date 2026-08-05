@@ -2,7 +2,7 @@
 Registry of available SCHEDULER plugins.
 
 Unlike SEQUENCER/REDUCTION sub-plugins (reloaded dynamically by
-pipeline_loader.py from a programme YAML, one reload per observation), a
+pipeline_loader.py from a program YAML, one reload per observation), a
 SCHEDULER plugin is a full stage plugin (see plugins/__init__.py): only one
 is active for the whole lifetime of the application, chosen once at startup
 via active_scheduler (conf/config.yaml).

@@ -1,7 +1,7 @@
 """
 Shared acquisition helpers for real-hardware (sequencer_backend=indi)
 SEQUENCER sub-plugins — plain functions, not a sub-plugin of their own: not
-resolved by pipeline_loader.py's dynamic importlib convention, no programme
+resolved by pipeline_loader.py's dynamic importlib convention, no program
 YAML ever declares this module as a step. Each caller still owns its own
 execute() and its own key in obs.sequencer_data; this module only factors
 out logic that would otherwise be duplicated across sub-plugins.
@@ -15,7 +15,7 @@ for a target's magnitude — maps directly onto ExposureConfig.exposure_time/
 num_exposures. Splits into several equal, max-duration sub-exposures rather
 than one long one once the raw computed duration would exceed the
 configured maximum (e.g. a raw 700s at a 300s max becomes count=3 at 300s
-each, not one 700s exposure) — used by expose.py whenever a programme
+each, not one 700s exposure) — used by expose.py whenever a program
 doesn't set an explicit exposure_time.
 """
 

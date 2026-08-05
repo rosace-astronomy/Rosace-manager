@@ -14,10 +14,10 @@ from rosace.models import Observation
 from rosace.plugins.sharing import SharingPlugin
 
 
-def _make_obs(with_programme=True) -> Observation:
+def _make_obs(with_program=True) -> Observation:
     obs = Observation(id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234")
-    if with_programme:
-        obs.scheduler_data["programme"] = "etoiles_be"
+    if with_program:
+        obs.scheduler_data["program"] = "etoiles_be"
     return obs
 
 
@@ -36,15 +36,15 @@ class FakeSharingSubPlugin:
 
 class TestSharingPlugin:
 
-    async def test_raises_if_programme_missing(self):
-        obs = _make_obs(with_programme=False)
-        with pytest.raises(RuntimeError, match="programme manquant"):
+    async def test_raises_if_program_missing(self):
+        obs = _make_obs(with_program=False)
+        with pytest.raises(RuntimeError, match="program manquant"):
             await SharingPlugin().run(obs)
 
     async def test_calls_sharing_subplugin(self, monkeypatch):
         calls: list[str] = []
         fake_sub = FakeSharingSubPlugin(calls)
-        monkeypatch.setattr("rosace.plugins.sharing.load_sharing_plugin", lambda programme: fake_sub)
+        monkeypatch.setattr("rosace.plugins.sharing.load_sharing_plugin", lambda program: fake_sub)
 
         obs = _make_obs()
         result = await SharingPlugin().run(obs)
@@ -52,24 +52,24 @@ class TestSharingPlugin:
         assert calls == ["shared"]
         assert result.sharing_data["fake"] == {"done": True}
 
-    async def test_loads_sharing_plugin_for_observation_programme(self, monkeypatch):
-        seen_programme = []
+    async def test_loads_sharing_plugin_for_observation_program(self, monkeypatch):
+        seen_program = []
 
-        def fake_load_sharing_plugin(programme):
-            seen_programme.append(programme)
+        def fake_load_sharing_plugin(program):
+            seen_program.append(program)
             return FakeSharingSubPlugin([])
 
         monkeypatch.setattr("rosace.plugins.sharing.load_sharing_plugin", fake_load_sharing_plugin)
 
         obs = _make_obs()
-        obs.scheduler_data["programme"] = "nova_monitoring"
+        obs.scheduler_data["program"] = "nova_monitoring"
         await SharingPlugin().run(obs)
 
-        assert seen_programme == ["nova_monitoring"]
+        assert seen_program == ["nova_monitoring"]
 
     async def test_subplugin_error_propagates(self, monkeypatch):
         fake_sub = FakeSharingSubPlugin([], raises=RuntimeError("sharing failed"))
-        monkeypatch.setattr("rosace.plugins.sharing.load_sharing_plugin", lambda programme: fake_sub)
+        monkeypatch.setattr("rosace.plugins.sharing.load_sharing_plugin", lambda program: fake_sub)
 
         obs = _make_obs()
         with pytest.raises(RuntimeError, match="sharing failed"):

@@ -2,11 +2,11 @@
 Plugin SHARING — Orchestrateur de diffusion.
 Le sous-plugin de diffusion (un seul, pas une liste) est chargé dynamiquement
 depuis le YAML du programme scientifique de l'observation
-(obs.scheduler_data["programme"]), posé par SCHEDULER — donc rechargé à
+(obs.scheduler_data["program"]), posé par SCHEDULER — donc rechargé à
 chaque observation, pas une fois pour toutes au démarrage.
 
 Structure :
-    programmes/<programme>.yaml  →  pipeline_loader  →  <UnSeulSousPlugin>
+    programs/<program>.yaml  →  pipeline_loader  →  <UnSeulSousPlugin>
 """
 
 import logging
@@ -24,11 +24,11 @@ class SharingPlugin:
     """
 
     async def run(self, obs: Observation) -> Observation:
-        programme = obs.scheduler_data.get("programme")
-        if not programme:
-            raise RuntimeError("SHARING : programme manquant dans scheduler_data")
+        program = obs.scheduler_data.get("program")
+        if not program:
+            raise RuntimeError("SHARING : program manquant dans scheduler_data")
 
-        sub = load_sharing_plugin(programme)
+        sub = load_sharing_plugin(program)
         log.info(f"[SHARING] Diffusion via '{sub.__class__.__name__}'")
         obs = await sub.execute(obs)
         return obs

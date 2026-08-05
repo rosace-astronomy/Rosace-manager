@@ -1,24 +1,24 @@
 """
 Minimal SHARING sub-plugin — a template for writing a new one, and the only
-one that exists today (every programme currently points to it via
-`sharing: blank_share` — real per-programme distribution logic is a future chantier).
+one that exists today (every program currently points to it via
+`sharing: blank_share` — real per-program distribution logic is a future chantier).
 
 THE SHARING SUB-PLUGIN CONTRACT
 --------------------------------
 `SharingPlugin.run()` (`plugins/sharing.py`) resolves and calls exactly one
 sub-plugin per observation — the one declared under the singular `sharing:`
-key in the active programme YAML (not a list, unlike `sequencer:`/`reduction:`).
+key in the active program YAML (not a list, unlike `sequencer:`/`reduction:`).
 Its `execute(self, obs) -> Observation` reads `obs.reduction_data["extract"]
 ["reduced_files"]` (REDUCTION's own output — always present by the time
-SHARING runs) and does whatever this programme needs to distribute results
+SHARING runs) and does whatever this program needs to distribute results
 (email, FTP, publish to an API...). It writes its own nested key into
 `obs.sharing_data`, keyed by its own declared name — presence of the key
 means it completed, no separate `"done"` flag needed, same convention as
 every other sub-plugin family (see CLAUDE.md).
 
-If a programme needs to notify several destinations, that happens *inside*
+If a program needs to notify several destinations, that happens *inside*
 this one sub-plugin's own logic (e.g. loop over a list of recipients) — the
-mechanism deliberately only supports one sub-plugin per programme, not a list.
+mechanism deliberately only supports one sub-plugin per program, not a list.
 
 PLACEHOLDER: the actual distribution logic below is a stand-in (it only logs
 each file) — real email/FTP/API integration is a separate future chantier.
@@ -33,7 +33,7 @@ TO WRITE YOUR OWN SHARING SUB-PLUGIN
    (reduction_data["extract"]["reduced_files"] at minimum), do your real
    distribution, and write obs.sharing_data["<your_name>"] = {...}.
 3. Write plugins/sharing_plugins/<your_name>/test_<your_name>.py.
-4. No registry to edit — set `sharing: <your_name>` in the programme YAML.
+4. No registry to edit — set `sharing: <your_name>` in the program YAML.
 """
 
 from __future__ import annotations

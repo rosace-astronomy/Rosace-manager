@@ -2,11 +2,11 @@
 # Suivi spectral d'étoiles Be (émission Hα).
 # Pipeline complet : pointage, mise au point, pose longue, réduction complète.
 
-programme: etoiles_be
+program: Be_stars
 description: "Suivi spectral d'étoiles Be — émission Hα et variations de profil"
 
 sequencer:
-  - slew        # Pointage télescope
+  - pointing_72ed_01        # Pointage télescope
   - focus       # Mise au point automatique
   - expose      # Exposition CCD
   # - tatatata    # Pour tester...

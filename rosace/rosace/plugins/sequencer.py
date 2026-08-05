@@ -1,18 +1,18 @@
 """
 Plugin SEQUENCER — Orchestrateur d'acquisition.
 Le pipeline (liste de sous-plugins) est chargé dynamiquement depuis le YAML
-du programme scientifique de l'observation (obs.scheduler_data["programme"]),
+du programme scientifique de l'observation (obs.scheduler_data["program"]),
 posé par SCHEDULER — donc rechargé à chaque observation, pas une fois pour
 toutes au démarrage.
 
 Structure :
-    programmes/<programme>.yaml  →  pipeline_loader  →  [Slew, Focus, Expose, …]
+    programs/<program>.yaml  →  pipeline_loader  →  [Slew, Focus, Expose, …]
 """
 
 import logging
 
 from ..models import Observation
-from .pipeline_loader import load_pipelines, load_programme_yaml
+from .pipeline_loader import load_pipelines, load_program_yaml
 
 log = logging.getLogger("spectro.plugin.sequencer")
 
@@ -24,26 +24,26 @@ class SequencerPlugin:
     """
 
     async def run(self, obs: Observation) -> Observation:
-        programme = obs.scheduler_data.get("programme")
-        if not programme or "target" not in obs.scheduler_data:
-            raise RuntimeError("SEQUENCER : scheduler_data incomplet (target/programme)")
+        program = obs.scheduler_data.get("program")
+        if not program or "target" not in obs.scheduler_data:
+            raise RuntimeError("SEQUENCER : scheduler_data incomplet (target/program)")
         if not obs.obs_dir:
             raise RuntimeError("SEQUENCER : répertoire d'observation (obs_dir) non défini")
 
         # Manifeste posé en tout premier, avant tout sous-plugin — survit à un
         # plantage n'importe où dans SEQUENCER, REDUCTION ou SHARING (voir models.py).
-        programme_data = load_programme_yaml(programme)
-        obs.program_file = f"{programme}.yaml"
+        program_data = load_program_yaml(program)
+        obs.program_file = f"{program}.yaml"
         obs.program_steps = {
-            "sequencer": list(programme_data["sequencer"]),
-            "reduction": list(programme_data["reduction"]),
-            "sharing": programme_data["sharing"],
+            "sequencer": list(program_data["sequencer"]),
+            "reduction": list(program_data["reduction"]),
+            "sharing": program_data["sharing"],
         }
 
-        seq_pipeline, _ = load_pipelines(programme)
+        seq_pipeline, _ = load_pipelines(program)
         steps = [s.__class__.__name__ for s in seq_pipeline]
         log.info(
-            f"[SEQUENCER] Début séquence '{programme}' pour {obs.scheduler_data['target'].name} "
+            f"[SEQUENCER] Début séquence '{program}' pour {obs.scheduler_data['target'].name} "
             f"— étapes : {steps}"
         )
 

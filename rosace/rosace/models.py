@@ -68,7 +68,7 @@ class Observation(BaseModel):
     obs_dir: Optional[str] = None
     yaml_file: Optional[str] = None
 
-    # Nom du fichier YAML (dans programmes/) qui décrit le programme scientifique
+    # Nom du fichier YAML (dans programs/) qui décrit le programme scientifique
     # de cette observation — ex. "demo.yaml". Posé par SequencerPlugin en même
     # temps que program_steps ci-dessous.
     program_file: Optional[str] = None

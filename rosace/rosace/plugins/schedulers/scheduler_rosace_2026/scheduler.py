@@ -183,7 +183,7 @@ class SchedulerPlugin:
                 name=star.name, ra=star.ra, dec=star.dec, magnitude_v=star.magnitude_v,
             )
             obs.scheduler_data["queried_name"] = item["queried_name"]
-            obs.scheduler_data["programme"] = item["program"].name
+            obs.scheduler_data["program"] = item["program"].name
             obs.scheduler_data["priority"] = item["priority"]
             obs.scheduler_data["exposure"] = ExposureConfig(exposure_time=item["exposure_time"])
             log.info(

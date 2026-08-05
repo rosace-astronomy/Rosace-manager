@@ -56,7 +56,7 @@ async def db_init() -> None:
                 session_id       TEXT NOT NULL REFERENCES sessions(id),
                 target_name      TEXT NOT NULL,
                 queried_name     TEXT,
-                programme_name   TEXT,
+                program_name   TEXT,
                 priority         INTEGER,
                 yaml_file        TEXT,
                 created_at       TEXT NOT NULL,
@@ -112,14 +112,14 @@ async def db_insert_observation(obs: Observation, session_id: str) -> None:
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         await db.execute(
             """INSERT INTO observations
-               (id, session_id, target_name, queried_name, programme_name, priority, created_at, scheduler_done, scheduler_status)
+               (id, session_id, target_name, queried_name, program_name, priority, created_at, scheduler_done, scheduler_status)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'done')""",
             (
                 obs.id,
                 session_id,
                 obs.scheduler_data["target"].name,
                 obs.scheduler_data.get("queried_name"),
-                obs.scheduler_data.get("programme"),
+                obs.scheduler_data.get("program"),
                 obs.scheduler_data.get("priority"),
                 obs.created_at.isoformat(),
                 datetime.now(timezone.utc).isoformat(),
@@ -129,9 +129,9 @@ async def db_insert_observation(obs: Observation, session_id: str) -> None:
     log.info(f"[DB] Observation inserted: {obs.id}")
 
 
-async def db_count_observations_for_target(programme_name: str, target_name: str) -> int:
+async def db_count_observations_for_target(program_name: str, target_name: str) -> int:
     """Counts how many observations already exist during the current *astronomical
-    day* (not scoped to a single session_id) for a given (programme, target) pair —
+    day* (not scoped to a single session_id) for a given (program, target) pair —
     used by SCHEDULER to know how many times a line from its observation list has
     already been consumed. Scoped by night rather than by session so that stopping
     and restarting the session (e.g. after a pause) doesn't reset the count."""
@@ -139,8 +139,8 @@ async def db_count_observations_for_target(programme_name: str, target_name: str
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         async with db.execute(
             """SELECT COUNT(*) FROM observations
-               WHERE created_at >= ? AND programme_name = ? AND target_name = ?""",
-            (since, programme_name, target_name)
+               WHERE created_at >= ? AND program_name = ? AND target_name = ?""",
+            (since, program_name, target_name)
         ) as cursor:
             row = await cursor.fetchone()
             return row[0]

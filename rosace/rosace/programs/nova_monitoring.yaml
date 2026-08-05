@@ -4,7 +4,7 @@
 # dépend explicitement de l'étape précédente (bias → dark → flat → extract),
 # aucune étape ne peut être sautée.
 
-programme: nova_monitoring
+program: nova_monitoring
 description: "Surveillance spectrale de novæ et transitoires — réactivité maximale"
 
 sequencer:

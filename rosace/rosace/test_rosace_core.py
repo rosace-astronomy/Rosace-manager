@@ -327,7 +327,7 @@ class TestObservation:
         )
         obs.scheduler_data["target"] = Target(name="Altair", ra=297.69, dec=8.87)
         obs.scheduler_data["exposure"] = ExposureConfig(exposure_time=120.0)
-        obs.scheduler_data["programme"] = "etoiles_be"
+        obs.scheduler_data["program"] = "etoiles_be"
         return obs
 
     def test_basic_creation(self):
@@ -438,7 +438,7 @@ class TestDatabase:
         )
         obs.scheduler_data["target"] = Target(name="Vega", ra=279.23, dec=38.78)
         obs.scheduler_data["exposure"] = ExposureConfig(exposure_time=300.0)
-        obs.scheduler_data["programme"] = "etoiles_be"
+        obs.scheduler_data["program"] = "etoiles_be"
         return obs
 
     async def test_db_init_idempotent(self):
@@ -625,19 +625,19 @@ class TestDatabase:
         obs2 = self._make_obs(ctx.session_id)
         for obs in (obs1, obs2):
             obs.scheduler_data["target"] = Target(name="VegaCountPairTest", ra=0.0, dec=0.0)
-            obs.scheduler_data["programme"] = "CountPairProgram"
+            obs.scheduler_data["program"] = "CountPairProgram"
         await db_insert_observation(obs1, ctx.session_id)
         await db_insert_observation(obs2, ctx.session_id)
         count = await db_count_observations_for_target("CountPairProgram", "VegaCountPairTest")
         assert count == 2
 
-    async def test_count_observations_for_target_scoped_by_programme(self):
+    async def test_count_observations_for_target_scoped_by_program(self):
         """Même étoile, programme différent : ne doit pas compter dans l'autre programme."""
         ctx = self._make_ctx()
         await db_insert_session(ctx)
-        obs = self._make_obs(ctx.session_id)  # programme="etoiles_be"
+        obs = self._make_obs(ctx.session_id)  # program="etoiles_be"
         await db_insert_observation(obs, ctx.session_id)
-        count = await db_count_observations_for_target("un_autre_programme", "Vega")
+        count = await db_count_observations_for_target("un_autre_program", "Vega")
         assert count == 0
 
     async def test_count_observations_for_target_persists_across_sessions(self):
@@ -647,14 +647,14 @@ class TestDatabase:
         await db_insert_session(obs1_ctx)
         obs1 = self._make_obs(obs1_ctx.session_id)
         obs1.scheduler_data["target"] = Target(name="VegaCrossSessionTest", ra=0.0, dec=0.0)
-        obs1.scheduler_data["programme"] = "CrossSessionProgram"
+        obs1.scheduler_data["program"] = "CrossSessionProgram"
         await db_insert_observation(obs1, obs1_ctx.session_id)
 
         obs2_ctx = self._make_ctx()  # nouvelle session, même nuit
         await db_insert_session(obs2_ctx)
         obs2 = self._make_obs(obs2_ctx.session_id)
         obs2.scheduler_data["target"] = Target(name="VegaCrossSessionTest", ra=0.0, dec=0.0)
-        obs2.scheduler_data["programme"] = "CrossSessionProgram"
+        obs2.scheduler_data["program"] = "CrossSessionProgram"
         await db_insert_observation(obs2, obs2_ctx.session_id)
 
         count = await db_count_observations_for_target("CrossSessionProgram", "VegaCrossSessionTest")

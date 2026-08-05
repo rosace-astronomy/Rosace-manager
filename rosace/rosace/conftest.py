@@ -57,8 +57,8 @@ def assert_scheduler_contract(obs: Observation) -> None:
     assert isinstance(data.get("queried_name"), str) and data["queried_name"], (
         f"scheduler_data['queried_name'] must be a non-empty string, got {data.get('queried_name')!r}"
     )
-    assert isinstance(data.get("programme"), str) and data["programme"], (
-        f"scheduler_data['programme'] must be a non-empty string, got {data.get('programme')!r}"
+    assert isinstance(data.get("program"), str) and data["program"], (
+        f"scheduler_data['program'] must be a non-empty string, got {data.get('program')!r}"
     )
     assert isinstance(data.get("priority"), int), (
         f"scheduler_data['priority'] must be an int, got {data.get('priority')!r}"

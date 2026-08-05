@@ -11,11 +11,11 @@ import sys
 sys.path.insert(0, str(Path(__file__).parents[3]))
 
 from rosace.plugins.pipeline_loader import (
-    load_programme_yaml,
+    load_program_yaml,
     build_pipeline,
     load_pipelines,
     load_sharing_plugin,
-    list_programmes,
+    list_programs,
     validate_subplugin_catalogue,
 )
 
@@ -23,54 +23,54 @@ from rosace.plugins.pipeline_loader import (
 class TestListProgrammes:
 
     def test_returns_list(self):
-        result = list_programmes()
+        result = list_programs()
         assert isinstance(result, list)
 
-    def test_known_programmes_present(self):
-        result = list_programmes()
+    def test_known_programs_present(self):
+        result = list_programs()
         assert "etoiles_be" in result
         assert "etoiles_brillantes" in result
         assert "nova_monitoring" in result
         assert "demo" in result
 
     def test_sorted_alphabetically(self):
-        result = list_programmes()
+        result = list_programs()
         assert result == sorted(result)
 
 
 class TestLoadProgrammeYaml:
 
     def test_loads_etoiles_be(self):
-        data = load_programme_yaml("etoiles_be")
+        data = load_program_yaml("etoiles_be")
         assert "sequencer" in data
         assert "reduction" in data
 
     def test_sequencer_steps_are_list(self):
-        data = load_programme_yaml("etoiles_be")
+        data = load_program_yaml("etoiles_be")
         assert isinstance(data["sequencer"], list)
         assert len(data["sequencer"]) > 0
 
     def test_reduction_steps_are_list(self):
-        data = load_programme_yaml("etoiles_be")
+        data = load_program_yaml("etoiles_be")
         assert isinstance(data["reduction"], list)
         assert len(data["reduction"]) > 0
 
-    def test_raises_on_unknown_programme(self):
+    def test_raises_on_unknown_program(self):
         with pytest.raises(FileNotFoundError, match="introuvable"):
-            load_programme_yaml("programme_inexistant")
+            load_program_yaml("programme_inexistant")
 
     def test_error_message_lists_available(self):
         with pytest.raises(FileNotFoundError) as exc_info:
-            load_programme_yaml("xxx")
+            load_program_yaml("xxx")
         assert "etoiles_be" in str(exc_info.value)
 
     @pytest.mark.parametrize("bad_name", ["../evil", "foo/bar", "foo bar", "..", ""])
     def test_raises_on_path_traversal_attempt(self, bad_name):
-        """Un nom qui pourrait s'échapper de PROGRAMMES_DIR est rejeté avant
+        """Un nom qui pourrait s'échapper de PROGRAMS_DIR est rejeté avant
         toute résolution de chemin — pas de FileNotFoundError qui révèlerait
         si le chemin traversé existe ou non."""
         with pytest.raises(ValueError, match="invalide"):
-            load_programme_yaml(bad_name)
+            load_program_yaml(bad_name)
 
 
 class TestBuildPipeline:
@@ -159,23 +159,23 @@ class TestLoadPipelines:
         assert seq_names == ["SlewPlugin", "FocusPlugin", "ExposePlugin"]
         assert red_names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
 
-    def test_raises_on_unknown_programme(self):
+    def test_raises_on_unknown_program(self):
         with pytest.raises(FileNotFoundError):
             load_pipelines("programme_inexistant")
 
-    def test_custom_yaml_programme(self, tmp_path, monkeypatch):
+    def test_custom_yaml_program(self, tmp_path, monkeypatch):
         """Un YAML personnalisé est correctement chargé."""
         import yaml as _yaml
         from rosace.plugins import pipeline_loader
 
         custom_yaml = tmp_path / "test_custom.yaml"
         custom_yaml.write_text(_yaml.dump({
-            "programme": "test_custom",
+            "program": "test_custom",
             "sequencer": ["slew", "expose"],
             "reduction": ["bias", "extract"],
         }))
 
-        monkeypatch.setattr(pipeline_loader, "PROGRAMMES_DIR", tmp_path)
+        monkeypatch.setattr(pipeline_loader, "PROGRAMS_DIR", tmp_path)
         seq, red = load_pipelines("test_custom")
         assert len(seq) == 2
         assert len(red) == 2
@@ -186,7 +186,7 @@ class TestLoadPipelines:
 
         bad_yaml = tmp_path / "bad.yaml"
         bad_yaml.write_text(_yaml.dump({"reduction": ["bias"]}))
-        monkeypatch.setattr(pipeline_loader, "PROGRAMMES_DIR", tmp_path)
+        monkeypatch.setattr(pipeline_loader, "PROGRAMS_DIR", tmp_path)
 
         with pytest.raises(KeyError, match="sequencer"):
             load_pipelines("bad")
@@ -197,7 +197,7 @@ class TestLoadPipelines:
 
         bad_yaml = tmp_path / "bad2.yaml"
         bad_yaml.write_text(_yaml.dump({"sequencer": ["slew"]}))
-        monkeypatch.setattr(pipeline_loader, "PROGRAMMES_DIR", tmp_path)
+        monkeypatch.setattr(pipeline_loader, "PROGRAMS_DIR", tmp_path)
 
         with pytest.raises(KeyError, match="reduction"):
             load_pipelines("bad2")
@@ -271,7 +271,7 @@ class TestLoadSharingPlugin:
 
         bad_yaml = tmp_path / "bad3.yaml"
         bad_yaml.write_text(_yaml.dump({"sequencer": ["slew"], "reduction": ["bias"]}))
-        monkeypatch.setattr(pipeline_loader, "PROGRAMMES_DIR", tmp_path)
+        monkeypatch.setattr(pipeline_loader, "PROGRAMS_DIR", tmp_path)
 
         with pytest.raises(KeyError, match="sharing"):
             load_sharing_plugin("bad3")
@@ -284,7 +284,7 @@ class TestLoadSharingPlugin:
         bad_yaml.write_text(_yaml.dump({
             "sequencer": ["slew"], "reduction": ["bias"], "sharing": "inexistant",
         }))
-        monkeypatch.setattr(pipeline_loader, "PROGRAMMES_DIR", tmp_path)
+        monkeypatch.setattr(pipeline_loader, "PROGRAMS_DIR", tmp_path)
 
         with pytest.raises(ValueError, match="inexistant"):
             load_sharing_plugin("bad4")
@@ -297,7 +297,7 @@ class TestLoadSharingPlugin:
         bad_yaml.write_text(_yaml.dump({
             "sequencer": ["slew"], "reduction": ["bias"], "sharing": "../evil",
         }))
-        monkeypatch.setattr(pipeline_loader, "PROGRAMMES_DIR", tmp_path)
+        monkeypatch.setattr(pipeline_loader, "PROGRAMS_DIR", tmp_path)
 
         with pytest.raises(ValueError, match="invalide"):
             load_sharing_plugin("bad5")

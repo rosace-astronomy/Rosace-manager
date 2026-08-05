@@ -4,7 +4,7 @@
 # sous-plugin REDUCTION dépend explicitement de l'étape précédente (bias →
 # dark → flat → extract), aucune étape ne peut être sautée.
 
-programme: etoiles_brillantes
+program: etoiles_brillantes
 description: "Mesures de vitesse radiale sur étoiles brillantes — poses courtes"
 
 sequencer:
