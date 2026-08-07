@@ -21,7 +21,7 @@ from pathlib import Path
 from ....config import EXPOSURE_TIME_MAG0_SECONDS, MAX_EXPOSURE_TIME_SECONDS
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
-from ..acquisition_helpers import compute_exposure_plan
+from ..acquisition_helpers import build_fits_root_name, compute_exposure_time_and_count
 
 log = logging.getLogger("spectro.subplugin.expose")
 
@@ -46,17 +46,23 @@ class ExposePlugin(SubPlugin):
                     "EXPOSE : exposure_time non défini et magnitude absente "
                     "(scheduler_data['target'].magnitude_v) — impossible de le calculer"
                 )
-            exposure_time, count = compute_exposure_plan(
+            exposure_time, count = compute_exposure_time_and_count(
                 target.magnitude_v, EXPOSURE_TIME_MAG0_SECONDS, MAX_EXPOSURE_TIME_SECONDS
             )
 
         log.info(f"[EXPOSE] {count} exposition(s) de {exposure_time}s")
         camera = obs.hardware["science_camera"]
 
+        queried_name = obs.scheduler_data.get("queried_name")
+        root_name = build_fits_root_name(
+            "STAR", target_name=queried_name, exposure_time=exposure_time, num_exposures=count
+        )
+
         raw_files = []
         for i in range(1, count + 1):
             image = await camera.expose(exposure_time)
-            raw_path = Path(obs.obs_dir) / f"spectrum_{i:04d}.fits"
+            suffix = f"-{i}" if count > 1 else ""
+            raw_path = Path(obs.obs_dir) / f"{root_name}{suffix}.fits"
             image.writeto(raw_path, overwrite=True)
             raw_files.append(str(raw_path))
 

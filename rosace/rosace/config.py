@@ -89,7 +89,7 @@ GUIDE_EXPOSURE_TIME_SECONDS = _cfg["guide_exposure_time_seconds"]
 
 # ── Exposition scientifique ─────────────────────────────────────
 # Temps de pose (mag 0) et durée max d'une sous-pose — voir
-# acquisition_helpers.py::compute_exposure_plan().
+# acquisition_helpers.py::compute_exposure_time_and_count().
 EXPOSURE_TIME_MAG0_SECONDS = _cfg["exposure_time_mag0_seconds"]
 MAX_EXPOSURE_TIME_SECONDS = _cfg["max_exposure_time_seconds"]
 

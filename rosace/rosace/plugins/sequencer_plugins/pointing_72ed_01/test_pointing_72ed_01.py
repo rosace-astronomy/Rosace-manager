@@ -12,7 +12,23 @@ import pytest
 
 from rosace.config import GUIDE_EXPOSURE_TIME_SECONDS
 from rosace.models import Observation, Target
+from rosace.plugins.sequencer_plugins import acquisition_helpers
 from rosace.plugins.sequencer_plugins.pointing_72ed_01.pointing_72ed_01 import Pointing72ed01Plugin
+
+FIXED_TS = "20260807_143022"
+
+
+class _FrozenDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 8, 7, 14, 30, 22, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def freeze_fits_timestamp(monkeypatch):
+    """build_fits_root_name() stamps every FITS filename with the current
+    UTC time — freeze it so tests can assert on exact filenames."""
+    monkeypatch.setattr(acquisition_helpers, "datetime", _FrozenDatetime)
 
 
 def _make_obs(obs_dir=None, target=None, guiding_camera=None) -> Observation:
@@ -67,7 +83,7 @@ class TestPointing72ed01Plugin:
 
         result = await Pointing72ed01Plugin().execute(obs)
 
-        expected_path = str(tmp_path / "guide_0001.fits")
+        expected_path = str(tmp_path / f"GUIDING_0_30s_{FIXED_TS}.fits")
         assert result is obs
         assert obs.sequencer_data["pointing_72ed_01"] == {
             "target": "Vega",

@@ -12,11 +12,27 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from rosace.models import Observation, ExposureConfig, Target
+from rosace.plugins.sequencer_plugins import acquisition_helpers
 from rosace.plugins.sequencer_plugins.expose import expose as expose_mod
 from rosace.plugins.sequencer_plugins.expose.expose import ExposePlugin
 
+FIXED_TS = "20260807_143022"
 
-def _make_obs(obs_dir=None, exposure=None, target=None, camera=None, stop_check=None) -> Observation:
+
+class _FrozenDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 8, 7, 14, 30, 22, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def freeze_fits_timestamp(monkeypatch):
+    """build_fits_root_name() stamps every FITS filename with the current
+    UTC time — freeze it so tests can assert on exact filenames."""
+    monkeypatch.setattr(acquisition_helpers, "datetime", _FrozenDatetime)
+
+
+def _make_obs(obs_dir=None, exposure=None, target=None, camera=None, stop_check=None, queried_name=None) -> Observation:
     obs = Observation(
         id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234",
         obs_dir=str(obs_dir) if obs_dir else None,
@@ -26,6 +42,8 @@ def _make_obs(obs_dir=None, exposure=None, target=None, camera=None, stop_check=
         obs.scheduler_data["exposure"] = exposure
     if target is not None:
         obs.scheduler_data["target"] = target
+    if queried_name is not None:
+        obs.scheduler_data["queried_name"] = queried_name
     obs.hardware["science_camera"] = camera if camera is not None else AsyncMock()
     return obs
 
@@ -72,9 +90,21 @@ class TestExposePlugin:
 
         result = await ExposePlugin().execute(obs)
 
-        expected_path = str(tmp_path / "spectrum_0001.fits")
-        fake_image.writeto.assert_called_once_with(tmp_path / "spectrum_0001.fits", overwrite=True)
+        expected_path = str(tmp_path / f"STAR_1s_{FIXED_TS}.fits")
+        fake_image.writeto.assert_called_once_with(tmp_path / f"STAR_1s_{FIXED_TS}.fits", overwrite=True)
         assert result.sequencer_data["expose"] == {"raw_files": [expected_path], "count": 1}
+
+    async def test_uses_queried_name_as_fits_prefix(self, tmp_path):
+        fake_image = MagicMock()
+        camera = AsyncMock()
+        camera.expose.return_value = fake_image
+        exposure = ExposureConfig(exposure_time=1.0)
+        obs = _make_obs(obs_dir=tmp_path, exposure=exposure, camera=camera, queried_name="V831 Cas")
+
+        result = await ExposePlugin().execute(obs)
+
+        expected_path = str(tmp_path / f"V831Cas_1s_{FIXED_TS}.fits")
+        assert result.sequencer_data["expose"]["raw_files"] == [expected_path]
 
     async def test_computes_exposure_time_from_magnitude_when_not_set(self, tmp_path, monkeypatch):
         monkeypatch.setattr(expose_mod, "EXPOSURE_TIME_MAG0_SECONDS", 1.0)
@@ -102,7 +132,8 @@ class TestExposePlugin:
 
         assert camera.expose.await_count == 4
         camera.expose.assert_awaited_with(pytest.approx(300.0))
-        expected_files = [str(tmp_path / f"spectrum_{i:04d}.fits") for i in range(1, 5)]
+        root_name = f"STAR_4x300s_{FIXED_TS}"
+        expected_files = [str(tmp_path / f"{root_name}-{i}.fits") for i in range(1, 5)]
         assert result.sequencer_data["expose"] == {"raw_files": expected_files, "count": 4}
 
     async def test_stops_early_when_stop_requested_between_sub_exposures(self, tmp_path, monkeypatch):
@@ -125,7 +156,8 @@ class TestExposePlugin:
         result = await ExposePlugin().execute(obs)
 
         assert camera.expose.await_count == 2  # stopped after the 2nd sub-exposure, not all 4
-        expected_files = [str(tmp_path / f"spectrum_{i:04d}.fits") for i in range(1, 3)]
+        root_name = f"STAR_4x300s_{FIXED_TS}"  # reflects the planned series of 4, not how many actually ran
+        expected_files = [str(tmp_path / f"{root_name}-{i}.fits") for i in range(1, 3)]
         assert result.sequencer_data["expose"] == {"raw_files": expected_files, "count": 2}
 
     async def test_stop_check_ignored_on_the_last_sub_exposure(self, tmp_path):

@@ -5,47 +5,154 @@ resolved by pipeline_loader.py's dynamic importlib convention, no program
 YAML ever declares this module as a step. Each caller still owns its own
 execute() and its own key in obs.sequencer_data; this module only factors
 out logic that would otherwise be duplicated across sub-plugins.
-
-capture_guide_image() wraps a guiding-role camera's expose()-then-writeto()
-sequence — the same pattern expose.py already uses for the science camera
-(see hardware/camera.py for the generic Camera contract).
-
-compute_exposure_plan() computes the (per-exposure duration, count) needed
-for a target's magnitude — maps directly onto ExposureConfig.exposure_time/
-num_exposures. Splits into several equal, max-duration sub-exposures rather
-than one long one once the raw computed duration would exceed the
-configured maximum (e.g. a raw 700s at a 300s max becomes count=3 at 300s
-each, not one 700s exposure) — used by expose.py whenever a program
-doesn't set an explicit exposure_time.
 """
 
 from __future__ import annotations
 
 import math
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+ALLOWED_IMAGE_TYPES = {"STAR", "BIAS", "DARK", "FLAT", "CALIB", "GUIDING"}
+
+_TEMP_ALLOWED_TYPES = {"DARK", "BIAS"}
+
+_UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]")
+
 
 async def capture_guide_image(
-    camera: Any, exposure_time: float, obs_dir: str, filename: str = "guide_0001.fits"
+    camera: Any, exposure_time: float, obs_dir: str, filename: str | None = None
 ) -> Path:
     """Exposes a guiding-role camera for exposure_time seconds and writes the
-    resulting FITS image to obs_dir/filename. Returns the written path."""
+    resulting FITS image to obs_dir/filename. Returns the written path. Same
+    expose()-then-writeto() pattern expose.py already uses for the science
+    camera (see hardware/camera.py for the generic Camera contract). filename
+    defaults to build_fits_root_name("GUIDING", exposure_time=exposure_time)
+    + ".fits" — pass an explicit filename to override (e.g. in tests)."""
+    if filename is None:
+        filename = build_fits_root_name("GUIDING", exposure_time=exposure_time) + ".fits"
     image = await camera.expose(exposure_time)
     path = Path(obs_dir) / filename
     image.writeto(path, overwrite=True)
     return path
 
 
-def compute_exposure_plan(
+def compute_exposure_time_and_count(
     magnitude: float, exposure_time_mag0: float, max_exposure_time: float
 ) -> tuple[float, int]:
     """(per-exposure duration in seconds, count) for a target of the given
     magnitude: exposure_time_mag0 * 10**(magnitude / 2.5), split into several
     equal max_exposure_time-long exposures once that raw value exceeds
-    max_exposure_time (e.g. a raw 700s at a 300s max -> (300.0, 3))."""
+    max_exposure_time (e.g. a raw 700s at a 300s max -> (300.0, 3)). Maps
+    directly onto ExposureConfig.exposure_time/num_exposures — used by
+    expose.py whenever a program doesn't set an explicit exposure_time."""
     exposure_time = exposure_time_mag0 * 10 ** (magnitude / 2.5)
     if exposure_time <= max_exposure_time:
         return exposure_time, 1
     count = math.ceil(exposure_time / max_exposure_time)
     return max_exposure_time, count
+
+
+def build_fits_root_name(
+    image_type: str,
+    *,
+    target_name: str | None = None,
+    exposure_time: float | None = None,
+    num_exposures: int = 1,
+    sensor_temp_c: float | None = None,
+    timestamp: datetime | None = None,
+) -> str:
+    """Builds the FITS filename convention shared by every kind of image
+    this app writes (science, guiding, and future calibration frames) —
+    naming spec agreed with the user 2026-08-07, relaxed the same day so a
+    dev/debug call can get away with only image_type.
+
+    Returns only the "root name": no ".fits" extension and no series index
+    (e.g. "-1", "-2", ...) for a multi-file acquisition series — both are
+    the caller's responsibility, since every file in one series shares the
+    same root name.
+
+    Fields are joined with "_", in this order: prefix, [sensor temperature],
+    [exposure], timestamp. image_type is the only required argument —
+    everything else is optional and simply omitted from the name if not
+    given, not replaced by a placeholder value.
+
+    image_type is one fixed keyword from an explicit, extensible allow-list
+    (ALLOWED_IMAGE_TYPES) checked at call time, case-insensitive, normalized
+    to upper: STAR (any science image)/BIAS/DARK/FLAT/CALIB/GUIDING.
+
+    Prefix is image_type itself, except for STAR: target_name (the
+    observer-entered target name — the queried name as typed in the
+    observation list, e.g. scheduler_data["queried_name"], deliberately
+    not the resolved canonical Target.name), if given, replaces the literal
+    "STAR" — e.g. image_type="STAR", target_name="V831 Cas" -> "V831Cas...".
+    Without a target_name, image_type="STAR" alone falls back to the
+    literal "STAR" prefix (handy for a quick dev/debug call). Passing
+    target_name together with any image_type other than STAR is an
+    explicit error — that combination can only be a caller mistake.
+    Every character outside [A-Za-z0-9_-] is stripped from target_name
+    (this is what makes stray spaces and characters like "*" in some star
+    names filesystem-safe) — no exceptions, since a space or a "*" in a
+    FITS filename is a real problem for downstream automated processing.
+
+    sensor_temp_c is an optional field, DARK/BIAS only (an ordinary
+    STAR/GUIDING/etc. image never reports it) — not knowing it (no
+    temperature sensor, or simply not checked) is normal, not an error:
+    the field is just omitted. Passing it together with any other
+    image_type is still an explicit error, not silently dropped. Placed
+    right after the type, rounded to the nearest degree Celsius (e.g.
+    "-30deg").
+
+    Exposure field, omitted entirely if exposure_time isn't given: a
+    single exposure is "<seconds>s" — rounded to the nearest second if
+    >= 1s (e.g. "30s"), or 2 decimals with "." replaced by "_" if < 1s
+    (e.g. "0_30s"), since a literal "." right before the later ".fits"
+    extension would be confusing. Several identical exposures making up
+    one series are "<count>x<seconds>s" (e.g. "7x30s") — this is a purely
+    human-readable convention, not meant to ever be machine-parsed back.
+
+    Timestamp: UTC, second precision, "YYYYMMDD_HHMMSS" — same timezone
+    convention as Observation.created_at / init_session.py's session
+    directory / database.py elsewhere in this codebase. Guarantees
+    uniqueness across single files; for a multi-file series, uniqueness
+    additionally relies on the caller's own per-file series index.
+    Defaults to the current time (datetime.now(timezone.utc)) if not
+    given — overridable for tests.
+    """
+    image_type = image_type.upper()
+    if image_type not in ALLOWED_IMAGE_TYPES:
+        raise ValueError(f"build_fits_root_name: image_type={image_type!r} not in {sorted(ALLOWED_IMAGE_TYPES)}")
+
+    if image_type == "STAR":
+        if target_name:
+            prefix = _UNSAFE_NAME_CHARS.sub("", target_name)
+            if not prefix:
+                raise ValueError(f"build_fits_root_name: target_name={target_name!r} has no safe characters left")
+        else:
+            prefix = "STAR"
+    else:
+        if target_name is not None:
+            raise ValueError("build_fits_root_name: target_name is only valid when image_type='STAR'")
+        prefix = image_type
+
+    if sensor_temp_c is not None and image_type not in _TEMP_ALLOWED_TYPES:
+        raise ValueError(
+            f"build_fits_root_name: sensor_temp_c is only valid for image_type in {sorted(_TEMP_ALLOWED_TYPES)}"
+        )
+
+    fields = [prefix]
+    if sensor_temp_c is not None:
+        fields.append(f"{round(sensor_temp_c)}deg")
+
+    if exposure_time is not None:
+        if exposure_time >= 1:
+            time_str = f"{round(exposure_time)}s"
+        else:
+            time_str = f"{exposure_time:.2f}s".replace(".", "_")
+        fields.append(f"{num_exposures}x{time_str}" if num_exposures > 1 else time_str)
+
+    fields.append((timestamp or datetime.now(timezone.utc)).strftime("%Y%m%d_%H%M%S"))
+
+    return "_".join(fields)
