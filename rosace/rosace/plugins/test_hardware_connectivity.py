@@ -82,23 +82,19 @@ class TestConnectSessionHardware:
     async def test_all_succeed_returns_adapters_keyed_by_device_name(self, monkeypatch, short_timeout):
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
             "INDI_drivers": {"mount": MOUNT_DRIVER, "focuser": FOCUSER_DRIVER},
-            "PHD2_config": {"host": "127.0.0.1", "port": 4400},
+            "PHD2_config": {"host": "127.0.0.1", "port": 4400, "settle": {"pixels": 1.5, "time": 3, "timeout": 30}},
         })
         monkeypatch.setattr(hc, "_connect_device_sync", MagicMock(return_value=MagicMock()))
-
-        fake_writer = MagicMock()
-        fake_writer.wait_closed = AsyncMock(return_value=None)
-
-        async def fake_open_connection(host, port):
-            return MagicMock(), fake_writer
-
-        monkeypatch.setattr(asyncio, "open_connection", fake_open_connection)
+        fake_phd2_client = MagicMock()
+        fake_phd2_client.connect = AsyncMock(return_value=None)
+        monkeypatch.setattr(hc, "Phd2Client", MagicMock(return_value=fake_phd2_client))
 
         adapters = await hc.connect_session_hardware()
 
-        assert set(adapters) == {"mount", "focuser"}
+        assert set(adapters) == {"mount", "focuser", "phd2"}
         assert isinstance(adapters["mount"], hc.MountAdapter)
         assert isinstance(adapters["focuser"], hc.FocuserAdapter)
+        assert adapters["phd2"] is fake_phd2_client
 
     async def test_unknown_role_is_connected_but_not_returned(self, monkeypatch, short_timeout):
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
@@ -126,13 +122,11 @@ class TestConnectSessionHardware:
     async def test_phd2_failure_is_collected_and_raised(self, monkeypatch, short_timeout):
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
             "INDI_drivers": {},
-            "PHD2_config": {"host": "127.0.0.1", "port": 4400},
+            "PHD2_config": {"host": "127.0.0.1", "port": 4400, "settle": {"pixels": 1.5, "time": 3, "timeout": 30}},
         })
-
-        async def failing_open_connection(host, port):
-            raise ConnectionRefusedError("refused")
-
-        monkeypatch.setattr(asyncio, "open_connection", failing_open_connection)
+        fake_phd2_client = MagicMock()
+        fake_phd2_client.connect = AsyncMock(side_effect=ConnectionRefusedError("refused"))
+        monkeypatch.setattr(hc, "Phd2Client", MagicMock(return_value=fake_phd2_client))
 
         with pytest.raises(RuntimeError, match="PHD2"):
             await hc.connect_session_hardware()

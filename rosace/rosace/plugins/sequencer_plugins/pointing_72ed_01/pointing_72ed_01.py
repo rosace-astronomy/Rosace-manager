@@ -1,16 +1,19 @@
 """
-Sous-plugin SEQUENCER — Pointage télescope 72ED + image de guidage
+Sous-plugin SEQUENCER — Pointage télescope 72ED + démarrage du guidage PHD2
 Backend "indi" uniquement — première version "mode simple" (voir CLAUDE.md /
 memory : un mode "complexe" est prévu plus tard, sous forme d'un autre
 sous-plugin, ex. pointing_72ed_02).
 
-Pointe la monture via obs.hardware["mount"], puis capture une image de
-guidage via obs.hardware["guiding_camera"] (fonction générique
+Pointe la monture via obs.hardware["mount"], capture une image de guidage
+via obs.hardware["guiding_camera"] (fonction générique
 acquisition_helpers.capture_guide_image) pour vérifier visuellement le
-pointage. Ne démarre PAS le guidage PHD2 lui-même — le protocole PHD2 réel
-(calibration, dithering, start/stop) est un chantier séparé, non encore
-implémenté (hardware_connectivity.py ne fait aujourd'hui qu'un contrôle de
-joignabilité TCP).
+pointage, puis démarre le guidage PHD2 via obs.hardware["phd2"]
+(phd2.Phd2Client.start_guiding()) — qui ne rend la main qu'une fois le
+guidage réellement stabilisé (SettleDone), garantissant que la cible est
+bien en position avant que EXPOSE ne commence les acquisitions. Le guidage
+ainsi démarré continue de tourner pendant les étapes suivantes (acquisition
+d'images...) — aucun sous-plugin ne l'arrête encore explicitement (chantier
+futur : "stop guidage").
 """
 
 from __future__ import annotations
@@ -45,12 +48,17 @@ class Pointing72ed01Plugin(SubPlugin):
             guiding_camera, GUIDE_EXPOSURE_TIME_SECONDS, obs.obs_dir,
         )
 
+        log.info(f"[POINTING_72ED_01] Démarrage du guidage PHD2 sur {target.name}")
+        phd2 = obs.hardware["phd2"]
+        await phd2.start_guiding()
+
         obs.sequencer_data["pointing_72ed_01"] = {
             "target": target.name,
             "guide_image": str(guide_image_path),
+            "guiding_started": True,
         }
         log.info(
             f"[POINTING_72ED_01] Télescope en position sur {target.name}, "
-            f"image de guidage : {guide_image_path}"
+            f"image de guidage : {guide_image_path}, guidage démarré et stabilisé"
         )
         return obs

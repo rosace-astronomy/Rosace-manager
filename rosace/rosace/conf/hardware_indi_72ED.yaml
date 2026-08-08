@@ -78,7 +78,8 @@ PHD2_config:
     do_calibration: False
     # profile_name: St-Pancrasse
     # profile_name: Simulators
-    profile_name: 72ED Stellarmate
+    profile_name: Simulator
+    # profile_name: 72ED Stellarmate
     exposure_time_sec: 0.3
     settle:
         pixels: 7

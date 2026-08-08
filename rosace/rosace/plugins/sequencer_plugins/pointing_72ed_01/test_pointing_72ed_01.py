@@ -40,6 +40,7 @@ def _make_obs(obs_dir=None, target=None, guiding_camera=None) -> Observation:
         obs.scheduler_data["target"] = target
     obs.hardware["mount"] = AsyncMock()
     obs.hardware["guiding_camera"] = guiding_camera if guiding_camera is not None else AsyncMock()
+    obs.hardware["phd2"] = AsyncMock()
     return obs
 
 
@@ -66,6 +67,15 @@ class TestPointing72ed01Plugin:
 
         obs.hardware["mount"].slew_to.assert_awaited_once_with(279.23, 38.78)
 
+    async def test_starts_phd2_guiding(self, tmp_path):
+        camera = AsyncMock()
+        camera.expose.return_value = MagicMock()
+        obs = _make_obs(obs_dir=tmp_path, target=Target(name="Vega", ra=279.23, dec=38.78), guiding_camera=camera)
+
+        await Pointing72ed01Plugin().execute(obs)
+
+        obs.hardware["phd2"].start_guiding.assert_awaited_once_with()
+
     async def test_captures_guide_image_with_configured_exposure_time(self, tmp_path):
         camera = AsyncMock()
         camera.expose.return_value = MagicMock()
@@ -88,4 +98,5 @@ class TestPointing72ed01Plugin:
         assert obs.sequencer_data["pointing_72ed_01"] == {
             "target": "Vega",
             "guide_image": expected_path,
+            "guiding_started": True,
         }
