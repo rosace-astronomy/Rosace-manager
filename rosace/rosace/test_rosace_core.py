@@ -51,6 +51,7 @@ from rosace.database import (
     db_set_stage_status,
     db_get_recent_observations,
     db_count_observations_for_target,
+    db_insert_pointing_error,
     _astronomical_day_start_utc,
 )
 from rosace.targets import (
@@ -518,6 +519,61 @@ class TestDatabase:
         rows = await db_get_recent_observations(limit=1)
         assert rows[0]["stages"]["scheduler"]["status"] == "done"
         assert rows[0]["stages"]["scheduler"]["done_at"] is not None
+
+    async def test_insert_pointing_error(self):
+        import aiosqlite
+        from rosace.config import DB_PATH
+
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs, ctx.session_id)
+
+        await db_insert_pointing_error(
+            observation_id=obs.id,
+            target_name="Vega",
+            mount_ra_deg=279.20,
+            mount_dec_deg=38.75,
+            solved_ra_deg=279.23,
+            solved_dec_deg=38.78,
+        )
+
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM pointing_errors WHERE observation_id = ?", (obs.id,)
+            ) as cursor:
+                rows = await cursor.fetchall()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["observation_id"] == obs.id
+        assert row["target_name"] == "Vega"
+        assert row["mount_ra_deg"] == pytest.approx(279.20)
+        assert row["mount_dec_deg"] == pytest.approx(38.75)
+        assert row["solved_ra_deg"] == pytest.approx(279.23)
+        assert row["solved_dec_deg"] == pytest.approx(38.78)
+        assert row["recorded_at"] is not None
+
+    async def test_insert_pointing_error_allows_multiple_rows_per_observation(self):
+        """Successive plate-solve measurements for the same observation each get
+        their own row -- this is a history table, not a one-row-per-observation
+        summary."""
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs, ctx.session_id)
+
+        await db_insert_pointing_error(obs.id, "Vega", 279.20, 38.75, 279.23, 38.78)
+        await db_insert_pointing_error(obs.id, "Vega", 279.22, 38.77, 279.23, 38.78)
+
+        import aiosqlite
+        from rosace.config import DB_PATH
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                "SELECT COUNT(*) FROM pointing_errors WHERE observation_id = ?", (obs.id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+        assert row[0] == 2
 
     async def test_set_stage_status(self):
         """db_set_stage_status updates the correct column."""

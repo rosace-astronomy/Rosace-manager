@@ -43,3 +43,22 @@ class TestMountAdapter:
 
         with pytest.raises(DeviceCommandError, match="indi boom"):
             await adapter.slew_to(ra=0.0, dec=0.0)
+
+    async def test_get_position_returns_ra_dec_from_indi_mount(self):
+        indi_mount = MagicMock()
+        indi_mount.get_current_coordinates.return_value = SkyCoord(ra=279.23, dec=38.78, unit="deg", frame="icrs")
+        adapter = MountAdapter(indi_mount)
+
+        ra, dec = await adapter.get_position()
+
+        indi_mount.get_current_coordinates.assert_called_once()
+        assert ra == pytest.approx(279.23)
+        assert dec == pytest.approx(38.78)
+
+    async def test_get_position_wraps_underlying_error(self):
+        indi_mount = MagicMock()
+        indi_mount.get_current_coordinates.side_effect = RuntimeError("indi boom")
+        adapter = MountAdapter(indi_mount)
+
+        with pytest.raises(DeviceCommandError, match="indi boom"):
+            await adapter.get_position()

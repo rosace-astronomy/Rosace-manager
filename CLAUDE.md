@@ -174,6 +174,16 @@ Each device's class is declared in the active hardware YAML (`HARDWARE_CONFIG_PA
 
 Not yet done: no `hardware_ascom/` (deferred, no Windows environment to validate against yet); no real autofocus algorithm (`focus.py` stays a placeholder).
 
+### Coordinate frame convention: J2000/ICRS everywhere
+
+Every coordinate that crosses a module boundary in Rosace — `Target.ra`/`dec` (`targets.py`, sourced from Simbad's `basic.ra`/`dec`, themselves ICRS), `hardware/mount.py::Mount.slew_to(ra, dec)`'s arguments, `scheduler_data["target"]` — is **J2000/ICRS, always**, in degrees. This is a deliberate, explicit, app-wide decision (2026-08-09): mixing J2000 and JNow would misdirect the mount by an amount that matters at Rosace's targeting precision (well under a pixel of tolerance), so consistency across the whole chain is load-bearing, not cosmetic.
+
+JNow (equatorial coordinates "of date", precessed/nutated for today) exists **only** inside `hardware_indi/devices/mount.py::IndiMount` — the one place that must speak it, since INDI's own standard mount property (`EQUATORIAL_EOD_COORD` — "EOD" = epoch of date) is JNow by protocol definition, not a configurable choice. `IndiMount.set_coord()` converts an incoming ICRS/J2000 `SkyCoord` to `FK5(equinox=Time.now())` right before sending it to INDI; `get_current_coordinates()` does the reverse conversion on the way back out. Every layer above `IndiMount` — `MountAdapter`, the `Mount` Protocol, every SEQUENCER sub-plugin — only ever sees J2000, and must never re-derive or assume JNow itself.
+
+`solve-field` (astrometry.net, see the plate-solve chantier) solves against index files built from a J2000/ICRS catalogue and writes a J2000 WCS (`RADESYS`/`EQUINOX` in the resulting FITS header) — consistent with the rest of the chain, no conversion needed when comparing a plate-solved position to a catalogue target position.
+
+A leftover `equatorial_eod: J2000 # JNOW` key existed in both hardware YAMLs (`conf/hardware_indi_72ED.yaml`, `conf/hardware_indi_simu.yaml`) under `mount:` — removed 2026-08-09, since it was never read by any code (confirmed via `grep`) and only invited confusion about where the J2000/JNow boundary actually is (it's a hardcoded fact of `IndiMount`, not a per-installation setting).
+
 ### Simbad client (`simbad.py`)
 
 Queries CDS TAP via ADQL over HTTPS. Returns `StarCreate`. Raises `SimbadNotFoundError` (404) or `SimbadQueryError` (network/HTTP errors). In tests, mock `rosace.simbad.httpx.AsyncClient` as an async context manager.

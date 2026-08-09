@@ -23,17 +23,38 @@ _UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]")
 
 
 async def capture_guide_image(
-    camera: Any, exposure_time: float, obs_dir: str, filename: str | None = None
+    camera: Any,
+    exposure_time: float,
+    obs_dir: str,
+    filename: str | None = None,
+    ra_deg: float | None = None,
+    dec_deg: float | None = None,
+    target_name: str | None = None,
 ) -> Path:
     """Exposes a guiding-role camera for exposure_time seconds and writes the
     resulting FITS image to obs_dir/filename. Returns the written path. Same
     expose()-then-writeto() pattern expose.py already uses for the science
     camera (see hardware/camera.py for the generic Camera contract). filename
     defaults to build_fits_root_name("GUIDING", exposure_time=exposure_time)
-    + ".fits" — pass an explicit filename to override (e.g. in tests)."""
+    + ".fits" — pass an explicit filename to override (e.g. in tests).
+
+    ra_deg/dec_deg (J2000 degrees, must be given together or both omitted)
+    and target_name, when given, are stamped into the image's own header
+    (RA/DEC/OBJECT keywords) before it's written — this is what makes the
+    image self-sufficient for plate_solve_helper.py::measure_pointing_error(),
+    which reads exactly these keys back. All three default to omitted, so
+    an existing caller that doesn't pass them keeps writing a plain,
+    unstamped image, unchanged."""
+    if (ra_deg is None) != (dec_deg is None):
+        raise ValueError("capture_guide_image: ra_deg and dec_deg must be given together, or both omitted")
     if filename is None:
         filename = build_fits_root_name("GUIDING", exposure_time=exposure_time) + ".fits"
     image = await camera.expose(exposure_time)
+    if ra_deg is not None:
+        image[0].header["RA"] = ra_deg
+        image[0].header["DEC"] = dec_deg
+    if target_name is not None:
+        image[0].header["OBJECT"] = target_name
     path = Path(obs_dir) / filename
     image.writeto(path, overwrite=True)
     return path

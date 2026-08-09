@@ -73,6 +73,18 @@ async def db_init() -> None:
                 archive_status   TEXT NOT NULL DEFAULT 'pending'
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS pointing_errors (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                observation_id  TEXT NOT NULL REFERENCES observations(id),
+                target_name     TEXT NOT NULL,
+                recorded_at     TEXT NOT NULL,
+                mount_ra_deg    REAL NOT NULL,
+                mount_dec_deg   REAL NOT NULL,
+                solved_ra_deg   REAL NOT NULL,
+                solved_dec_deg  REAL NOT NULL
+            )
+        """)
         await db.commit()
     log.info(f"[DB] Database initialised: {DB_PATH}")
 
@@ -268,3 +280,41 @@ async def db_get_recent_observations(limit: int | None = None) -> list[dict]:
         }
         for row in rows
     ]
+
+
+# ─────────────────────────────────────────────────────────────
+# Pointing errors
+# ─────────────────────────────────────────────────────────────
+
+async def db_insert_pointing_error(
+    observation_id: str,
+    target_name: str,
+    mount_ra_deg: float,
+    mount_dec_deg: float,
+    solved_ra_deg: float,
+    solved_dec_deg: float,
+) -> None:
+    """Records one plate-solve pointing measurement (mount-reported position
+    vs. plate-solved position, both J2000) for trending pointing/polar-alignment
+    drift over time. Called only when the caller has decided the measurement
+    is worth keeping — see plugins/sequencer_plugins/plate_solve_helper.py::
+    measure_pointing_error()'s record_error argument. target_name is
+    redundant with observation_id (joinable via the observations table) but
+    kept for human readability, same precedent as observations.target_name."""
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        await db.execute(
+            """INSERT INTO pointing_errors
+               (observation_id, target_name, recorded_at, mount_ra_deg, mount_dec_deg, solved_ra_deg, solved_dec_deg)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                observation_id,
+                target_name,
+                datetime.now(timezone.utc).isoformat(),
+                mount_ra_deg,
+                mount_dec_deg,
+                solved_ra_deg,
+                solved_dec_deg,
+            )
+        )
+        await db.commit()
+    log.info(f"[DB] Pointing error recorded for observation {observation_id} ({target_name})")

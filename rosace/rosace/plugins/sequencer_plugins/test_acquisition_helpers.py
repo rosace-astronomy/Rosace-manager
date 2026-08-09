@@ -63,6 +63,45 @@ class TestCaptureGuideImage:
 
         assert result == tmp_path / "check.fits"
 
+    async def test_stamps_ra_dec_when_given(self, tmp_path):
+        fake_image = MagicMock()
+        fake_header = {}
+        fake_image.__getitem__.return_value.header = fake_header
+        camera = AsyncMock()
+        camera.expose.return_value = fake_image
+
+        await capture_guide_image(camera, 0.3, str(tmp_path), ra_deg=279.23, dec_deg=38.78)
+
+        assert fake_header["RA"] == 279.23
+        assert fake_header["DEC"] == 38.78
+
+    async def test_stamps_object_when_target_name_given(self, tmp_path):
+        fake_image = MagicMock()
+        fake_header = {}
+        fake_image.__getitem__.return_value.header = fake_header
+        camera = AsyncMock()
+        camera.expose.return_value = fake_image
+
+        await capture_guide_image(camera, 0.3, str(tmp_path), target_name="Vega")
+
+        assert fake_header["OBJECT"] == "Vega"
+
+    async def test_no_header_stamps_by_default(self, tmp_path):
+        fake_image = MagicMock()
+        fake_header = {}
+        fake_image.__getitem__.return_value.header = fake_header
+        camera = AsyncMock()
+        camera.expose.return_value = fake_image
+
+        await capture_guide_image(camera, 0.3, str(tmp_path))
+
+        assert fake_header == {}
+
+    async def test_rejects_ra_deg_without_dec_deg(self, tmp_path):
+        camera = AsyncMock()
+        with pytest.raises(ValueError, match="ra_deg and dec_deg"):
+            await capture_guide_image(camera, 0.3, str(tmp_path), ra_deg=279.23)
+
 
 class TestComputeExposureTimeAndCount:
 

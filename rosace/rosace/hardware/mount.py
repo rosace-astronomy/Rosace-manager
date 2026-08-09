@@ -12,3 +12,7 @@ class Mount(Protocol):
     async def slew_to(self, ra: float, dec: float) -> None:
         """Slew to (and track) the given J2000 equatorial coordinates, in degrees."""
         ...
+
+    async def get_position(self) -> tuple[float, float]:
+        """Returns the mount's currently reported (ra, dec), J2000 degrees."""
+        ...

@@ -12,6 +12,13 @@ INDI_drivers:
         cooling : true
         cooling_capability : -20
         sampling_arcsec : 2.55
+        # Spectrograph slit position in this camera's field, in pixels.
+        # Zero-indexed (pixel (0,0) = center of the first pixel, matching
+        # astropy's WCS.pixel_to_world()) -- if read off a FITS viewer such
+        # as DS9 (one-indexed), subtract 1 from each axis first.
+        # Placeholder values, no real slit in the simulator.
+        slit_x : 0
+        slit_y : 0
 
     science_camera:
         role: camera
@@ -34,7 +41,6 @@ INDI_drivers:
         indi_client :
             indi_host : localhost
             indi_port : 7624
-        equatorial_eod: J2000 # (or JNOW)
 
     focuser:
         role: focuser

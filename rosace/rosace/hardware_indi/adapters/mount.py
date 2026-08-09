@@ -31,3 +31,10 @@ class MountAdapter:
             await asyncio.to_thread(self._indi_mount.slew_to_coord_and_track, coord)
         except Exception as e:
             raise DeviceCommandError(f"slew_to({ra}, {dec}) failed: {e}") from e
+
+    async def get_position(self) -> tuple[float, float]:
+        try:
+            coord = await asyncio.to_thread(self._indi_mount.get_current_coordinates)
+        except Exception as e:
+            raise DeviceCommandError(f"get_position() failed: {e}") from e
+        return float(coord.ra.deg), float(coord.dec.deg)
