@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from astropy.io import fits
 
 from rosace.plugins.sequencer_plugins import acquisition_helpers
 from rosace.plugins.sequencer_plugins.acquisition_helpers import (
@@ -54,6 +55,15 @@ class TestCaptureGuideImage:
         fake_image.writeto.assert_called_once_with(expected_path, overwrite=True)
         assert result == expected_path
 
+    async def test_filename_includes_target_name_when_given(self, tmp_path, freeze_fits_timestamp):
+        fake_image = MagicMock()
+        camera = AsyncMock()
+        camera.expose.return_value = fake_image
+
+        result = await capture_guide_image(camera, 0.3, str(tmp_path), target_name="Vega")
+
+        assert result == tmp_path / f"GUIDING_Vega_0_30s_{FIXED_TS}.fits"
+
     async def test_uses_custom_filename(self, tmp_path):
         fake_image = MagicMock()
         camera = AsyncMock()
@@ -63,9 +73,9 @@ class TestCaptureGuideImage:
 
         assert result == tmp_path / "check.fits"
 
-    async def test_stamps_ra_dec_when_given(self, tmp_path):
+    async def test_stamps_ra_dec_equinox_when_given(self, tmp_path):
         fake_image = MagicMock()
-        fake_header = {}
+        fake_header = fits.Header()
         fake_image.__getitem__.return_value.header = fake_header
         camera = AsyncMock()
         camera.expose.return_value = fake_image
@@ -74,10 +84,16 @@ class TestCaptureGuideImage:
 
         assert fake_header["RA"] == 279.23
         assert fake_header["DEC"] == 38.78
+        assert fake_header["EQUINOX"] == 2000
+        # Every stamped card must credit Rosace, so a reader can tell it
+        # wasn't left over from the camera driver's own snoop.
+        assert "Rosace" in fake_header.comments["RA"]
+        assert "Rosace" in fake_header.comments["DEC"]
+        assert "Rosace" in fake_header.comments["EQUINOX"]
 
     async def test_stamps_object_when_target_name_given(self, tmp_path):
         fake_image = MagicMock()
-        fake_header = {}
+        fake_header = fits.Header()
         fake_image.__getitem__.return_value.header = fake_header
         camera = AsyncMock()
         camera.expose.return_value = fake_image
@@ -85,17 +101,29 @@ class TestCaptureGuideImage:
         await capture_guide_image(camera, 0.3, str(tmp_path), target_name="Vega")
 
         assert fake_header["OBJECT"] == "Vega"
+        assert "Rosace" in fake_header.comments["OBJECT"]
+
+    async def test_no_equinox_without_ra_dec(self, tmp_path):
+        fake_image = MagicMock()
+        fake_header = fits.Header()
+        fake_image.__getitem__.return_value.header = fake_header
+        camera = AsyncMock()
+        camera.expose.return_value = fake_image
+
+        await capture_guide_image(camera, 0.3, str(tmp_path), target_name="Vega")
+
+        assert "EQUINOX" not in fake_header
 
     async def test_no_header_stamps_by_default(self, tmp_path):
         fake_image = MagicMock()
-        fake_header = {}
+        fake_header = fits.Header()
         fake_image.__getitem__.return_value.header = fake_header
         camera = AsyncMock()
         camera.expose.return_value = fake_image
 
         await capture_guide_image(camera, 0.3, str(tmp_path))
 
-        assert fake_header == {}
+        assert len(fake_header) == 0
 
     async def test_rejects_ra_deg_without_dec_deg(self, tmp_path):
         camera = AsyncMock()
@@ -160,6 +188,25 @@ class TestBuildFitsRootName:
         result = build_fits_root_name("STAR", target_name="HD 12345*", exposure_time=30, timestamp=self.FIXED_TS)
 
         assert result == "HD12345_30s_20260807_143022"
+
+    def test_guiding_with_target_name_inserted_after_prefix(self):
+        result = build_fits_root_name("GUIDING", target_name="Vega", exposure_time=0.3, timestamp=self.FIXED_TS)
+
+        assert result == "GUIDING_Vega_0_30s_20260807_143022"
+
+    def test_guiding_without_target_name_keeps_literal_prefix_alone(self):
+        result = build_fits_root_name("GUIDING", exposure_time=0.3, timestamp=self.FIXED_TS)
+
+        assert result == "GUIDING_0_30s_20260807_143022"
+
+    def test_guiding_strips_unsafe_characters_from_target_name(self):
+        result = build_fits_root_name("GUIDING", target_name="HD 12345*", exposure_time=0.3, timestamp=self.FIXED_TS)
+
+        assert result == "GUIDING_HD12345_0_30s_20260807_143022"
+
+    def test_guiding_target_name_with_no_safe_characters_left_raises(self):
+        with pytest.raises(ValueError, match="no safe characters"):
+            build_fits_root_name("GUIDING", target_name="***", exposure_time=0.3)
 
     def test_image_type_is_case_insensitive_and_normalized_to_upper(self):
         result = build_fits_root_name("dark", exposure_time=30, timestamp=self.FIXED_TS)

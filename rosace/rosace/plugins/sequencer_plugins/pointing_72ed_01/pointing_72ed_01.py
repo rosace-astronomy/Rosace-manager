@@ -42,10 +42,14 @@ class Pointing72ed01Plugin(SubPlugin):
         log.info(f"[POINTING_72ED_01] Pointage vers {target.name}")
         mount = obs.hardware["mount"]
         await mount.slew_to(target.ra, target.dec)
+        mount_ra, mount_dec = await mount.get_position()
+
+        queried_name = obs.scheduler_data.get("queried_name")
 
         guiding_camera = obs.hardware["guiding_camera"]
         guide_image_path = await capture_guide_image(
             guiding_camera, GUIDE_EXPOSURE_TIME_SECONDS, obs.obs_dir,
+            ra_deg=mount_ra, dec_deg=mount_dec, target_name=queried_name,
         )
 
         log.info(f"[POINTING_72ED_01] Démarrage du guidage PHD2 sur {target.name}")

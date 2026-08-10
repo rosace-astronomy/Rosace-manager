@@ -19,6 +19,12 @@ ALLOWED_IMAGE_TYPES = {"STAR", "BIAS", "DARK", "FLAT", "CALIB", "GUIDING"}
 
 _TEMP_ALLOWED_TYPES = {"DARK", "BIAS"}
 
+# STAR's target_name *replaces* the literal "STAR" prefix (e.g. "V831Cas_...");
+# GUIDING's *follows* the literal "GUIDING" prefix instead (e.g. "GUIDING_Vega_...")
+# -- kept as its own type, not folded into STAR, since GUIDING's own image_type
+# still needs to appear in the name (it's not itself the science target).
+_TARGET_NAME_APPEND_TYPES = {"GUIDING"}
+
 _UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]")
 
 
@@ -35,26 +41,40 @@ async def capture_guide_image(
     resulting FITS image to obs_dir/filename. Returns the written path. Same
     expose()-then-writeto() pattern expose.py already uses for the science
     camera (see hardware/camera.py for the generic Camera contract). filename
-    defaults to build_fits_root_name("GUIDING", exposure_time=exposure_time)
-    + ".fits" — pass an explicit filename to override (e.g. in tests).
+    defaults to build_fits_root_name("GUIDING", target_name=target_name,
+    exposure_time=exposure_time) + ".fits" (e.g. "GUIDING_Vega_0_30s_....fits"
+    when target_name is given, "GUIDING_0_30s_....fits" without it) — pass
+    an explicit filename to override (e.g. in tests).
 
     ra_deg/dec_deg (J2000 degrees, must be given together or both omitted)
     and target_name, when given, are stamped into the image's own header
-    (RA/DEC/OBJECT keywords) before it's written — this is what makes the
-    image self-sufficient for plate_solve_helper.py::measure_pointing_error(),
-    which reads exactly these keys back. All three default to omitted, so
-    an existing caller that doesn't pass them keeps writing a plain,
-    unstamped image, unchanged."""
+    (RA/DEC/EQUINOX/OBJECT keywords) before it's written — this is what
+    makes the image self-sufficient for plate_solve_helper.py::measure_pointing_error(),
+    which reads exactly these keys back. Every stamped card's comment ends
+    "stamped by Rosace" — the camera driver may already have written its
+    own RA/DEC/OBJCTRA/OBJCTDEC/EQUINOX (e.g. via INDI's mount-snooping),
+    but those aren't trusted to be true J2000 (INDI's EQUATORIAL_EOD_COORD
+    is JNow by protocol — see CLAUDE.md's coordinate frame convention), so
+    the comment is what lets a human reading the header later tell which
+    value Rosace actually vouches for. Comments are kept short deliberately
+    — a FITS card is 80 columns total, and a long target_name can already
+    eat most of that budget on its own; astropy silently truncates an
+    over-length comment rather than erroring, so a very long target_name
+    degrades gracefully (comment cut short) instead of failing. All three
+    (ra_deg/dec_deg/target_name) default to omitted, so an existing caller
+    that doesn't pass them keeps writing a plain, unstamped image,
+    unchanged."""
     if (ra_deg is None) != (dec_deg is None):
         raise ValueError("capture_guide_image: ra_deg and dec_deg must be given together, or both omitted")
     if filename is None:
-        filename = build_fits_root_name("GUIDING", exposure_time=exposure_time) + ".fits"
+        filename = build_fits_root_name("GUIDING", target_name=target_name, exposure_time=exposure_time) + ".fits"
     image = await camera.expose(exposure_time)
     if ra_deg is not None:
-        image[0].header["RA"] = ra_deg
-        image[0].header["DEC"] = dec_deg
+        image[0].header["RA"] = (ra_deg, "J2000, stamped by Rosace")
+        image[0].header["DEC"] = (dec_deg, "J2000, stamped by Rosace")
+        image[0].header["EQUINOX"] = (2000, "Equinox of RA and DEC above, stamped by Rosace")
     if target_name is not None:
-        image[0].header["OBJECT"] = target_name
+        image[0].header["OBJECT"] = (target_name, "Queried name, stamped by Rosace")
     path = Path(obs_dir) / filename
     image.writeto(path, overwrite=True)
     return path
@@ -104,15 +124,22 @@ def build_fits_root_name(
     (ALLOWED_IMAGE_TYPES) checked at call time, case-insensitive, normalized
     to upper: STAR (any science image)/BIAS/DARK/FLAT/CALIB/GUIDING.
 
-    Prefix is image_type itself, except for STAR: target_name (the
-    observer-entered target name — the queried name as typed in the
-    observation list, e.g. scheduler_data["queried_name"], deliberately
-    not the resolved canonical Target.name), if given, replaces the literal
-    "STAR" — e.g. image_type="STAR", target_name="V831 Cas" -> "V831Cas...".
-    Without a target_name, image_type="STAR" alone falls back to the
-    literal "STAR" prefix (handy for a quick dev/debug call). Passing
-    target_name together with any image_type other than STAR is an
-    explicit error — that combination can only be a caller mistake.
+    target_name (the observer-entered target name — the queried name as
+    typed in the observation list, e.g. scheduler_data["queried_name"],
+    deliberately not the resolved canonical Target.name) plugs in
+    differently depending on image_type:
+    - STAR: target_name, if given, *replaces* the literal "STAR" prefix
+      — e.g. image_type="STAR", target_name="V831 Cas" -> "V831Cas...".
+      Without a target_name, image_type="STAR" alone falls back to the
+      literal "STAR" prefix (handy for a quick dev/debug call).
+    - GUIDING: target_name, if given, is inserted as its own field right
+      after the "GUIDING" prefix instead of replacing it — e.g.
+      image_type="GUIDING", target_name="Vega" -> "GUIDING_Vega_...". The
+      prefix stays literal here (unlike STAR) since GUIDING is itself
+      part of what the name needs to say — a guide image isn't the
+      science target's own file.
+    - Any other image_type (BIAS/DARK/FLAT/CALIB): passing target_name is
+      an explicit error — that combination can only be a caller mistake.
     Every character outside [A-Za-z0-9_-] is stripped from target_name
     (this is what makes stray spaces and characters like "*" in some star
     names filesystem-safe) — no exceptions, since a space or a "*" in a
@@ -146,6 +173,7 @@ def build_fits_root_name(
     if image_type not in ALLOWED_IMAGE_TYPES:
         raise ValueError(f"build_fits_root_name: image_type={image_type!r} not in {sorted(ALLOWED_IMAGE_TYPES)}")
 
+    target_name_field = None
     if image_type == "STAR":
         if target_name:
             prefix = _UNSAFE_NAME_CHARS.sub("", target_name)
@@ -153,9 +181,16 @@ def build_fits_root_name(
                 raise ValueError(f"build_fits_root_name: target_name={target_name!r} has no safe characters left")
         else:
             prefix = "STAR"
+    elif image_type in _TARGET_NAME_APPEND_TYPES:
+        prefix = image_type
+        if target_name:
+            target_name_field = _UNSAFE_NAME_CHARS.sub("", target_name)
+            if not target_name_field:
+                raise ValueError(f"build_fits_root_name: target_name={target_name!r} has no safe characters left")
     else:
         if target_name is not None:
-            raise ValueError("build_fits_root_name: target_name is only valid when image_type='STAR'")
+            allowed = sorted({"STAR"} | _TARGET_NAME_APPEND_TYPES)
+            raise ValueError(f"build_fits_root_name: target_name is only valid when image_type in {allowed}")
         prefix = image_type
 
     if sensor_temp_c is not None and image_type not in _TEMP_ALLOWED_TYPES:
@@ -164,6 +199,8 @@ def build_fits_root_name(
         )
 
     fields = [prefix]
+    if target_name_field:
+        fields.append(target_name_field)
     if sensor_temp_c is not None:
         fields.append(f"{round(sensor_temp_c)}deg")
 

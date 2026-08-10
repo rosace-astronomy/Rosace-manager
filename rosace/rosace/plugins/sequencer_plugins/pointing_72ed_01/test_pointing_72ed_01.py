@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from astropy.io import fits
 
 from rosace.config import GUIDE_EXPOSURE_TIME_SECONDS
 from rosace.models import Observation, Target
@@ -31,14 +32,27 @@ def freeze_fits_timestamp(monkeypatch):
     monkeypatch.setattr(acquisition_helpers, "datetime", _FrozenDatetime)
 
 
-def _make_obs(obs_dir=None, target=None, guiding_camera=None) -> Observation:
+MOUNT_POSITION = (279.30, 38.81)  # deliberately distinct from the target's own ra/dec below
+
+# target.name is deliberately the Simbad canonical form, queried_name the
+# observer-typed one -- distinct on purpose, to catch a regression where
+# OBJECT gets stamped with the wrong one of the two (a real bug found in
+# review: the canonical name was showing up in FITS headers instead of the
+# name the observer actually typed in the observation list).
+CANONICAL_NAME = "* bet Lyr"
+QUERIED_NAME = "Vega"
+
+
+def _make_obs(obs_dir=None, target=None, queried_name=None, guiding_camera=None) -> Observation:
     obs = Observation(
         id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234",
         obs_dir=str(obs_dir) if obs_dir else None,
     )
     if target is not None:
         obs.scheduler_data["target"] = target
+        obs.scheduler_data["queried_name"] = queried_name or target.name
     obs.hardware["mount"] = AsyncMock()
+    obs.hardware["mount"].get_position.return_value = MOUNT_POSITION
     obs.hardware["guiding_camera"] = guiding_camera if guiding_camera is not None else AsyncMock()
     obs.hardware["phd2"] = AsyncMock()
     return obs
@@ -85,6 +99,27 @@ class TestPointing72ed01Plugin:
 
         camera.expose.assert_awaited_once_with(GUIDE_EXPOSURE_TIME_SECONDS)
 
+    async def test_stamps_mount_position_and_queried_name_into_guide_image_header(self, tmp_path):
+        fake_image = MagicMock()
+        fake_image.__getitem__.return_value.header = fits.Header()
+        camera = AsyncMock()
+        camera.expose.return_value = fake_image
+        obs = _make_obs(
+            obs_dir=tmp_path, target=Target(name=CANONICAL_NAME, ra=279.23, dec=38.78),
+            queried_name=QUERIED_NAME, guiding_camera=camera,
+        )
+
+        await Pointing72ed01Plugin().execute(obs)
+
+        header = fake_image[0].header
+        assert header["RA"] == MOUNT_POSITION[0]
+        assert header["DEC"] == MOUNT_POSITION[1]
+        assert header["EQUINOX"] == 2000
+        # OBJECT must be the observer-typed name, not the Simbad canonical form.
+        assert header["OBJECT"] == QUERIED_NAME
+        assert "Rosace" in header.comments["RA"]
+        assert "Rosace" in header.comments["OBJECT"]
+
     async def test_sets_sequencer_data(self, tmp_path):
         fake_image = MagicMock()
         camera = AsyncMock()
@@ -93,7 +128,7 @@ class TestPointing72ed01Plugin:
 
         result = await Pointing72ed01Plugin().execute(obs)
 
-        expected_path = str(tmp_path / f"GUIDING_0_30s_{FIXED_TS}.fits")
+        expected_path = str(tmp_path / f"GUIDING_Vega_0_30s_{FIXED_TS}.fits")
         assert result is obs
         assert obs.sequencer_data["pointing_72ed_01"] == {
             "target": "Vega",
