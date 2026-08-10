@@ -49,7 +49,7 @@ async def capture_guide_image(
     ra_deg/dec_deg (J2000 degrees, must be given together or both omitted)
     and target_name, when given, are stamped into the image's own header
     (RA/DEC/EQUINOX/OBJECT keywords) before it's written — this is what
-    makes the image self-sufficient for plate_solve_helper.py::measure_pointing_error(),
+    makes the image self-sufficient for plate_solve_helper.py::solve_wcs()'s record_error,
     which reads exactly these keys back. Every stamped card's comment ends
     "stamped by Rosace" — the camera driver may already have written its
     own RA/DEC/OBJCTRA/OBJCTDEC/EQUINOX (e.g. via INDI's mount-snooping),

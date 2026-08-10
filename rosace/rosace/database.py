@@ -298,7 +298,7 @@ async def db_insert_pointing_error(
     vs. plate-solved position, both J2000) for trending pointing/polar-alignment
     drift over time. Called only when the caller has decided the measurement
     is worth keeping — see plugins/sequencer_plugins/plate_solve_helper.py::
-    measure_pointing_error()'s record_error argument. target_name is
+    solve_wcs()'s record_error argument. target_name is
     redundant with observation_id (joinable via the observations table) but
     kept for human readability, same precedent as observations.target_name."""
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:

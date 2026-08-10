@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy.wcs import FITSFixedWarning
 
@@ -20,9 +21,8 @@ from rosace.database import db_init
 from rosace.plugins.sequencer_plugins import plate_solve_helper
 from rosace.plugins.sequencer_plugins.plate_solve_helper import (
     PlateSolveError,
-    measure_pointing_error,
     pixel_scale_arcsec,
-    pixel_to_radec,
+    solve_result,
     solve_wcs,
 )
 
@@ -237,8 +237,96 @@ class TestSolveWcs:
         assert float(cmd[cmd.index("--scale-low") + 1]) == pytest.approx(1.9)
         assert float(cmd[cmd.index("--scale-high") + 1]) == pytest.approx(2.1)
 
+    async def test_record_error_requires_observation_id(self, tmp_path):
+        # No stubbing needed -- this must fail before solve-field is ever invoked.
+        path = _make_guide_fits(tmp_path)
 
-class TestPixelToRadec:
+        with pytest.raises(ValueError, match="observation_id"):
+            await solve_wcs(str(path), record_error=True)
+
+    async def test_record_error_missing_radec_header_raises_before_solving(self, tmp_path):
+        # Same: no stubbing -- must fail before solve-field runs.
+        path = _make_guide_fits(tmp_path, with_radec=False)
+
+        with pytest.raises(ValueError, match="RA/DEC"):
+            await solve_wcs(str(path), record_error=True, observation_id="obs1")
+
+    async def test_record_error_computes_and_logs_pointing_error(self, tmp_path, monkeypatch, caplog):
+        await db_init()
+        _stub_which(monkeypatch)
+        _install_fake_solve(monkeypatch)
+        path = _make_guide_fits(tmp_path, ra=279.23, dec=38.78, target_name="Vega")
+
+        with caplog.at_level("INFO", logger="spectro.subplugin.plate_solve_helper"):
+            await solve_wcs(str(path), record_error=True, observation_id="obs1")
+
+        assert any("Pointing error for Vega" in r.message for r in caplog.records)
+        assert path.exists()  # solve_wcs never deletes the file, record_error or not
+
+    async def test_record_error_false_computes_nothing(self, tmp_path, monkeypatch, caplog):
+        _stub_which(monkeypatch)
+        _install_fake_solve(monkeypatch)
+        path = _make_guide_fits(tmp_path)
+
+        with caplog.at_level("INFO", logger="spectro.subplugin.plate_solve_helper"):
+            await solve_wcs(str(path))
+
+        assert not any("Pointing error" in r.message for r in caplog.records)
+
+    async def test_record_error_writes_to_pointing_errors_table(self, tmp_path, monkeypatch):
+        import aiosqlite
+        from rosace.config import DB_PATH
+
+        await db_init()
+        _stub_which(monkeypatch)
+        _install_fake_solve(monkeypatch)
+        path = _make_guide_fits(tmp_path, ra=279.23, dec=38.78, target_name="Vega")
+
+        await solve_wcs(str(path), record_error=True, observation_id="obs-plate-solve-test")
+
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM pointing_errors WHERE observation_id = ?", ("obs-plate-solve-test",)
+            ) as cursor:
+                rows = await cursor.fetchall()
+        assert len(rows) == 1
+        assert rows[0]["target_name"] == "Vega"
+        assert rows[0]["mount_ra_deg"] == pytest.approx(279.23)
+        assert rows[0]["mount_dec_deg"] == pytest.approx(38.78)
+        assert rows[0]["solved_ra_deg"] == pytest.approx(279.23, abs=1e-6)
+        assert rows[0]["solved_dec_deg"] == pytest.approx(38.78, abs=1e-6)
+
+    async def test_record_error_false_does_not_write_to_db(self, tmp_path, monkeypatch):
+        import aiosqlite
+        from rosace.config import DB_PATH
+
+        await db_init()
+        _stub_which(monkeypatch)
+        _install_fake_solve(monkeypatch)
+        path = _make_guide_fits(tmp_path)
+
+        await solve_wcs(str(path), observation_id="obs-not-recorded")
+
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                "SELECT COUNT(*) FROM pointing_errors WHERE observation_id = ?", ("obs-not-recorded",)
+            ) as cursor:
+                row = await cursor.fetchone()
+        assert row[0] == 0
+
+
+class TestSolveResult:
+
+    async def test_returns_a_skycoord(self, tmp_path, monkeypatch):
+        _stub_which(monkeypatch)
+        _install_fake_solve(monkeypatch)
+        path = _make_guide_fits(tmp_path, ra=10.0, dec=20.0)
+        await solve_wcs(str(path))
+
+        result = solve_result(str(path))
+
+        assert isinstance(result, SkyCoord)
 
     async def test_default_is_image_center(self, tmp_path, monkeypatch):
         _stub_which(monkeypatch)
@@ -246,10 +334,10 @@ class TestPixelToRadec:
         path = _make_guide_fits(tmp_path, ra=10.0, dec=20.0)
         await solve_wcs(str(path))
 
-        ra, dec = pixel_to_radec(str(path))
+        coord = solve_result(str(path))
 
-        assert ra == pytest.approx(10.0, abs=1e-6)
-        assert dec == pytest.approx(20.0, abs=1e-6)
+        assert coord.ra.degree == pytest.approx(10.0, abs=1e-6)
+        assert coord.dec.degree == pytest.approx(20.0, abs=1e-6)
 
     async def test_explicit_center_pixel_matches_default(self, tmp_path, monkeypatch):
         _stub_which(monkeypatch)
@@ -258,10 +346,10 @@ class TestPixelToRadec:
         await solve_wcs(str(path))
         center = (NAXIS - 1) / 2
 
-        ra, dec = pixel_to_radec(str(path), center, center)
+        coord = solve_result(str(path), center, center)
 
-        assert ra == pytest.approx(10.0, abs=1e-6)
-        assert dec == pytest.approx(20.0, abs=1e-6)
+        assert coord.ra.degree == pytest.approx(10.0, abs=1e-6)
+        assert coord.dec.degree == pytest.approx(20.0, abs=1e-6)
 
     async def test_off_center_pixel_differs_from_center(self, tmp_path, monkeypatch):
         _stub_which(monkeypatch)
@@ -269,15 +357,15 @@ class TestPixelToRadec:
         path = _make_guide_fits(tmp_path, ra=10.0, dec=20.0)
         await solve_wcs(str(path))
 
-        ra, dec = pixel_to_radec(str(path), 0, 0)
+        coord = solve_result(str(path), 0, 0)
 
-        assert (ra, dec) != pytest.approx((10.0, 20.0))
+        assert (coord.ra.degree, coord.dec.degree) != pytest.approx((10.0, 20.0))
 
     def test_rejects_x_without_y(self, tmp_path):
         # No WCS needed -- validation happens before the header is even read.
         path = _make_guide_fits(tmp_path)
         with pytest.raises(ValueError, match="x and y"):
-            pixel_to_radec(str(path), x=10)
+            solve_result(str(path), x=10)
 
     async def test_does_not_emit_fitsfixedwarning(self, tmp_path, monkeypatch):
         """astropy.wcs.WCS() emits a FITSFixedWarning when it derives
@@ -292,7 +380,7 @@ class TestPixelToRadec:
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            pixel_to_radec(str(path))
+            solve_result(str(path))
 
         assert not any(issubclass(w.category, FITSFixedWarning) for w in caught)
 
@@ -308,106 +396,3 @@ class TestPixelScaleArcsec:
         scale = pixel_scale_arcsec(str(path))
 
         assert scale == pytest.approx(3.6, abs=1e-6)  # 0.001 deg/px -> 3.6 arcsec/px
-
-
-class TestMeasurePointingError:
-
-    async def test_returns_positions_and_deletes_file_by_default(self, tmp_path, monkeypatch):
-        _stub_which(monkeypatch)
-        _install_fake_solve(monkeypatch)
-        path = _make_guide_fits(tmp_path, ra=279.23, dec=38.78)
-        center = (NAXIS - 1) / 2
-
-        result = await measure_pointing_error(str(path), slit_x=center, slit_y=center)
-
-        assert result.mount_ra_deg == pytest.approx(279.23)
-        assert result.mount_dec_deg == pytest.approx(38.78)
-        assert result.solved_ra_deg == pytest.approx(279.23, abs=1e-6)
-        assert result.solved_dec_deg == pytest.approx(38.78, abs=1e-6)
-        assert not path.exists()
-
-    async def test_logs_pointing_error_on_success(self, tmp_path, monkeypatch, caplog):
-        _stub_which(monkeypatch)
-        _install_fake_solve(monkeypatch)
-        path = _make_guide_fits(tmp_path, ra=279.23, dec=38.78, target_name="Vega")
-
-        with caplog.at_level("INFO", logger="spectro.subplugin.plate_solve_helper"):
-            await measure_pointing_error(str(path), slit_x=10, slit_y=10)
-
-        assert any("Pointing error for Vega" in r.message for r in caplog.records)
-
-    async def test_save_true_keeps_file(self, tmp_path, monkeypatch):
-        _stub_which(monkeypatch)
-        _install_fake_solve(monkeypatch)
-        path = _make_guide_fits(tmp_path)
-
-        await measure_pointing_error(str(path), slit_x=10, slit_y=10, save=True)
-
-        assert path.exists()
-
-    async def test_failure_keeps_file_regardless_of_save(self, tmp_path, monkeypatch):
-        _stub_which(monkeypatch)
-        _install_failing_solve(monkeypatch)
-        path = _make_guide_fits(tmp_path)
-
-        with pytest.raises(PlateSolveError):
-            await measure_pointing_error(str(path), slit_x=10, slit_y=10, save=False)
-
-        assert path.exists()
-
-    async def test_missing_radec_header_raises(self, tmp_path):
-        path = _make_guide_fits(tmp_path, with_radec=False)
-        with pytest.raises(ValueError, match="RA/DEC"):
-            await measure_pointing_error(str(path), slit_x=10, slit_y=10)
-
-    async def test_record_error_requires_observation_id(self, tmp_path, monkeypatch):
-        _stub_which(monkeypatch)
-        _install_fake_solve(monkeypatch)
-        path = _make_guide_fits(tmp_path)
-
-        with pytest.raises(ValueError, match="observation_id"):
-            await measure_pointing_error(str(path), slit_x=10, slit_y=10, record_error=True)
-
-    async def test_record_error_writes_to_pointing_errors_table(self, tmp_path, monkeypatch):
-        import aiosqlite
-        from rosace.config import DB_PATH
-
-        await db_init()
-        _stub_which(monkeypatch)
-        _install_fake_solve(monkeypatch)
-        path = _make_guide_fits(tmp_path, ra=279.23, dec=38.78, target_name="Vega")
-
-        await measure_pointing_error(
-            str(path), slit_x=10, slit_y=10, observation_id="obs-plate-solve-test", record_error=True,
-        )
-
-        async with aiosqlite.connect(DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM pointing_errors WHERE observation_id = ?", ("obs-plate-solve-test",)
-            ) as cursor:
-                rows = await cursor.fetchall()
-        assert len(rows) == 1
-        assert rows[0]["target_name"] == "Vega"
-        assert rows[0]["mount_ra_deg"] == pytest.approx(279.23)
-        assert rows[0]["mount_dec_deg"] == pytest.approx(38.78)
-
-    async def test_record_error_false_does_not_write_to_db(self, tmp_path, monkeypatch):
-        import aiosqlite
-        from rosace.config import DB_PATH
-
-        await db_init()
-        _stub_which(monkeypatch)
-        _install_fake_solve(monkeypatch)
-        path = _make_guide_fits(tmp_path)
-
-        await measure_pointing_error(
-            str(path), slit_x=10, slit_y=10, observation_id="obs-not-recorded", record_error=False,
-        )
-
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute(
-                "SELECT COUNT(*) FROM pointing_errors WHERE observation_id = ?", ("obs-not-recorded",)
-            ) as cursor:
-                row = await cursor.fetchone()
-        assert row[0] == 0
