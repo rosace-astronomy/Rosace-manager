@@ -114,6 +114,8 @@ For a sub-plugin whose own work spans several internal steps (e.g. `expose.py` l
 
 To add a new sub-plugin: create `plugins/<sequencer_plugins|reduction_plugins|sharing_plugins>/<name>/<name>.py` (and `<name>_internal.py` too, only if a demo counterpart is actually needed — SEQUENCER only) with its own `test_<name>.py`, then declare its name in the relevant program YAML (a list entry for `sequencer`/`reduction`, the single `sharing` value for sharing) — no registry file to edit.
 
+**Before writing a new one, check what already exists**: `python -m rosace.main --list-subplugins [sequencer|reduction|sharing]` (`pipeline_loader.py::list_subplugins()`) walks the same three directories `validate_subplugin_catalogue()` discovers from and prints each sub-plugin's name plus the first line of its own module docstring — meant for reuse/duplication decisions, not just naming hygiene. Reads via `ast.parse()`, never imports the module, so it never triggers a sub-plugin's own import-time side effects (device connections, backend-specific dependencies) and works regardless of `SEQUENCER_BACKEND`. Every module docstring's first line is expected to already be a short, human-readable summary (already the de facto convention across every existing sub-plugin, e.g. "Sous-plugin SEQUENCER — Pointage (Slew)") — `TestSubpluginDocstrings` (`plugins/test_pipeline_loader.py`) fails the test suite, not a server startup check (same reasoning as the sub-plugin test-file-coverage idea, a missing docstring isn't a runtime correctness risk), if any real sub-plugin is missing one.
+
 ### Session context and the observation dossier (`SessionContext`, `Observation`)
 
 Two separate Pydantic objects (`models.py`), deliberately not merged:
@@ -217,7 +219,7 @@ The packaged `conf/config.yaml` is a **demo default**, meant to work out of the 
 
 `python -m rosace.main --check-config [path]` validates a config without starting the server: with no argument, it validates whatever step 1–3 above would resolve to; with a path, it validates that file specifically (via the same `ROSACE_CONFIG` mechanism). Prints `[OK]`/`[FAIL]` and exits 0/1 — never reaches `uvicorn.run()` either way, so it's safe to run against a candidate config without risking a real session starting.
 
-`python -m rosace.main --help` (or `-h`) prints this same CLI's usage — the positional `config_path` argument, `--check-config`, and `--create-admin` — and exits, without starting the server either.
+`python -m rosace.main --help` (or `-h`) prints this same CLI's usage — the positional `config_path` argument, `--check-config`, `--create-admin`, and `--list-subplugins` — and exits, without starting the server either.
 
 `python -m rosace.main --create-admin <username>` bootstraps the first admin account (see Authentication above) and exits — also never starts the server.
 

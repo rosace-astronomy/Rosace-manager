@@ -22,7 +22,7 @@ import os
 import sys
 
 _HELP_TEXT = """\
-Usage: python -m rosace.main [config_path] [--check-config [config_path]] [--create-admin username]
+Usage: python -m rosace.main [config_path] [--check-config [config_path]] [--create-admin username] [--list-subplugins [family]]
 
   (no arguments)            Start the server using the active config, resolved in
                             priority order: ROSACE_CONFIG env var > <base_data_dir>/
@@ -46,6 +46,15 @@ Usage: python -m rosace.main [config_path] [--check-config [config_path]] [--cre
                             and `ps`). Refuses if any account already exists: past
                             this first bootstrap, account creation goes through the
                             API (admin-only), not shell access to the machine.
+
+  --list-subplugins [family]
+                            List every sub-plugin found on disk (sequencer_plugins/,
+                            reduction_plugins/, sharing_plugins/), one per line, with
+                            its own one-line description (its module docstring's
+                            first line) -- for discovering what already exists before
+                            writing a new sub-plugin or duplicating a close one.
+                            Optionally restrict to one family: sequencer, reduction,
+                            or sharing. Never starts the server.
 
   --help, -h                Show this message and exit.
 """
@@ -88,6 +97,17 @@ if __name__ == "__main__":
             print(f"[FAIL] {e}")
             sys.exit(1)
         print(f"[OK] admin '{_username}' created")
+        sys.exit(0)
+    elif "--list-subplugins" in _argv:
+        _idx = _argv.index("--list-subplugins")
+        _family = _argv[_idx + 1] if _idx + 1 < len(_argv) and not _argv[_idx + 1].startswith("-") else None
+        from rosace.plugins.pipeline_loader import _SUBPLUGIN_FAMILY_DIRS, list_subplugins
+        if _family is not None and _family not in _SUBPLUGIN_FAMILY_DIRS:
+            print(f"[FAIL] unknown family {_family!r} (expected one of: {', '.join(_SUBPLUGIN_FAMILY_DIRS)})")
+            sys.exit(1)
+        _rows = list_subplugins([_family] if _family else None)
+        for _row_family, _name, _summary in _rows:
+            print(f"{_row_family:10s} {_name:20s} {_summary}")
         sys.exit(0)
     elif _argv:
         os.environ["ROSACE_CONFIG"] = _argv[0]

@@ -39,9 +39,11 @@ est normale, pas un manque.
 
 from __future__ import annotations
 
+import ast
 import importlib
 import logging
 import re
+from collections.abc import Iterable
 from pathlib import Path
 
 import yaml
@@ -142,6 +144,47 @@ def _discover_subplugin_names(family_dir: Path) -> set[str]:
         for entry in family_dir.iterdir()
         if entry.is_dir() and (entry / "__init__.py").is_file()
     }
+
+
+def _module_docstring(family_dir: Path, name: str) -> str | None:
+    """Reads name's own canonical module (<name>/<name>.py) and returns its
+    module-level docstring, or None if the file is missing or has none.
+    Uses ast.parse rather than importing the module -- static analysis
+    only, so this never triggers a sub-plugin's own import-time side
+    effects (device connections, missing optional dependencies...), safe
+    to run for every sub-plugin in the catalogue regardless of backend."""
+    module_path = family_dir / name / f"{name}.py"
+    if not module_path.is_file():
+        return None
+    tree = ast.parse(module_path.read_text(encoding="utf-8"))
+    return ast.get_docstring(tree)
+
+
+_FAMILY_ORDER = {family: i for i, family in enumerate(_SUBPLUGIN_FAMILY_DIRS)}
+
+
+def list_subplugins(families: Iterable[str] | None = None) -> list[tuple[str, str, str]]:
+    """Returns (family, name, one-line summary) for every discovered
+    sub-plugin, sorted by family (pipeline order: sequencer, reduction,
+    sharing -- not alphabetical, so sequencer naturally comes first, the
+    same order it actually runs in) then name. families restricts which of
+    "sequencer"/"reduction"/"sharing" to include (default: all three).
+    summary is the first line of the sub-plugin's own module docstring
+    (<name>/<name>.py) -- "(no docstring)" if it has none, so a missing
+    docstring is visible in the listing itself, not silently skipped.
+    Meant for discoverability (what already exists, before writing a new
+    sub-plugin or duplicating a close one) -- see also
+    TestSubpluginDocstrings, which fails the test suite if any real
+    sub-plugin is missing one."""
+    wanted = list(families) if families is not None else list(_SUBPLUGIN_FAMILY_DIRS)
+    rows = []
+    for family in wanted:
+        family_dir = _SUBPLUGIN_FAMILY_DIRS[family]
+        for name in _discover_subplugin_names(family_dir):
+            doc = _module_docstring(family_dir, name)
+            summary = doc.strip().splitlines()[0] if doc and doc.strip() else "(no docstring)"
+            rows.append((family, name, summary))
+    return sorted(rows, key=lambda row: (_FAMILY_ORDER[row[0]], row[1]))
 
 
 def validate_subplugin_catalogue() -> None:

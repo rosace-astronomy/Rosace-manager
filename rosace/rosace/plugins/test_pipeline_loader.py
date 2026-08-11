@@ -16,6 +16,7 @@ from rosace.plugins.pipeline_loader import (
     load_pipelines,
     load_sharing_plugin,
     list_programs,
+    list_subplugins,
     validate_subplugin_catalogue,
 )
 
@@ -354,3 +355,107 @@ class TestValidateSubpluginCatalogue:
         with pytest.raises(RuntimeError, match="collision") as exc_info:
             validate_subplugin_catalogue()
         assert "'dark' exists in both sequencer and reduction" in str(exc_info.value)
+
+
+class TestListSubplugins:
+    """list_subplugins() -- discoverability tool, also exposed via
+    `python -m rosace.main --list-subplugins [family]`."""
+
+    @staticmethod
+    def _make_family(root: Path, family: str, files_by_name: dict) -> Path:
+        """files_by_name: {sub-plugin name: <name>.py source, or None to
+        skip writing that file entirely (missing-module case)}."""
+        family_dir = root / family
+        family_dir.mkdir(parents=True)
+        for name, source in files_by_name.items():
+            sub_dir = family_dir / name
+            sub_dir.mkdir()
+            (sub_dir / "__init__.py").touch()
+            if source is not None:
+                (sub_dir / f"{name}.py").write_text(source)
+        return family_dir
+
+    def test_returns_known_real_subplugin(self):
+        rows = list_subplugins(["sequencer"])
+        names = {name for _, name, _ in rows}
+        assert "slew" in names
+
+    def test_summary_is_first_line_of_module_docstring(self, tmp_path, monkeypatch):
+        from rosace.plugins import pipeline_loader
+
+        monkeypatch.setattr(pipeline_loader, "_SUBPLUGIN_FAMILY_DIRS", {
+            "sequencer": self._make_family(tmp_path, "sequencer", {
+                "foo": '"""One-line summary.\n\nMore detail below, not part of the summary.\n"""\n',
+            }),
+        })
+
+        rows = pipeline_loader.list_subplugins()
+
+        assert rows == [("sequencer", "foo", "One-line summary.")]
+
+    def test_missing_docstring_reported_explicitly_not_skipped(self, tmp_path, monkeypatch):
+        from rosace.plugins import pipeline_loader
+
+        monkeypatch.setattr(pipeline_loader, "_SUBPLUGIN_FAMILY_DIRS", {
+            "sequencer": self._make_family(tmp_path, "sequencer", {"foo": "x = 1\n"}),
+        })
+
+        rows = pipeline_loader.list_subplugins()
+
+        assert rows == [("sequencer", "foo", "(no docstring)")]
+
+    def test_missing_canonical_module_reported_explicitly(self, tmp_path, monkeypatch):
+        """A sub-plugin dir with no <name>.py at all (e.g. sequencer-only,
+        internal-backend-only during early development) -- still listed,
+        not silently dropped."""
+        from rosace.plugins import pipeline_loader
+
+        monkeypatch.setattr(pipeline_loader, "_SUBPLUGIN_FAMILY_DIRS", {
+            "sequencer": self._make_family(tmp_path, "sequencer", {"foo": None}),
+        })
+
+        rows = pipeline_loader.list_subplugins()
+
+        assert rows == [("sequencer", "foo", "(no docstring)")]
+
+    def test_families_filter_restricts_output(self):
+        rows = list_subplugins(["reduction"])
+        assert rows and all(family == "reduction" for family, _, _ in rows)
+
+    def test_no_filter_covers_all_three_families(self):
+        rows = list_subplugins()
+        assert {family for family, _, _ in rows} == {"sequencer", "reduction", "sharing"}
+
+    def test_sorted_by_pipeline_order_then_name(self):
+        """Family order is sequencer, reduction, sharing -- the order they
+        actually run in -- not alphabetical (which would put reduction
+        first). Within a family, names are alphabetical."""
+        rows = list_subplugins()
+
+        families_in_order = [family for family, _, _ in rows]
+        first_reduction = families_in_order.index("reduction")
+        first_sharing = families_in_order.index("sharing")
+        assert families_in_order[:first_reduction] == ["sequencer"] * first_reduction
+        assert all(f == "reduction" for f in families_in_order[first_reduction:first_sharing])
+        assert all(f == "sharing" for f in families_in_order[first_sharing:])
+
+        for family in ("sequencer", "reduction", "sharing"):
+            names = [name for f, name, _ in rows if f == family]
+            assert names == sorted(names)
+
+
+class TestSubpluginDocstrings:
+    """Not a startup check (see TestValidateSubpluginCatalogue above) -- a
+    missing module docstring isn't a runtime correctness risk, so it
+    shouldn't cost every real deployment a startup check. Runs against the
+    real, on-disk catalogue (unlike TestListSubplugins' fake tmp_path
+    families above) specifically to catch a future sub-plugin added
+    without one."""
+
+    def test_every_real_subplugin_has_a_non_empty_module_docstring(self):
+        missing = [
+            f"{family}/{name}"
+            for family, name, summary in list_subplugins()
+            if summary == "(no docstring)"
+        ]
+        assert not missing, f"Sub-plugin(s) missing a module docstring: {missing}"
