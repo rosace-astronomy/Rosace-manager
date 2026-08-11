@@ -356,6 +356,18 @@ class TestObservation:
         obs.hardware["mount"] = object()
         assert "hardware" not in obs.model_dump(mode="json")
 
+    def test_hardware_config_defaults_to_empty_dict_and_is_independent_per_instance(self):
+        obs1 = self._make("id1")
+        obs2 = self._make("id2")
+        assert obs1.hardware_config == {}
+        obs1.hardware_config["mount"] = {"slit_x": 0}
+        assert obs2.hardware_config == {}
+
+    def test_hardware_config_excluded_from_model_dump(self):
+        obs = self._make()
+        obs.hardware_config["mount"] = {"slit_x": 0}
+        assert "hardware_config" not in obs.model_dump(mode="json")
+
     def test_suggested_filename_uses_target_name(self):
         obs = self._make()
         assert obs.suggested_filename.endswith("_Altair.yaml")
@@ -404,6 +416,12 @@ class TestSessionContext:
         assert ctx1.hardware == {}
         ctx1.hardware["mount"] = object()
         assert ctx2.hardware == {}
+
+    def test_hardware_config_defaults_to_empty_dict_and_is_independent_per_instance(self):
+        ctx1, ctx2 = SessionContext(), SessionContext()
+        assert ctx1.hardware_config == {}
+        ctx1.hardware_config["mount"] = {"slit_x": 0}
+        assert ctx2.hardware_config == {}
 
 
 class TestObservationSessionId:

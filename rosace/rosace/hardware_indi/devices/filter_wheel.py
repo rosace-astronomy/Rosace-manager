@@ -16,7 +16,7 @@ class IndiFilterWheel(IndiDevice):
         if config is None:
             config = dict(
                 module="IndiFilterWheel",
-                filterwheel_name="Filter Simulator",
+                indi_name="Filter Simulator",
                 filter_list=dict(
                     Luminance=1,
                     Red=2,
@@ -31,7 +31,7 @@ class IndiFilterWheel(IndiDevice):
                     indi_port="7624"
                 ))
 
-        device_name = config['filterwheel_name']
+        device_name = config['indi_name']
         indi_driver_name = config.get('indi_driver_name', None)
 
         self.filterList = config['filter_list']

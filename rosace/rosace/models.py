@@ -104,6 +104,21 @@ class Observation(BaseModel):
     # a live device connection is meaningless and likely to break).
     hardware: dict[str, Any] = Field(default_factory=dict, exclude=True)
 
+    # Each connected device's own params, keyed the same way as hardware above
+    # (e.g. "guiding_camera", "focuser") -- everything its hardware YAML entry
+    # declares beyond the plumbing fields needed just to connect it (see
+    # hardware_connectivity.py::_PLUMBING_KEYS/_extract_device_params()),
+    # verbatim and unfiltered: cooling, sampling_arcsec, slit_x, focus_range...
+    # whatever a given device happens to declare. Unlike hardware, this is
+    # plain, picklable data (no live connections) -- it's excluded from
+    # model_dump() by the same policy as hardware, not by technical
+    # necessity: nothing here should appear in the observation YAML
+    # automatically, a sub-plugin that wants a specific value recorded
+    # copies it explicitly into its own sequencer_data casier, exactly like
+    # any other sub-plugin output. Copied from SessionContext.hardware_config
+    # by session_runner() the same way hardware itself is.
+    hardware_config: dict[str, dict[str, Any]] = Field(default_factory=dict, exclude=True)
+
     # Live callback, set by session_runner() (main.py) on every freshly-created
     # Observation — lets a sub-plugin whose own work spans several internal
     # steps (e.g. expose.py's multi-sub-exposure loop) notice a stop request
@@ -156,6 +171,12 @@ class SessionContext(BaseModel):
     # CloseSessionPlugin to disconnect each adapter. Not persisted (db_insert_session
     # only reads specific fields, never dumps this model wholesale).
     hardware: dict[str, Any] = Field(default_factory=dict, exclude=True)
+
+    # Each connected device's own params (see Observation.hardware_config above
+    # for the full rationale) — set once by InitSessionPlugin alongside hardware,
+    # copied onto every freshly-created Observation by session_runner() since
+    # sub-plugins only ever see Observation, never SessionContext.
+    hardware_config: dict[str, dict[str, Any]] = Field(default_factory=dict, exclude=True)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

@@ -17,7 +17,7 @@ class IndiFocuser(IndiDevice):
         if config is None:
             config = dict(
                 module="IndiFocuser",
-                focuser_name="Focuser Simulator",
+                indi_name="Focuser Simulator",
                 port="/dev/ttyUSB0",
                 focus_range=dict(
                     min=1,
@@ -33,7 +33,7 @@ class IndiFocuser(IndiDevice):
                     indi_port="7624"
                 ))
 
-        device_name=config['focuser_name']
+        device_name=config['indi_name']
         indi_driver_name=config.get('indi_driver_name', None),
 
         self.port = config['port']

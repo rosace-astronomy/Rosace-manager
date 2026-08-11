@@ -13,6 +13,7 @@ import json
 import pytest
 
 from rosace.hardware.errors import DeviceCommandError, DeviceConnectionError, DeviceTimeoutError
+from rosace.phd2 import phd2_client as phd2_client_module
 from rosace.phd2.phd2_client import Phd2Client
 
 SETTLE = {"pixels": 1.5, "time": 3, "timeout": 2}  # timeout court pour ne pas ralentir les tests
@@ -197,7 +198,12 @@ class TestStartGuiding:
         assert server.received[-1]["params"]["recalibrate"] is True
         await client.disconnect()
 
-    async def test_raises_on_timeout_when_no_settle_event_arrives(self, server, client):
+    async def test_raises_on_timeout_when_no_settle_event_arrives(self, server, client, monkeypatch):
+        # start_guiding()'s real wait is settle["timeout"] + _DEFAULT_CALL_TIMEOUT --
+        # SETTLE["timeout"] is already short (2s) but _DEFAULT_CALL_TIMEOUT (10s,
+        # a real safety margin in production) isn't, so this test used to take a
+        # genuine 12s. Shrunk to a near-instant timeout here only.
+        monkeypatch.setattr(phd2_client_module, "_DEFAULT_CALL_TIMEOUT", 0.05)
         server.handlers["guide"] = 0  # ack, but never sends SettleDone/CalibrationFailed
         await client.connect()
 

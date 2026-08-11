@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from rosace.models import SessionContext
+from rosace.plugins.hardware_connectivity import ConnectedHardware
 from rosace.plugins.init_session import InitSessionPlugin
 
 
@@ -26,7 +27,9 @@ def mock_hardware_check(monkeypatch):
     """Par défaut, la connexion matérielle réussit instantanément et renvoie un
     device — les tests qui portent sur autre chose n'ont pas à parler à du vrai
     matériel INDI."""
-    mock = AsyncMock(return_value={"mount": object()})
+    mock = AsyncMock(return_value=ConnectedHardware(
+        adapters={"mount": object()}, hardware_config={"mount": {"some_param": 42}},
+    ))
     monkeypatch.setattr("rosace.plugins.init_session.connect_session_hardware", mock)
     return mock
 
@@ -112,6 +115,14 @@ class TestHardwareConnectivityDispatch:
         await InitSessionPlugin().run(ctx)
 
         assert set(ctx.hardware) == {"mount"}
+
+    async def test_sets_ctx_hardware_config_when_backend_is_indi(self, monkeypatch, mock_hardware_check):
+        monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "indi")
+        ctx = SessionContext(site_name="St-Pancrasse")
+
+        await InitSessionPlugin().run(ctx)
+
+        assert ctx.hardware_config == {"mount": {"some_param": 42}}
 
     async def test_propagates_hardware_connectivity_failure(self, monkeypatch, mock_hardware_check):
         monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "indi")

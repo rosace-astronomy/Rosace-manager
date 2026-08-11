@@ -16,10 +16,10 @@ class IndiUsisSpectro(IndiDevice):
         if config is None:
             config = dict(
                 module="IndiUsisSpectro",
-                USIS_spectro_name="USIS Simulator",
+                indi_name="USIS Simulator",
                 )
 
-        device_name = config['USIS_spectro_name']
+        device_name = config['indi_name']
         indi_driver_name = config.get('indi_driver_name', None)
 
         self.logger.debug('Indi USIS spectro, name is: {}'.format(device_name))

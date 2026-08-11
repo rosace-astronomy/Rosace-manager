@@ -300,6 +300,7 @@ async def _session_runner_body():
                         session_id=session.session_id,
                         obs_dir=str(session_dir),
                         hardware=session.hardware,
+                        hardware_config=session.hardware_config,
                         stop_check=lambda: not state.is_running,
                     )
                 else:

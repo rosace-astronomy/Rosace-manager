@@ -6,8 +6,8 @@ INDI_drivers:
         module: camera
         # module: asi_camera
         module_dir: rosace.hardware_indi.devices
-        camera_name : ZWO CCD ASI120MM Mini
-        # camera_name : Atik 314L
+        indi_name : ZWO CCD ASI120MM Mini
+        # indi_name : Atik 314L
         class_name : IndiCamera
         # class_name : IndiASICamera
         indi_client :
@@ -27,8 +27,8 @@ INDI_drivers:
         role: camera
         module: camera
         module_dir: rosace.hardware_indi.devices
-        camera_name : Atik 314L
-        # camera_name : ZWO CCD ASI120MM Mini
+        indi_name : Atik 314L
+        # indi_name : ZWO CCD ASI120MM Mini
         class_name : IndiCamera
         indi_client :
             indi_host : 10.250.250.1
@@ -40,7 +40,7 @@ INDI_drivers:
         role: mount
         module: mount
         module_dir: rosace.hardware_indi.devices
-        mount_name : ZWO AM3 USB
+        indi_name : ZWO AM3 USB
         class_name : IndiMount
         indi_client :
             indi_host : 10.250.250.1
@@ -50,7 +50,7 @@ INDI_drivers:
         role: camera
         module: asi_camera
         module_dir: rosace.hardware_indi.devices
-        camera_name : ZWO CCD ASI224MC
+        indi_name : ZWO CCD ASI224MC
         class_name : IndiASICamera
         indi_client :
             indi_host : 10.250.250.1
@@ -61,7 +61,7 @@ INDI_drivers:
         role: focuser
         module: focuser
         module_dir: rosace.hardware_indi.devices
-        focuser_name: ZWO EAF
+        indi_name: ZWO EAF
         class_name : IndiFocuser
         # port: /dev/serial/by-id/usb-Optec__Inc._Optec_USB_Serial_Cable_OP5AORA9-if00-port0
         indi_client:
@@ -85,6 +85,14 @@ INDI_drivers:
         # TODO: provisional placeholder, not the real Alpy module driven by
         # the Stellarmate's two On/Off switches -- to be replaced once that
         # wiring is done (see hardware/spectroscope.py).
+        # indi_client/indi_name below are unused by SpectroscopePlaceholder --
+        # present only so every device entry satisfies the same
+        # required-fields check, with no per-role exception in
+        # hardware_connectivity.py.
+        indi_name: Spectroscope Placeholder
+        indi_client:
+            indi_host: 10.250.250.1
+            indi_port: 7624
 
 PHD2_config:
     # host: 192.168.144.32

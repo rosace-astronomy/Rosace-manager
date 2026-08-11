@@ -32,6 +32,17 @@ Known simplification: if one device fails partway through, devices already
 connected before it are left connected (not explicitly disconnected here)
 since INIT_SESSION failure already stops the session as a critical error —
 acceptable for now, revisit if leaked connections become a real problem.
+
+Each device's YAML entry is also split, implicitly, into two halves: a
+closed set of "plumbing" fields this module and every device class need to
+connect at all (_PLUMBING_KEYS -- role/module/module_dir/class_name/
+indi_client/indi_name), and everything else, which is that device's own
+params -- untouched, unfiltered, never named here (see
+_extract_device_params()). Adding a new field to a device's YAML entry
+(e.g. a camera's cooling_capability, a focuser's focus_range) makes it
+reach SEQUENCER sub-plugins automatically, via Observation.hardware_config,
+with zero code change in this module or anywhere else -- the same dynamic,
+config-driven spirit as pipeline_loader.py's sub-plugin resolution.
 """
 
 from __future__ import annotations
@@ -39,6 +50,8 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
+from dataclasses import dataclass, field
+from typing import Any
 
 import yaml
 
@@ -60,6 +73,28 @@ _ADAPTERS_BY_ROLE = {
     "spectroscope": SpectroscopeAdapter,
 }
 
+# Closed list of "plumbing" fields every device entry must declare, regardless
+# of role -- needed either by this module itself (role/module/module_dir/
+# class_name, for dynamic loading and adapter selection) or by every IndiDevice
+# subclass's own __init__ (indi_client, indi_name -- the device's own INDI
+# identification, required even by SpectroscopePlaceholder, which never uses
+# it, deliberately, to keep this list free of per-role exceptions). Anything
+# else a device declares is business config for SEQUENCER sub-plugins, not
+# plumbing -- see _extract_business_config() below, which never names a
+# single one of those fields, by design.
+_PLUMBING_KEYS = {"role", "module", "module_dir", "class_name", "indi_client", "indi_name"}
+
+
+@dataclass
+class ConnectedHardware:
+    """connect_session_hardware()'s return value: the connected adapters
+    (SessionContext.hardware / Observation.hardware) alongside each device's
+    own params (SessionContext.hardware_config / Observation.hardware_config)
+    -- everything in its hardware YAML entry beyond the plumbing fields,
+    verbatim, unfiltered."""
+    adapters: dict[str, Any] = field(default_factory=dict)
+    hardware_config: dict[str, dict[str, Any]] = field(default_factory=dict)
+
 
 def _load_hardware_config() -> dict:
     with open(HARDWARE_CONFIG_PATH, encoding="utf-8") as f:
@@ -80,13 +115,35 @@ def _connect_device_sync(device_cfg: dict, timeout: float):
     return device
 
 
-async def _connect_devices(devices: dict[str, dict], timeout: float) -> tuple[dict[str, object], list[str]]:
+def _extract_device_params(device_name: str, device_cfg: dict) -> dict:
+    """Validates that device_cfg declares every plumbing field (_PLUMBING_KEYS),
+    raising ValueError naming exactly what's missing if not, then returns
+    everything else verbatim -- whatever a hardware YAML entry declares beyond
+    the plumbing fields (cooling, sampling_arcsec, slit_x, port, focus_range...)
+    becomes that device's params, with no field named here. This is what lets
+    a new hardware YAML field reach SEQUENCER sub-plugins without ever
+    touching this module."""
+    missing = _PLUMBING_KEYS - device_cfg.keys()
+    if missing:
+        raise ValueError(f"device '{device_name}': missing required field(s) {sorted(missing)}")
+    return {k: v for k, v in device_cfg.items() if k not in _PLUMBING_KEYS}
+
+
+async def _connect_devices(devices: dict[str, dict], timeout: float) -> tuple[dict[str, object], dict[str, dict], list[str]]:
     """Connects every device one at a time (they may share a single, non-thread-safe
-    IndiClient behind the scenes) and wraps each in its role's adapter.
-    Returns (adapters by device name, failure messages)."""
+    IndiClient behind the scenes), wraps each in its role's adapter, and extracts
+    its params. Returns (adapters by device name, params by device name,
+    failure messages) -- the two dicts share the same keys."""
     adapters: dict[str, object] = {}
+    hardware_config: dict[str, dict] = {}
     failures = []
     for device_name, device_cfg in devices.items():
+        try:
+            device_params = _extract_device_params(device_name, device_cfg)
+        except ValueError as e:
+            failures.append(str(e))
+            continue
+
         try:
             device = await asyncio.wait_for(
                 asyncio.to_thread(_connect_device_sync, device_cfg, timeout),
@@ -105,9 +162,10 @@ async def _connect_devices(devices: dict[str, dict], timeout: float) -> tuple[di
             )
             continue
         adapters[device_name] = adapter_cls(device)
+        hardware_config[device_name] = device_params
         log.info(f"[INIT_SESSION] Device '{device_name}' connected")
 
-    return adapters, failures
+    return adapters, hardware_config, failures
 
 
 async def _connect_phd2(phd2_cfg: dict, timeout: float) -> Phd2Client:
@@ -122,13 +180,16 @@ async def _connect_phd2(phd2_cfg: dict, timeout: float) -> Phd2Client:
     return client
 
 
-async def connect_session_hardware() -> dict[str, object]:
+async def connect_session_hardware() -> ConnectedHardware:
     """Connects every declared INDI device and PHD2 for the whole session
     (left open — the caller must disconnect each returned adapter/client at
     CLOSE_SESSION). Raises RuntimeError listing every failure if at least
-    one device or PHD2 fails. Returns the connected adapters, keyed by
+    one device or PHD2 fails. Returns a ConnectedHardware: adapters keyed by
     device name (e.g. "science_camera", "mount") plus "phd2" — this is what
-    becomes SessionContext.hardware / Observation.hardware."""
+    becomes SessionContext.hardware / Observation.hardware — alongside each
+    device's own params (SessionContext.hardware_config / Observation.
+    hardware_config; PHD2 has no entry there, its own config shape doesn't
+    match the per-INDI-device one)."""
     hw_config = _load_hardware_config()
     timeout = HARDWARE_CONNECT_TIMEOUT_SECONDS
 
@@ -139,7 +200,7 @@ async def connect_session_hardware() -> dict[str, object]:
         else None
     )
 
-    adapters, failures = await devices_task
+    adapters, hardware_config, failures = await devices_task
 
     if phd2_task is not None:
         try:
@@ -151,4 +212,4 @@ async def connect_session_hardware() -> dict[str, object]:
     if failures:
         raise RuntimeError(f"Hardware connectivity check failed: {'; '.join(failures)}")
 
-    return adapters
+    return ConnectedHardware(adapters=adapters, hardware_config=hardware_config)

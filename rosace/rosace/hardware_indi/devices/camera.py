@@ -26,8 +26,13 @@ class IndiCamera(IndiDevice):
         logger = logger or logging.getLogger(__name__)
 
         if config is None:
+            # TODO: dead fallback, never exercised in Rosace -- config is always
+            # passed by _connect_device_sync() (hardware_connectivity.py). Leftover
+            # PANOPTES/POCS-era defaults (pointing_seconds, adjust_*, autofocus_*,
+            # nested "focuser") with no equivalent anywhere in Rosace's own hardware
+            # YAMLs -- candidate for deletion, flagged 2026-08-11, not done now.
             config = dict(
-                camera_name='CCD Simulator',
+                indi_name='CCD Simulator',
                 pointing_seconds=30,
                 default_exp_time_sec=5,
                 default_gain=50,
@@ -41,7 +46,7 @@ class IndiCamera(IndiDevice):
                 autofocus_merit_function="half_flux_radius",
                 focuser=dict(
                     module="IndiFocuser",
-                    focuser_name="Focuser Simulator",
+                    indi_name="Focuser Simulator",
                     port="/dev/ttyUSB0",
                     focus_range=dict(
                         min=1,
@@ -60,7 +65,7 @@ class IndiCamera(IndiDevice):
                     indi_host="localhost",
                     indi_port="7624"
                 ))
-        device_name = config['camera_name']
+        device_name = config['indi_name']
         indi_driver_name = config.get('indi_driver_name', None)
 
         # device related intialization

@@ -41,8 +41,8 @@ class IndiMount(IndiDevice):
     def __init__(self, config=None, logger=None, connect_on_create=False):
         self.logger = logger or logging.getLogger(__name__)
 
-        assert (config is not None) and (type(config) == dict), ("Please provide config as dictionary, with mount_name")
-        device_name = config['mount_name']
+        assert (config is not None) and (type(config) == dict), ("Please provide config as dictionary, with indi_name")
+        device_name = config['indi_name']
         indi_driver_name = config.get('indi_driver_name', None)
 
         self.logger.debug(f"Indi Mount, mount name is: {device_name}")

@@ -4,7 +4,7 @@ INDI_drivers:
         role: camera
         module: camera
         module_dir: rosace.hardware_indi.devices
-        camera_name : CCD Simulator
+        indi_name : CCD Simulator
         class_name : IndiCamera
         indi_client :
             indi_host : localhost
@@ -24,7 +24,7 @@ INDI_drivers:
         role: camera
         module: camera
         module_dir: rosace.hardware_indi.devices
-        camera_name : CCD Simulator
+        indi_name : CCD Simulator
         class_name : IndiCamera
         indi_client :
             indi_host : localhost
@@ -36,7 +36,7 @@ INDI_drivers:
         role: mount
         module: mount
         module_dir: rosace.hardware_indi.devices
-        mount_name : Telescope Simulator
+        indi_name : Telescope Simulator
         class_name : IndiMount
         indi_client :
             indi_host : localhost
@@ -46,7 +46,7 @@ INDI_drivers:
         role: focuser
         module: focuser
         module_dir: rosace.hardware_indi.devices
-        focuser_name: Focuser Simulator
+        indi_name: Focuser Simulator
         class_name : IndiFocuser
         port: /dev/ttyUSB0
         indi_client:
@@ -67,9 +67,15 @@ INDI_drivers:
         module: spectroscope_placeholder
         module_dir: rosace.hardware_indi.devices
         class_name: SpectroscopePlaceholder
-        # No indi_client block: this is a pure in-memory placeholder, not a
-        # real INDI device -- no INDI simulator exists yet for a
-        # spectroscope light-source selector (SKY/DARK/FLAT/CALIB).
+        # indi_client/indi_name below are unused by SpectroscopePlaceholder
+        # (pure in-memory, no real INDI protocol involved -- no INDI simulator
+        # exists yet for a spectroscope light-source selector) -- present only
+        # so every device entry satisfies the same required-fields check,
+        # with no per-role exception in hardware_connectivity.py.
+        indi_name: Spectroscope Placeholder
+        indi_client:
+            indi_host: localhost
+            indi_port: 7624
 
 PHD2_config:
     # host: 192.168.144.32
@@ -83,4 +89,4 @@ PHD2_config:
     settle:
         pixels: 7
         time: 3
-        timeout: 120  
+        timeout: 120

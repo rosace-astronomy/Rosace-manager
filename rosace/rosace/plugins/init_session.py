@@ -24,7 +24,9 @@ class InitSessionPlugin:
 
         if SEQUENCER_BACKEND == "indi":
             log.info("[INIT_SESSION] Connecting hardware (INDI devices + PHD2)…")
-            ctx.hardware = await connect_session_hardware()
+            connected = await connect_session_hardware()
+            ctx.hardware = connected.adapters
+            ctx.hardware_config = connected.hardware_config
             log.info(f"[INIT_SESSION] Hardware connected: {list(ctx.hardware)}")
         else:
             log.info("[INIT_SESSION] Running in DEMO mode (sequencer_backend=internal) — no hardware involved")

@@ -24,7 +24,7 @@ MOUNT_DRIVER = {
     "module": "mount",
     "module_dir": "rosace.hardware_indi.devices",
     "class_name": "IndiMount",
-    "mount_name": "Test Mount",
+    "indi_name": "Test Mount",
     "indi_client": {"indi_host": "localhost", "indi_port": 7624},
 }
 
@@ -33,7 +33,7 @@ FOCUSER_DRIVER = {
     "module": "focuser",
     "module_dir": "rosace.hardware_indi.devices",
     "class_name": "IndiFocuser",
-    "focuser_name": "Test Focuser",
+    "indi_name": "Test Focuser",
     "port": "/dev/ttyUSB0",
     "indi_client": {"indi_host": "localhost", "indi_port": 7624},
 }
@@ -43,6 +43,7 @@ UNREGISTERED_ROLE_DRIVER = {
     "module": "does_not_matter",
     "module_dir": "rosace.hardware_indi.devices",
     "class_name": "DoesNotMatter",
+    "indi_name": "Unregistered",
     "indi_client": {"indi_host": "localhost", "indi_port": 7624},
 }
 
@@ -51,6 +52,16 @@ SPECTROSCOPE_DRIVER = {
     "module": "spectroscope_placeholder",
     "module_dir": "rosace.hardware_indi.devices",
     "class_name": "SpectroscopePlaceholder",
+    "indi_name": "Spectroscope Placeholder",
+    "indi_client": {"indi_host": "localhost", "indi_port": 7624},
+}
+
+INCOMPLETE_DRIVER = {
+    "role": "mount",
+    "module": "mount",
+    "module_dir": "rosace.hardware_indi.devices",
+    "class_name": "IndiMount",
+    # indi_client and indi_name deliberately missing
 }
 
 
@@ -84,9 +95,33 @@ class TestLoadDeviceClass:
             hc._load_device_class("rosace.hardware_indi.devices", "mount", "DoesNotExist")
 
 
+class TestExtractDeviceParams:
+
+    def test_strips_plumbing_keys_only(self):
+        result = hc._extract_device_params("focuser", FOCUSER_DRIVER)
+
+        assert result == {"port": "/dev/ttyUSB0"}
+
+    def test_device_with_only_plumbing_fields_returns_empty_dict(self):
+        result = hc._extract_device_params("mount", MOUNT_DRIVER)
+
+        assert result == {}
+
+    def test_business_fields_pass_through_unfiltered(self):
+        device_cfg = {**MOUNT_DRIVER, "some_future_param": 42, "another_one": "x"}
+
+        result = hc._extract_device_params("mount", device_cfg)
+
+        assert result == {"some_future_param": 42, "another_one": "x"}
+
+    def test_raises_naming_every_missing_plumbing_key(self):
+        with pytest.raises(ValueError, match="indi_client.*indi_name|indi_name.*indi_client"):
+            hc._extract_device_params("mount", INCOMPLETE_DRIVER)
+
+
 class TestConnectSessionHardware:
 
-    async def test_all_succeed_returns_adapters_keyed_by_device_name(self, monkeypatch, short_timeout):
+    async def test_all_succeed_returns_adapters_and_params_keyed_by_device_name(self, monkeypatch, short_timeout):
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
             "INDI_drivers": {"mount": MOUNT_DRIVER, "focuser": FOCUSER_DRIVER},
             "PHD2_config": {"host": "127.0.0.1", "port": 4400, "settle": {"pixels": 1.5, "time": 3, "timeout": 30}},
@@ -96,12 +131,18 @@ class TestConnectSessionHardware:
         fake_phd2_client.connect = AsyncMock(return_value=None)
         monkeypatch.setattr(hc, "Phd2Client", MagicMock(return_value=fake_phd2_client))
 
-        adapters = await hc.connect_session_hardware()
+        result = await hc.connect_session_hardware()
 
-        assert set(adapters) == {"mount", "focuser", "phd2"}
-        assert isinstance(adapters["mount"], hc.MountAdapter)
-        assert isinstance(adapters["focuser"], hc.FocuserAdapter)
-        assert adapters["phd2"] is fake_phd2_client
+        assert set(result.adapters) == {"mount", "focuser", "phd2"}
+        assert isinstance(result.adapters["mount"], hc.MountAdapter)
+        assert isinstance(result.adapters["focuser"], hc.FocuserAdapter)
+        assert result.adapters["phd2"] is fake_phd2_client
+        # PHD2 isn't an INDI_drivers entry, its own config shape doesn't match --
+        # no hardware_config entry for it. mount has no business fields at all;
+        # focuser's "port" is the one non-plumbing field it declares.
+        assert set(result.hardware_config) == {"mount", "focuser"}
+        assert result.hardware_config["mount"] == {}
+        assert result.hardware_config["focuser"] == {"port": "/dev/ttyUSB0"}
 
     async def test_unknown_role_is_connected_but_not_returned(self, monkeypatch, short_timeout):
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
@@ -109,9 +150,10 @@ class TestConnectSessionHardware:
         })
         monkeypatch.setattr(hc, "_connect_device_sync", MagicMock(return_value=MagicMock()))
 
-        adapters = await hc.connect_session_hardware()  # ne doit pas lever
+        result = await hc.connect_session_hardware()  # ne doit pas lever
 
-        assert adapters == {}
+        assert result.adapters == {}
+        assert result.hardware_config == {}
 
     async def test_spectroscope_role_returns_spectroscope_adapter(self, monkeypatch, short_timeout):
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
@@ -119,9 +161,22 @@ class TestConnectSessionHardware:
         })
         monkeypatch.setattr(hc, "_connect_device_sync", MagicMock(return_value=MagicMock()))
 
-        adapters = await hc.connect_session_hardware()
+        result = await hc.connect_session_hardware()
 
-        assert isinstance(adapters["spectroscope"], hc.SpectroscopeAdapter)
+        assert isinstance(result.adapters["spectroscope"], hc.SpectroscopeAdapter)
+        assert result.hardware_config["spectroscope"] == {}
+
+    async def test_missing_plumbing_field_is_collected_and_raised_without_connecting(self, monkeypatch, short_timeout):
+        monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
+            "INDI_drivers": {"mount": INCOMPLETE_DRIVER},
+        })
+        connect_spy = MagicMock(side_effect=AssertionError("should never be called"))
+        monkeypatch.setattr(hc, "_connect_device_sync", connect_spy)
+
+        with pytest.raises(RuntimeError, match="mount"):
+            await hc.connect_session_hardware()
+
+        connect_spy.assert_not_called()
 
     async def test_device_failure_is_collected_and_raised(self, monkeypatch, short_timeout):
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
