@@ -46,6 +46,10 @@ log = logging.getLogger("spectro.phd2")
 
 _DEFAULT_CALL_TIMEOUT = 10.0
 
+# Events that all signal "PHD2 has stopped capturing", per the Event
+# Monitoring docs -- see stop_capture()'s own docstring.
+_STOP_EVENTS = ("AppState", "GuidingStopped", "LoopingExposuresStopped")
+
 
 class Phd2Client:
     """One PHD2 Event Monitoring connection. settle/do_calibration come from
@@ -168,6 +172,20 @@ class Phd2Client:
             if not subscribers:
                 del self._event_subscribers[name]
 
+    def _subscribe_many(self, names: tuple[str, ...]) -> asyncio.Queue:
+        """Like _subscribe(), but routes several different event names into
+        one shared queue -- for a caller (stop_capture()) that reacts the
+        same way to whichever of several distinct event names arrives
+        first, without caring which."""
+        queue: asyncio.Queue = asyncio.Queue()
+        for name in names:
+            self._event_subscribers.setdefault(name, []).append(queue)
+        return queue
+
+    def _unsubscribe_many(self, names: tuple[str, ...], queue: asyncio.Queue) -> None:
+        for name in names:
+            self._unsubscribe(name, queue)
+
     @staticmethod
     async def _dequeue(queue: asyncio.Queue, timeout: float | None) -> dict:
         item = await asyncio.wait_for(queue.get(), timeout=timeout)
@@ -249,14 +267,31 @@ class Phd2Client:
         """PHD2's own universal stop: halts guiding and plain looping alike
         (continuous framing exposures with no guiding active, e.g. during
         initial framing before start_guiding() is ever called) — PHD2 has
-        no separate "stop looping" command. Waits for AppState to actually
-        reach "Stopped", not just the first AppState event received (PHD2
-        may pass through intermediate states first, possibly within the
-        same read — the subscriber queue holds every one in order so none
-        of them can be silently dropped), so this is correct whether
-        guiding was active or PHD2 was only looping."""
+        no separate "stop looping" command.
+
+        No-op if PHD2 is already Stopped: calling stop_capture on an idle
+        PHD2 doesn't emit a new event (nothing actually changes), so
+        waiting for one would time out for no reason — found the hard way,
+        calling this defensively at the start of a sub-plugin on a
+        freshly-connected, never-yet-guided PHD2.
+
+        Found the hard way (2026-08-11, real simulator testing), then
+        confirmed against PHD2's own Event Monitoring documentation:
+        stopping from active Guiding does NOT emit an AppState event at
+        all -- PHD2 instead emits a distinct top-level "GuidingStopped"
+        event (not a value of AppState's own "State" field, despite that
+        being an easy assumption to make). Stopping from mere Looping
+        (no guide star locked) emits "LoopingExposuresStopped" instead,
+        the documented counterpart. This listens for whichever of the
+        three (AppState="Stopped", GuidingStopped, LoopingExposuresStopped)
+        is the actually-correct one for PHD2's current state, rather than
+        assuming "AppState" alone is always how PHD2 announces this."""
+        if await self.get_app_state() == "Stopped":
+            return
+        log.info("[PHD2] stop_capture: requesting stop")
+
         deadline = time.monotonic() + timeout
-        queue = self._subscribe("AppState")
+        queue = self._subscribe_many(_STOP_EVENTS)
         try:
             await self._call("stop_capture")
             while True:
@@ -267,10 +302,14 @@ class Phd2Client:
                     msg = await self._dequeue(queue, timeout=remaining)
                 except asyncio.TimeoutError:
                     raise DeviceTimeoutError(f"PHD2: stop_capture did not confirm Stopped state within {timeout}s")
-                if msg["State"] == "Stopped":
+                event = msg.get("Event")
+                log.debug(f"[PHD2] stop_capture: received {event!r} while waiting")
+                if event in ("GuidingStopped", "LoopingExposuresStopped"):
+                    return
+                if event == "AppState" and msg["State"] == "Stopped":
                     return
         finally:
-            self._unsubscribe("AppState", queue)
+            self._unsubscribe_many(_STOP_EVENTS, queue)
 
     # ── Lock position ────────────────────────────────────────────────
 

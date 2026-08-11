@@ -7,10 +7,9 @@ description: "Suivi spectral d'étoiles Be — émission Hα et variations de pr
 
 sequencer:
   - pointing_72ed        # Pointage télescope
-  - focus       # Mise au point automatique
-  - expose      # Exposition CCD
-  # - tatatata    # Pour tester...
-
+  # - focus       # Mise au point automatique
+  # - expose      # Exposition CCD
+  - stop_phd2_guiding    # Stoppe le guidage (PHD2)
 reduction:
   - bias        # Soustraction biais
   - dark        # Soustraction dark

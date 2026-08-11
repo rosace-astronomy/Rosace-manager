@@ -83,10 +83,6 @@ SCHEDULER_RETRY_SECONDS = _cfg["scheduler_retry_seconds"]
 # la vérification de connectivité en début de session (voir hardware_connectivity.py).
 HARDWARE_CONNECT_TIMEOUT_SECONDS = _cfg["hardware_connect_timeout_seconds"]
 
-# ── Guidage ───────────────────────────────────────────────────────
-# Temps de pose par défaut de la caméra de guidage (sequencer_backend=indi).
-GUIDE_EXPOSURE_TIME_SECONDS = _cfg["guide_exposure_time_seconds"]
-
 # ── Exposition scientifique ─────────────────────────────────────
 # Temps de pose (mag 0) et durée max d'une sous-pose — voir
 # acquisition_helpers.py::compute_exposure_time_and_count().

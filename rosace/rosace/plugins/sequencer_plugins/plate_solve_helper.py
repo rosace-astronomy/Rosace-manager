@@ -154,6 +154,7 @@ async def solve_wcs(
         ]
 
     cmd = [solve_field_bin, *options, fits_path]
+    log.info(f"[PLATE_SOLVE] Solving {fits_path} (up to {timeout:.0f}s)...")
     log.debug(f"[PLATE_SOLVE] Running: {' '.join(cmd)}")
 
     def _run() -> subprocess.CompletedProcess:
@@ -231,7 +232,35 @@ def solve_result(fits_path: str, x: float | None = None, y: float | None = None)
         x = (header["NAXIS1"] - 1) / 2
         y = (header["NAXIS2"] - 1) / 2
 
-    return wcs.pixel_to_world(x, y).icrs
+    coord = wcs.pixel_to_world(x, y).icrs
+    # .icrs above only changes the *frame* to ICRS -- it does not clear
+    # leftover SkyCoord-level attributes (e.g. equinox) inherited from the
+    # WCS's original frame (typically FK5), which are irrelevant to ICRS
+    # (ICRS itself has no frame attributes at all) but still make
+    # SkyCoord.is_equivalent_frame() -- and so spherical_offsets_to()/
+    # spherical_offsets_by() -- report two otherwise-identical ICRS
+    # SkyCoords as non-equivalent. Rebuilding a plain SkyCoord from just
+    # ra/dec drops that leftover baggage. Found the hard way: real
+    # solve-field output (FK5 with an explicit EQUINOX) triggered
+    # "Tried to use spherical_offsets_to with two non-matching frames!"
+    # against a coordinate built fresh from a Target's plain ra/dec.
+    return SkyCoord(ra=coord.ra, dec=coord.dec, frame="icrs")
+
+
+def world_to_pixel(fits_path: str, coord: SkyCoord) -> tuple[float, float]:
+    """Returns the pixel (x, y) in fits_path where coord falls, reading the
+    WCS already present in its header (from a prior solve_wcs() call) --
+    the inverse of solve_result(). Purely local: never invokes solve-field.
+    A thin wrapper around astropy.wcs.WCS.world_to_pixel(), which already
+    accepts a SkyCoord directly -- no coordinate math of our own here.
+
+    Same zero-indexed pixel convention as solve_result() (pixel (0, 0) is
+    the center of the first pixel).
+    """
+    with fits.open(fits_path) as hdul:
+        wcs = _wcs_from_header(hdul[0].header)
+    x, y = wcs.world_to_pixel(coord)
+    return float(x), float(y)
 
 
 def pixel_scale_arcsec(fits_path: str) -> float:

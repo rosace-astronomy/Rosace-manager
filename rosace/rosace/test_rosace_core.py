@@ -2072,7 +2072,6 @@ active_hardware: hardware_indi_simu
 scheduler_retry_seconds: 60
 sequencer_backend: internal
 hardware_connect_timeout_seconds: 5
-guide_exposure_time_seconds: 0.3
 exposure_time_mag0_seconds: 1.0
 max_exposure_time_seconds: 300
 observation_list_path: {tmp_path / "ObservationList.txt"}

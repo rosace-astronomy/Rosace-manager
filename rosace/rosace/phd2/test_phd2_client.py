@@ -225,7 +225,7 @@ class TestStopCapture:
 
     async def test_ignores_intermediate_app_states_before_stopped(self, server, client):
         async def on_stop(msg):
-            await server.push_event({"Event": "AppState", "State": "GuidingStopped"})
+            await server.push_event({"Event": "AppState", "State": "Paused"})
             await server.push_event({"Event": "AppState", "State": "Stopped"})
             return 0
 
@@ -234,12 +234,49 @@ class TestStopCapture:
 
         await client.stop_capture()  # ne doit pas lever, malgré l'état intermédiaire
 
+    async def test_reacts_to_guiding_stopped_event(self, server, client):
+        """GuidingStopped is a real, distinct top-level PHD2 event (per the
+        Event Monitoring docs) -- not a value of AppState's own "State"
+        field. PHD2 emits this, not an AppState transition, when stopping
+        from active Guiding."""
+        async def on_stop(msg):
+            await server.push_event({"Event": "GuidingStopped"})
+            return 0
+
+        server.handlers["stop_capture"] = on_stop
+        await client.connect()
+
+        await client.stop_capture()  # ne doit pas lever, sans jamais recevoir AppState="Stopped"
+
+    async def test_reacts_to_looping_exposures_stopped_event(self, server, client):
+        """LoopingExposuresStopped is the documented counterpart of
+        GuidingStopped for stopping from mere Looping (no guide star
+        locked)."""
+        async def on_stop(msg):
+            await server.push_event({"Event": "LoopingExposuresStopped"})
+            return 0
+
+        server.handlers["stop_capture"] = on_stop
+        await client.connect()
+
+        await client.stop_capture()  # ne doit pas lever
+
     async def test_raises_on_timeout_when_stopped_never_reported(self, server, client):
-        server.handlers["stop_capture"] = 0  # ack, mais aucun AppState="Stopped" n'arrive
+        server.handlers["stop_capture"] = 0  # ack, mais aucun événement de fin n'arrive
         await client.connect()
 
         with pytest.raises(DeviceTimeoutError):
             await client.stop_capture(timeout=0.2)
+
+    async def test_returns_immediately_when_already_stopped(self, server, client):
+        """PHD2 doesn't emit a new event when asked to stop while already
+        Stopped -- waiting for one would time out for nothing."""
+        server.handlers["get_app_state"] = "Stopped"
+        await client.connect()
+
+        await client.stop_capture(timeout=0.2)  # must not raise or wait out the timeout
+
+        assert not any(msg["method"] == "stop_capture" for msg in server.received)
 
 
 class TestLockPositionAndStar:

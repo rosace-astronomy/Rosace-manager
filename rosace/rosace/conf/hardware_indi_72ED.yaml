@@ -16,6 +16,8 @@ INDI_drivers:
         cooling : true
         cooling_capability : -20
         sampling_arcsec : 1.75
+        # Exposure time (seconds) for a direct guiding-camera capture.
+        exposure_seconds : 0.3
         # Spectrograph slit position in this camera's field, in pixels.
         # Zero-indexed (pixel (0,0) = center of the first pixel, matching
         # astropy's WCS.pixel_to_world()) -- if read off a FITS viewer such
@@ -45,6 +47,11 @@ INDI_drivers:
         indi_client :
             indi_host : 10.250.250.1
             indi_port : 7624
+        # Offset (degrees), added to both RA and DEC, for a preliminary slew
+        # before the final slew to the exact target position -- always
+        # approaching from the same side makes mechanical backlash consistent
+        # from one slew to the next, instead of varying with slew direction.
+        backlash_offset_deg : 2
 
     pointing_camera:
         role: camera

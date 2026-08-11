@@ -24,6 +24,7 @@ from rosace.plugins.sequencer_plugins.plate_solve_helper import (
     pixel_scale_arcsec,
     solve_result,
     solve_wcs,
+    world_to_pixel,
 )
 
 NAXIS = 99  # odd, so (NAXIS-1)/2 is an exact integer pixel
@@ -169,6 +170,20 @@ class TestSolveWcs:
                 await solve_wcs(str(path))
 
         assert any("no WCS solution" in r.message for r in caplog.records)
+
+    async def test_logs_before_attempting_the_solve(self, tmp_path, monkeypatch, caplog):
+        """The solve itself can take a while (up to timeout) -- this log line
+        must appear before the outcome is known, not just on success/failure,
+        so a caller isn't left wondering whether anything is happening."""
+        _stub_which(monkeypatch)
+        _install_failing_solve(monkeypatch)
+        path = _make_guide_fits(tmp_path)
+
+        with caplog.at_level("INFO", logger="spectro.subplugin.plate_solve_helper"):
+            with pytest.raises(PlateSolveError):
+                await solve_wcs(str(path), timeout=42)
+
+        assert any("Solving" in r.message and "42s" in r.message for r in caplog.records)
 
     async def test_failure_message_includes_star_count_when_axy_present(self, tmp_path, monkeypatch):
         _stub_which(monkeypatch)
@@ -381,6 +396,83 @@ class TestSolveResult:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             solve_result(str(path))
+
+        assert not any(issubclass(w.category, FITSFixedWarning) for w in caught)
+
+    def test_result_is_usable_with_spherical_offsets_to(self, tmp_path):
+        """Real solve-field output includes an EQUINOX card, which astropy
+        interprets as FK5 before converting to ICRS -- the SkyCoord that
+        WCS.pixel_to_world().icrs then returns carries a leftover
+        `equinox` attribute even after the frame itself becomes ICRS
+        (which has no frame attributes at all). SkyCoord.is_equivalent_frame()
+        compares *every* frame attribute known anywhere in astropy's
+        transform graph, so that leftover equinox makes
+        spherical_offsets_to()/spherical_offsets_by() reject this result
+        as a "non-matching frame" against a coordinate built fresh from
+        plain ra/dec (e.g. a Target's) -- even though both report frame
+        'icrs'. Found via a real observation. _install_fake_solve()
+        (used by every other test here) doesn't set EQUINOX, so it never
+        reproduces this -- this test builds its own solved header."""
+        data = np.zeros((NAXIS, NAXIS), dtype=np.float32)
+        header = fits.Header()
+        header["CTYPE1"] = "RA---TAN"
+        header["CTYPE2"] = "DEC--TAN"
+        header["CRVAL1"] = 10.0
+        header["CRVAL2"] = 20.0
+        header["CRPIX1"] = (NAXIS + 1) / 2
+        header["CRPIX2"] = (NAXIS + 1) / 2
+        header["CDELT1"] = -0.001
+        header["CDELT2"] = 0.001
+        header["EQUINOX"] = 2000.0  # what real solve-field output actually includes
+        path = tmp_path / "solved.fits"
+        fits.PrimaryHDU(data, header=header).writeto(path, overwrite=True)
+
+        result = solve_result(str(path))
+
+        assert getattr(result, "equinox", None) is None
+        other = SkyCoord(ra=10.0, dec=20.0, unit="deg", frame="icrs")
+        other.spherical_offsets_to(result)  # must not raise
+
+
+class TestWorldToPixel:
+
+    async def test_inverse_of_solve_result(self, tmp_path, monkeypatch):
+        _stub_which(monkeypatch)
+        _install_fake_solve(monkeypatch)
+        path = _make_guide_fits(tmp_path, ra=10.0, dec=20.0)
+        await solve_wcs(str(path))
+        coord = solve_result(str(path), 5, 7)
+
+        x, y = world_to_pixel(str(path), coord)
+
+        assert x == pytest.approx(5.0, abs=1e-6)
+        assert y == pytest.approx(7.0, abs=1e-6)
+
+    async def test_target_coord_gives_center_pixel(self, tmp_path, monkeypatch):
+        _stub_which(monkeypatch)
+        _install_fake_solve(monkeypatch)
+        path = _make_guide_fits(tmp_path, ra=10.0, dec=20.0)
+        await solve_wcs(str(path))
+        center = (NAXIS - 1) / 2
+        coord = SkyCoord(ra=10.0, dec=20.0, unit="deg", frame="icrs")
+
+        x, y = world_to_pixel(str(path), coord)
+
+        assert x == pytest.approx(center, abs=1e-6)
+        assert y == pytest.approx(center, abs=1e-6)
+
+    async def test_does_not_emit_fitsfixedwarning(self, tmp_path, monkeypatch):
+        _stub_which(monkeypatch)
+        _install_fake_solve(monkeypatch)
+        path = _make_guide_fits(tmp_path)
+        await solve_wcs(str(path))
+        with fits.open(path, mode="update") as hdul:
+            hdul[0].header["DATE-OBS"] = "2026-08-09T20:00:00"
+        coord = solve_result(str(path))
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            world_to_pixel(str(path), coord)
 
         assert not any(issubclass(w.category, FITSFixedWarning) for w in caught)
 

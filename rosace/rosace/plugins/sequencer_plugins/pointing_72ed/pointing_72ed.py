@@ -1,68 +1,141 @@
 """
-Sous-plugin SEQUENCER — Pointage télescope 72ED + démarrage du guidage PHD2
-Backend "indi" uniquement — première version "mode simple" (voir CLAUDE.md /
-memory : un mode "complexe" est prévu plus tard, sous forme d'un autre
-sous-plugin).
+SEQUENCER sub-plugin -- 72ED telescope pointing + PHD2 guiding, "indi" backend only.
 
-Pointe la monture via obs.hardware["mount"], capture une image de guidage
-via obs.hardware["guiding_camera"] (fonction générique
-acquisition_helpers.capture_guide_image) pour vérifier visuellement le
-pointage, puis démarre le guidage PHD2 via obs.hardware["phd2"]
-(phd2.Phd2Client.start_guiding()) — qui ne rend la main qu'une fois le
-guidage réellement stabilisé (SettleDone), garantissant que la cible est
-bien en position avant que EXPOSE ne commence les acquisitions. Le guidage
-ainsi démarré continue de tourner pendant les étapes suivantes (acquisition
-d'images...) — aucun sous-plugin ne l'arrête encore explicitement (chantier
-futur : "stop guidage").
+Points in two phases, each refining the previous one's precision: first a
+mount-precision pointing correction (measured by plate solving), then a
+PHD2-guiding-precision refinement (by nudging PHD2's own lock position by
+the measured residual) -- only the astrometric measurement is precise
+enough to put the star exactly in the slit, hence this second pass.
+
+Every mount slew happens in two steps (see _slew_with_backlash_approach
+below): a preliminary slew offset by backlash_offset_deg in both RA and
+DEC, then the exact slew -- always approaching the target from the same
+mechanical side makes backlash reproducible from one slew to the next,
+instead of varying with slew direction.
 """
 
 from __future__ import annotations
 
 import logging
 
-from ....config import GUIDE_EXPOSURE_TIME_SECONDS
+from astropy.coordinates import SkyCoord
+
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
 from ..acquisition_helpers import capture_guide_image
+from ..plate_solve_helper import solve_result, solve_wcs, world_to_pixel
 
 log = logging.getLogger("spectro.subplugin.pointing_72ed")
 
 
+async def _slew_with_backlash_approach(mount, coord: SkyCoord, offset_deg: float) -> None:
+    """Two-step slew toward coord: first coord offset by +offset_deg in RA
+    and DEC, then the exact coord."""
+    await mount.slew_to(coord.ra.deg + offset_deg, coord.dec.deg + offset_deg)
+    await mount.slew_to(coord.ra.deg, coord.dec.deg)
+
+
 class Pointing72edPlugin(SubPlugin):
-    """Pointe le télescope 72ED et capture une image de guidage pour vérification."""
+    """Points the 72ED telescope in two phases (mount correction, then PHD2
+    guiding refinement) and starts guiding."""
 
     async def execute(self, obs: Observation) -> Observation:
         target = obs.scheduler_data.get("target")
         if not target:
-            raise RuntimeError("POINTING_72ED : target manquant dans scheduler_data")
+            raise RuntimeError("POINTING_72ED: target missing from scheduler_data")
 
         if not obs.obs_dir:
-            raise RuntimeError("POINTING_72ED : répertoire d'observation (obs_dir) non défini")
-
-        log.info(f"[POINTING_72ED] Pointage vers {target.name}")
-        mount = obs.hardware["mount"]
-        await mount.slew_to(target.ra, target.dec)
-        mount_ra, mount_dec = await mount.get_position()
+            raise RuntimeError("POINTING_72ED: observation directory (obs_dir) not set")
 
         queried_name = obs.scheduler_data.get("queried_name")
-
+        mount = obs.hardware["mount"]
         guiding_camera = obs.hardware["guiding_camera"]
-        guide_image_path = await capture_guide_image(
-            guiding_camera, GUIDE_EXPOSURE_TIME_SECONDS, obs.obs_dir,
-            ra_deg=mount_ra, dec_deg=mount_dec, target_name=queried_name,
+        phd2 = obs.hardware["phd2"]
+
+        mount_config = obs.hardware_config["mount"]
+        camera_config = obs.hardware_config["guiding_camera"]
+        backlash_offset_deg = mount_config["backlash_offset_deg"]
+        exposure_seconds = camera_config["exposure_seconds"]
+        sampling_arcsec = camera_config.get("sampling_arcsec")
+        slit_x = camera_config["slit_x"]
+        slit_y = camera_config["slit_y"]
+
+        # Step 0: stop any leftover PHD2 guiding/looping from the previous observation
+        # (nothing else stops it explicitly) -- otherwise its own corrections would
+        # fight the Phase 1 slews below.
+        log.info(f"[POINTING_72ED] Stopping any leftover PHD2 capture before pointing to {target.name}")
+        await phd2.stop_capture()
+
+        # ── Phase 1: initial pointing + mount-precision correction ──
+
+        # Step 1: two-step slew toward the target
+        target_coord = SkyCoord(ra=target.ra, dec=target.dec, unit="deg", frame="icrs")
+        log.info(f"[POINTING_72ED] Initial pointing toward {target.name}")
+        await _slew_with_backlash_approach(mount, target_coord, backlash_offset_deg)
+
+        # Step 2: guide image, taken directly (not through PHD2)
+        initial_guide_image = await capture_guide_image(
+            guiding_camera, exposure_seconds, obs.obs_dir,
+            ra_deg=target_coord.ra.deg, dec_deg=target_coord.dec.deg, target_name=queried_name,
         )
 
-        log.info(f"[POINTING_72ED] Démarrage du guidage PHD2 sur {target.name}")
-        phd2 = obs.hardware["phd2"]
+        # Step 3: plate solve + record the mount's pointing error
+        await solve_wcs(
+            str(initial_guide_image), sampling_arcsec=sampling_arcsec,
+            record_error=True, observation_id=obs.id,
+        )
+
+        # Step 4: actual sky position at the slit
+        real_position = solve_result(str(initial_guide_image), slit_x, slit_y)
+
+        # Step 5: offset between the actual (at the slit) and the aimed-at position
+        d_lon, d_lat = target_coord.spherical_offsets_to(real_position)
+
+        # Step 6: corrected target position
+        corrected_coord = target_coord.spherical_offsets_by(-d_lon, -d_lat)
+
+        # Step 7: two-step slew toward the corrected target
+        log.info(f"[POINTING_72ED] Corrected re-pointing toward {target.name}")
+        await _slew_with_backlash_approach(mount, corrected_coord, backlash_offset_deg)
+
+        # ── Phase 2: PHD2-guiding-precision refinement ──
+
+        # Step 8: new guide image, taken directly (not through PHD2), at the corrected position
+        corrected_guide_image = await capture_guide_image(
+            guiding_camera, exposure_seconds, obs.obs_dir,
+            ra_deg=corrected_coord.ra.deg, dec_deg=corrected_coord.dec.deg, target_name=queried_name,
+        )
+
+        # Step 9: start PHD2 guiding (auto-selects a guide star), waits for settle
+        log.info(f"[POINTING_72ED] Starting PHD2 guiding on {target.name}")
         await phd2.start_guiding()
 
+        # Step 10: lock position PHD2 chose (its own guide star, generally not the target itself)
+        lock_x, lock_y = await phd2.get_lock_position()
+
+        # Step 11: plate solve this 2nd image, without recording the error this time
+        # (the pointing is already corrected, mount accuracy isn't what's being measured here)
+        await solve_wcs(str(corrected_guide_image), sampling_arcsec=sampling_arcsec)
+
+        # Step 12: pixel position, in this 2nd image, of the corrected target -- then residual vs. the slit
+        target_pixel_x, target_pixel_y = world_to_pixel(str(corrected_guide_image), corrected_coord)
+        dx, dy = target_pixel_x - slit_x, target_pixel_y - slit_y
+
+        # Step 13: shift PHD2's lock position by the same offset as the desired field shift --
+        # PHD2 will itself move the mount until its own star reaches this new position,
+        # dragging the whole field (including the target) with it, onto the slit
+        await phd2.set_lock_position(lock_x - dx, lock_y - dy, exact=True)
+
+        # Step 14: wait for the new settle around the corrected lock position
+        log.info(f"[POINTING_72ED] Refining PHD2 lock position on {target.name}")
+        await phd2.start_guiding()
+
+        # Step 15: done -- star in the slit, guiding active
         obs.sequencer_data["pointing_72ed"] = {
             "target": target.name,
-            "guide_image": str(guide_image_path),
+            "initial_guide_image": str(initial_guide_image),
+            "corrected_guide_image": str(corrected_guide_image),
             "guiding_started": True,
         }
-        log.info(
-            f"[POINTING_72ED] Télescope en position sur {target.name}, "
-            f"image de guidage : {guide_image_path}, guidage démarré et stabilisé"
-        )
+        log.info(f"[POINTING_72ED] Star in the slit for {target.name}, guiding active")
         return obs

@@ -52,10 +52,6 @@ sequencer_backend: indi   # Must be 'internal' (for basic demo) or 'indi' (for r
 # INDI device / PHD2 to answer. Exposed as HARDWARE_CONNECT_TIMEOUT_SECONDS.
 hardware_connect_timeout_seconds: 5 # INIT_SESSION: max time to wait for each INDI device / PHD2 to answer (sequencer_backend=indi only)
 
-# Default guiding camera exposure time (seconds), used by SEQUENCER sub-plugins.
-# Exposed as GUIDE_EXPOSURE_TIME_SECONDS in config.py.
-guide_exposure_time_seconds: 0.3
-
 # Science exposure time (seconds) for a magnitude-0 target, and the max
 # duration of a single sub-exposure. Exposed as EXPOSURE_TIME_MAG0_SECONDS /
 # MAX_EXPOSURE_TIME_SECONDS in config.py — used when EXPOSE has to compute

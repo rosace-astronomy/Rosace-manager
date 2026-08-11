@@ -1,137 +1,182 @@
 """
-Tests du sous-plugin POINTING_72ED (Pointing72edPlugin), backend indi.
-Vérifie l'enchaînement mount.slew_to() -> capture_guide_image() sur la
-guiding_camera — mount et caméra sont des mocks, pas de matériel réel.
-Lancement : pytest plugins/sequencer_plugins/pointing_72ed/test_pointing_72ed.py -v
+Tests for the POINTING_72ED sub-plugin (Pointing72edPlugin), indi backend.
+capture_guide_image()/solve_wcs()/solve_result()/world_to_pixel() are all
+monkeypatched here -- their own behavior is covered by acquisition_helpers'
+and plate_solve_helper's own test files; these tests only cover this
+sub-plugin's own orchestration: which arguments it passes to each of them,
+in which order, and the pointing/pixel-correction math in between.
+Launch: pytest plugins/sequencer_plugins/pointing_72ed/test_pointing_72ed.py -v
 """
 
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from astropy.io import fits
+from astropy.coordinates import SkyCoord
 
-from rosace.config import GUIDE_EXPOSURE_TIME_SECONDS
 from rosace.models import Observation, Target
-from rosace.plugins.sequencer_plugins import acquisition_helpers
+from rosace.plugins.sequencer_plugins.pointing_72ed import pointing_72ed
 from rosace.plugins.sequencer_plugins.pointing_72ed.pointing_72ed import Pointing72edPlugin
 
-FIXED_TS = "20260807_143022"
+TARGET_NAME = "* alf Lyr"
+QUERIED_NAME = "Vega"
+TARGET_RA, TARGET_DEC = 279.23, 38.78
+BACKLASH_OFFSET_DEG = 2.0
+EXPOSURE_SECONDS = 0.3
+SAMPLING_ARCSEC = 1.75
+SLIT_X, SLIT_Y = 10.0, 12.0
+
+TARGET_COORD = SkyCoord(ra=TARGET_RA, dec=TARGET_DEC, unit="deg", frame="icrs")
+
+# A deliberately non-zero pointing error, so the correction math (and its
+# sign) is genuinely exercised, not left at a degenerate (0, 0) case.
+REAL_POSITION = SkyCoord(ra=TARGET_RA + 0.01, dec=TARGET_DEC + 0.006, unit="deg", frame="icrs")
+_d_lon, _d_lat = TARGET_COORD.spherical_offsets_to(REAL_POSITION)
+CORRECTED_COORD = TARGET_COORD.spherical_offsets_by(-_d_lon, -_d_lat)
+
+LOCK_X, LOCK_Y = 300.0, 250.0
+TARGET_PIXEL_X, TARGET_PIXEL_Y = 15.0, 20.0  # distinct from SLIT_X/SLIT_Y, to exercise the residual
 
 
-class _FrozenDatetime(datetime):
-    @classmethod
-    def now(cls, tz=None):
-        return cls(2026, 8, 7, 14, 30, 22, tzinfo=timezone.utc)
+def _make_obs() -> Observation:
+    obs = Observation(
+        id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234",
+        obs_dir="/tmp/obsdir",
+    )
+    obs.scheduler_data["target"] = Target(name=TARGET_NAME, ra=TARGET_RA, dec=TARGET_DEC)
+    obs.scheduler_data["queried_name"] = QUERIED_NAME
+    obs.hardware["mount"] = AsyncMock()
+    obs.hardware["guiding_camera"] = AsyncMock()
+    obs.hardware["phd2"] = AsyncMock()
+    obs.hardware["phd2"].get_lock_position.return_value = (LOCK_X, LOCK_Y)
+    obs.hardware_config["mount"] = {"backlash_offset_deg": BACKLASH_OFFSET_DEG}
+    obs.hardware_config["guiding_camera"] = {
+        "exposure_seconds": EXPOSURE_SECONDS, "sampling_arcsec": SAMPLING_ARCSEC,
+        "slit_x": SLIT_X, "slit_y": SLIT_Y,
+    }
+    return obs
 
 
 @pytest.fixture(autouse=True)
-def freeze_fits_timestamp(monkeypatch):
-    """build_fits_root_name() stamps every FITS filename with the current
-    UTC time — freeze it so tests can assert on exact filenames."""
-    monkeypatch.setattr(acquisition_helpers, "datetime", _FrozenDatetime)
-
-
-MOUNT_POSITION = (279.30, 38.81)  # deliberately distinct from the target's own ra/dec below
-
-# target.name is deliberately the Simbad canonical form, queried_name the
-# observer-typed one -- distinct on purpose, to catch a regression where
-# OBJECT gets stamped with the wrong one of the two (a real bug found in
-# review: the canonical name was showing up in FITS headers instead of the
-# name the observer actually typed in the observation list).
-CANONICAL_NAME = "* bet Lyr"
-QUERIED_NAME = "Vega"
-
-
-def _make_obs(obs_dir=None, target=None, queried_name=None, guiding_camera=None) -> Observation:
-    obs = Observation(
-        id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234",
-        obs_dir=str(obs_dir) if obs_dir else None,
-    )
-    if target is not None:
-        obs.scheduler_data["target"] = target
-        obs.scheduler_data["queried_name"] = queried_name or target.name
-    obs.hardware["mount"] = AsyncMock()
-    obs.hardware["mount"].get_position.return_value = MOUNT_POSITION
-    obs.hardware["guiding_camera"] = guiding_camera if guiding_camera is not None else AsyncMock()
-    obs.hardware["phd2"] = AsyncMock()
-    return obs
+def mock_dependencies(monkeypatch):
+    capture_mock = AsyncMock(side_effect=[MagicMock(name="initial_image"), MagicMock(name="corrected_image")])
+    solve_wcs_mock = AsyncMock()
+    solve_result_mock = MagicMock(return_value=REAL_POSITION)
+    world_to_pixel_mock = MagicMock(return_value=(TARGET_PIXEL_X, TARGET_PIXEL_Y))
+    monkeypatch.setattr(pointing_72ed, "capture_guide_image", capture_mock)
+    monkeypatch.setattr(pointing_72ed, "solve_wcs", solve_wcs_mock)
+    monkeypatch.setattr(pointing_72ed, "solve_result", solve_result_mock)
+    monkeypatch.setattr(pointing_72ed, "world_to_pixel", world_to_pixel_mock)
+    return {
+        "capture_guide_image": capture_mock, "solve_wcs": solve_wcs_mock,
+        "solve_result": solve_result_mock, "world_to_pixel": world_to_pixel_mock,
+    }
 
 
 class TestPointing72edPlugin:
 
-    async def test_raises_on_missing_target(self, tmp_path):
-        obs = _make_obs(obs_dir=tmp_path, target=None)
+    async def test_raises_on_missing_target(self):
+        obs = _make_obs()
+        obs.scheduler_data.pop("target")
 
         with pytest.raises(RuntimeError, match="target"):
             await Pointing72edPlugin().execute(obs)
 
     async def test_raises_if_obs_dir_missing(self):
-        obs = _make_obs(obs_dir=None, target=Target(name="Vega", ra=279.23, dec=38.78))
+        obs = _make_obs()
+        obs.obs_dir = None
 
         with pytest.raises(RuntimeError, match="obs_dir"):
             await Pointing72edPlugin().execute(obs)
 
-    async def test_calls_mount_slew_to_with_target_coordinates(self, tmp_path):
-        camera = AsyncMock()
-        camera.expose.return_value = MagicMock()
-        obs = _make_obs(obs_dir=tmp_path, target=Target(name="Vega", ra=279.23, dec=38.78), guiding_camera=camera)
+    async def test_stops_phd2_capture_first(self):
+        obs = _make_obs()
 
         await Pointing72edPlugin().execute(obs)
 
-        obs.hardware["mount"].slew_to.assert_awaited_once_with(279.23, 38.78)
+        obs.hardware["phd2"].stop_capture.assert_awaited_once_with()
 
-    async def test_starts_phd2_guiding(self, tmp_path):
-        camera = AsyncMock()
-        camera.expose.return_value = MagicMock()
-        obs = _make_obs(obs_dir=tmp_path, target=Target(name="Vega", ra=279.23, dec=38.78), guiding_camera=camera)
+    async def test_two_step_slew_toward_target_then_corrected_position(self):
+        obs = _make_obs()
 
         await Pointing72edPlugin().execute(obs)
 
-        obs.hardware["phd2"].start_guiding.assert_awaited_once_with()
+        calls = obs.hardware["mount"].slew_to.await_args_list
+        assert len(calls) == 4
+        # Phase 1: approach offset, then the exact target
+        assert calls[0].args == pytest.approx((TARGET_RA + BACKLASH_OFFSET_DEG, TARGET_DEC + BACKLASH_OFFSET_DEG))
+        assert calls[1].args == pytest.approx((TARGET_RA, TARGET_DEC))
+        # Phase 1 correction: approach offset, then the exact corrected position
+        assert calls[2].args == pytest.approx(
+            (CORRECTED_COORD.ra.deg + BACKLASH_OFFSET_DEG, CORRECTED_COORD.dec.deg + BACKLASH_OFFSET_DEG)
+        )
+        assert calls[3].args == pytest.approx((CORRECTED_COORD.ra.deg, CORRECTED_COORD.dec.deg))
+        # Sanity: the correction actually moved the target (a real, non-degenerate case)
+        assert calls[3].args != pytest.approx((TARGET_RA, TARGET_DEC))
 
-    async def test_captures_guide_image_with_configured_exposure_time(self, tmp_path):
-        camera = AsyncMock()
-        camera.expose.return_value = MagicMock()
-        obs = _make_obs(obs_dir=tmp_path, target=Target(name="Vega", ra=279.23, dec=38.78), guiding_camera=camera)
+    async def test_captures_two_guide_images_at_target_then_corrected_position(self, mock_dependencies):
+        obs = _make_obs()
 
         await Pointing72edPlugin().execute(obs)
 
-        camera.expose.assert_awaited_once_with(GUIDE_EXPOSURE_TIME_SECONDS)
+        calls = mock_dependencies["capture_guide_image"].await_args_list
+        assert len(calls) == 2
+        camera, exposure, obs_dir = calls[0].args
+        assert camera is obs.hardware["guiding_camera"]
+        assert exposure == EXPOSURE_SECONDS
+        assert obs_dir == obs.obs_dir
+        assert calls[0].kwargs["ra_deg"] == pytest.approx(TARGET_RA)
+        assert calls[0].kwargs["dec_deg"] == pytest.approx(TARGET_DEC)
+        assert calls[0].kwargs["target_name"] == QUERIED_NAME
+        assert calls[1].kwargs["ra_deg"] == pytest.approx(CORRECTED_COORD.ra.deg)
+        assert calls[1].kwargs["dec_deg"] == pytest.approx(CORRECTED_COORD.dec.deg)
+        assert calls[1].kwargs["target_name"] == QUERIED_NAME
 
-    async def test_stamps_mount_position_and_queried_name_into_guide_image_header(self, tmp_path):
-        fake_image = MagicMock()
-        fake_image.__getitem__.return_value.header = fits.Header()
-        camera = AsyncMock()
-        camera.expose.return_value = fake_image
-        obs = _make_obs(
-            obs_dir=tmp_path, target=Target(name=CANONICAL_NAME, ra=279.23, dec=38.78),
-            queried_name=QUERIED_NAME, guiding_camera=camera,
+    async def test_first_solve_records_pointing_error(self, mock_dependencies):
+        obs = _make_obs()
+
+        await Pointing72edPlugin().execute(obs)
+
+        first_call = mock_dependencies["solve_wcs"].await_args_list[0]
+        assert first_call.kwargs["sampling_arcsec"] == SAMPLING_ARCSEC
+        assert first_call.kwargs["record_error"] is True
+        assert first_call.kwargs["observation_id"] == obs.id
+
+    async def test_second_solve_does_not_record_pointing_error(self, mock_dependencies):
+        obs = _make_obs()
+
+        await Pointing72edPlugin().execute(obs)
+
+        second_call = mock_dependencies["solve_wcs"].await_args_list[1]
+        assert second_call.kwargs["sampling_arcsec"] == SAMPLING_ARCSEC
+        assert second_call.kwargs.get("record_error", False) is False
+
+    async def test_starts_phd2_guiding_twice(self):
+        obs = _make_obs()
+
+        await Pointing72edPlugin().execute(obs)
+
+        assert obs.hardware["phd2"].start_guiding.await_count == 2
+
+    async def test_corrects_phd2_lock_position_by_the_residual_pixel_offset(self):
+        obs = _make_obs()
+
+        await Pointing72edPlugin().execute(obs)
+
+        expected_dx = TARGET_PIXEL_X - SLIT_X
+        expected_dy = TARGET_PIXEL_Y - SLIT_Y
+        obs.hardware["phd2"].set_lock_position.assert_awaited_once_with(
+            LOCK_X - expected_dx, LOCK_Y - expected_dy, exact=True
         )
 
-        await Pointing72edPlugin().execute(obs)
-
-        header = fake_image[0].header
-        assert header["RA"] == MOUNT_POSITION[0]
-        assert header["DEC"] == MOUNT_POSITION[1]
-        assert header["EQUINOX"] == 2000
-        # OBJECT must be the observer-typed name, not the Simbad canonical form.
-        assert header["OBJECT"] == QUERIED_NAME
-        assert "Rosace" in header.comments["RA"]
-        assert "Rosace" in header.comments["OBJECT"]
-
-    async def test_sets_sequencer_data(self, tmp_path):
-        fake_image = MagicMock()
-        camera = AsyncMock()
-        camera.expose.return_value = fake_image
-        obs = _make_obs(obs_dir=tmp_path, target=Target(name="Vega", ra=279.23, dec=38.78), guiding_camera=camera)
+    async def test_sets_sequencer_data(self):
+        obs = _make_obs()
 
         result = await Pointing72edPlugin().execute(obs)
 
-        expected_path = str(tmp_path / f"GUIDING_Vega_0_30s_{FIXED_TS}.fits")
         assert result is obs
-        assert obs.sequencer_data["pointing_72ed"] == {
-            "target": "Vega",
-            "guide_image": expected_path,
-            "guiding_started": True,
-        }
+        data = obs.sequencer_data["pointing_72ed"]
+        assert data["target"] == TARGET_NAME
+        assert data["guiding_started"] is True
+        assert "initial_guide_image" in data
+        assert "corrected_guide_image" in data
