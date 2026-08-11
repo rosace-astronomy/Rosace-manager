@@ -12,9 +12,8 @@ connected using nothing but its own config sub-dict, bounded by
 HARDWARE_CONNECT_TIMEOUT_SECONDS. The connected device is wrapped in the
 adapter matching its declared `role` field (see hardware/ for the generic
 interfaces those adapters satisfy) — a device whose role has no registered
-adapter yet (e.g. a spectroscope) is connected and logged, not fatal, but
-isn't included in the returned mapping since nothing could call it through
-hardware/ yet.
+adapter yet is connected and logged, not fatal, but isn't included in the
+returned mapping since nothing could call it through hardware/ yet.
 
 Devices are connected via blocking (non-asyncio) code inherited from
 hardware_indi/, so each device connect runs in a worker thread
@@ -48,6 +47,7 @@ from ..hardware_indi.adapters.camera import CameraAdapter
 from ..hardware_indi.adapters.filter_wheel import FilterWheelAdapter
 from ..hardware_indi.adapters.focuser import FocuserAdapter
 from ..hardware_indi.adapters.mount import MountAdapter
+from ..hardware_indi.adapters.spectroscope import SpectroscopeAdapter
 from ..phd2.phd2_client import Phd2Client
 
 log = logging.getLogger("spectro.plugin.hardware_connectivity")
@@ -57,6 +57,7 @@ _ADAPTERS_BY_ROLE = {
     "camera": CameraAdapter,
     "focuser": FocuserAdapter,
     "filter_wheel": FilterWheelAdapter,
+    "spectroscope": SpectroscopeAdapter,
 }
 
 

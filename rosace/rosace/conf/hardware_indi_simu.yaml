@@ -62,6 +62,15 @@ INDI_drivers:
             fine: 2000
             coarse: 2000
 
+    spectroscope:
+        role: spectroscope
+        module: spectroscope_placeholder
+        module_dir: rosace.hardware_indi.devices
+        class_name: SpectroscopePlaceholder
+        # No indi_client block: this is a pure in-memory placeholder, not a
+        # real INDI device -- no INDI simulator exists yet for a
+        # spectroscope light-source selector (SKY/DARK/FLAT/CALIB).
+
 PHD2_config:
     # host: 192.168.144.32
     host: 127.0.0.1 # localhost (but integers expected)

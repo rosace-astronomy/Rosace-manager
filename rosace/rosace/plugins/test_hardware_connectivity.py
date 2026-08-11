@@ -38,12 +38,19 @@ FOCUSER_DRIVER = {
     "indi_client": {"indi_host": "localhost", "indi_port": 7624},
 }
 
-SPECTROSCOPE_DRIVER = {
-    "role": "spectroscope",  # no adapter registered for this role yet
-    "module": "usis_spectroscope",
+UNREGISTERED_ROLE_DRIVER = {
+    "role": "not_yet_supported",  # deliberately not in _ADAPTERS_BY_ROLE
+    "module": "does_not_matter",
     "module_dir": "rosace.hardware_indi.devices",
-    "class_name": "IndiUsisSpectro",
+    "class_name": "DoesNotMatter",
     "indi_client": {"indi_host": "localhost", "indi_port": 7624},
+}
+
+SPECTROSCOPE_DRIVER = {
+    "role": "spectroscope",
+    "module": "spectroscope_placeholder",
+    "module_dir": "rosace.hardware_indi.devices",
+    "class_name": "SpectroscopePlaceholder",
 }
 
 
@@ -98,13 +105,23 @@ class TestConnectSessionHardware:
 
     async def test_unknown_role_is_connected_but_not_returned(self, monkeypatch, short_timeout):
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
-            "INDI_drivers": {"spectroscope": SPECTROSCOPE_DRIVER},
+            "INDI_drivers": {"some_device": UNREGISTERED_ROLE_DRIVER},
         })
         monkeypatch.setattr(hc, "_connect_device_sync", MagicMock(return_value=MagicMock()))
 
         adapters = await hc.connect_session_hardware()  # ne doit pas lever
 
         assert adapters == {}
+
+    async def test_spectroscope_role_returns_spectroscope_adapter(self, monkeypatch, short_timeout):
+        monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
+            "INDI_drivers": {"spectroscope": SPECTROSCOPE_DRIVER},
+        })
+        monkeypatch.setattr(hc, "_connect_device_sync", MagicMock(return_value=MagicMock()))
+
+        adapters = await hc.connect_session_hardware()
+
+        assert isinstance(adapters["spectroscope"], hc.SpectroscopeAdapter)
 
     async def test_device_failure_is_collected_and_raised(self, monkeypatch, short_timeout):
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
