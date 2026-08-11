@@ -2,7 +2,7 @@
 Sous-plugin SEQUENCER — Pointage télescope 72ED + démarrage du guidage PHD2
 Backend "indi" uniquement — première version "mode simple" (voir CLAUDE.md /
 memory : un mode "complexe" est prévu plus tard, sous forme d'un autre
-sous-plugin, ex. pointing_72ed_02).
+sous-plugin).
 
 Pointe la monture via obs.hardware["mount"], capture une image de guidage
 via obs.hardware["guiding_camera"] (fonction générique
@@ -25,21 +25,21 @@ from ....models import Observation
 from ...sub_plugin_base import SubPlugin
 from ..acquisition_helpers import capture_guide_image
 
-log = logging.getLogger("spectro.subplugin.pointing_72ed_01")
+log = logging.getLogger("spectro.subplugin.pointing_72ed")
 
 
-class Pointing72ed01Plugin(SubPlugin):
+class Pointing72edPlugin(SubPlugin):
     """Pointe le télescope 72ED et capture une image de guidage pour vérification."""
 
     async def execute(self, obs: Observation) -> Observation:
         target = obs.scheduler_data.get("target")
         if not target:
-            raise RuntimeError("POINTING_72ED_01 : target manquant dans scheduler_data")
+            raise RuntimeError("POINTING_72ED : target manquant dans scheduler_data")
 
         if not obs.obs_dir:
-            raise RuntimeError("POINTING_72ED_01 : répertoire d'observation (obs_dir) non défini")
+            raise RuntimeError("POINTING_72ED : répertoire d'observation (obs_dir) non défini")
 
-        log.info(f"[POINTING_72ED_01] Pointage vers {target.name}")
+        log.info(f"[POINTING_72ED] Pointage vers {target.name}")
         mount = obs.hardware["mount"]
         await mount.slew_to(target.ra, target.dec)
         mount_ra, mount_dec = await mount.get_position()
@@ -52,17 +52,17 @@ class Pointing72ed01Plugin(SubPlugin):
             ra_deg=mount_ra, dec_deg=mount_dec, target_name=queried_name,
         )
 
-        log.info(f"[POINTING_72ED_01] Démarrage du guidage PHD2 sur {target.name}")
+        log.info(f"[POINTING_72ED] Démarrage du guidage PHD2 sur {target.name}")
         phd2 = obs.hardware["phd2"]
         await phd2.start_guiding()
 
-        obs.sequencer_data["pointing_72ed_01"] = {
+        obs.sequencer_data["pointing_72ed"] = {
             "target": target.name,
             "guide_image": str(guide_image_path),
             "guiding_started": True,
         }
         log.info(
-            f"[POINTING_72ED_01] Télescope en position sur {target.name}, "
+            f"[POINTING_72ED] Télescope en position sur {target.name}, "
             f"image de guidage : {guide_image_path}, guidage démarré et stabilisé"
         )
         return obs

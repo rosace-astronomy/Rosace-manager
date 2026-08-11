@@ -324,7 +324,7 @@ class TestValidateSubpluginCatalogue:
         from rosace.plugins import pipeline_loader
 
         monkeypatch.setattr(pipeline_loader, "_SUBPLUGIN_FAMILY_DIRS", {
-            "sequencer": self._make_family(tmp_path, "sequencer", ["slew", "pointing_72ed_01"]),
+            "sequencer": self._make_family(tmp_path, "sequencer", ["slew", "pointing_72ed"]),
             "reduction": self._make_family(tmp_path, "reduction", ["bias"]),
             "sharing":   self._make_family(tmp_path, "sharing", ["blank_share"]),
         })

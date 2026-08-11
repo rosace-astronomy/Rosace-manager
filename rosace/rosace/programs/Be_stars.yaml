@@ -6,7 +6,7 @@ program: Be_stars
 description: "Suivi spectral d'étoiles Be — émission Hα et variations de profil"
 
 sequencer:
-  - pointing_72ed_01        # Pointage télescope
+  - pointing_72ed        # Pointage télescope
   - focus       # Mise au point automatique
   - expose      # Exposition CCD
   # - tatatata    # Pour tester...

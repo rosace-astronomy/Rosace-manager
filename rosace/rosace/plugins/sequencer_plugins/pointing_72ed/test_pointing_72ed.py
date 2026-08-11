@@ -1,8 +1,8 @@
 """
-Tests du sous-plugin POINTING_72ED_01 (Pointing72ed01Plugin), backend indi.
+Tests du sous-plugin POINTING_72ED (Pointing72edPlugin), backend indi.
 Vérifie l'enchaînement mount.slew_to() -> capture_guide_image() sur la
 guiding_camera — mount et caméra sont des mocks, pas de matériel réel.
-Lancement : pytest plugins/sequencer_plugins/pointing_72ed_01/test_pointing_72ed_01.py -v
+Lancement : pytest plugins/sequencer_plugins/pointing_72ed/test_pointing_72ed.py -v
 """
 
 from datetime import datetime, timezone
@@ -14,7 +14,7 @@ from astropy.io import fits
 from rosace.config import GUIDE_EXPOSURE_TIME_SECONDS
 from rosace.models import Observation, Target
 from rosace.plugins.sequencer_plugins import acquisition_helpers
-from rosace.plugins.sequencer_plugins.pointing_72ed_01.pointing_72ed_01 import Pointing72ed01Plugin
+from rosace.plugins.sequencer_plugins.pointing_72ed.pointing_72ed import Pointing72edPlugin
 
 FIXED_TS = "20260807_143022"
 
@@ -58,26 +58,26 @@ def _make_obs(obs_dir=None, target=None, queried_name=None, guiding_camera=None)
     return obs
 
 
-class TestPointing72ed01Plugin:
+class TestPointing72edPlugin:
 
     async def test_raises_on_missing_target(self, tmp_path):
         obs = _make_obs(obs_dir=tmp_path, target=None)
 
         with pytest.raises(RuntimeError, match="target"):
-            await Pointing72ed01Plugin().execute(obs)
+            await Pointing72edPlugin().execute(obs)
 
     async def test_raises_if_obs_dir_missing(self):
         obs = _make_obs(obs_dir=None, target=Target(name="Vega", ra=279.23, dec=38.78))
 
         with pytest.raises(RuntimeError, match="obs_dir"):
-            await Pointing72ed01Plugin().execute(obs)
+            await Pointing72edPlugin().execute(obs)
 
     async def test_calls_mount_slew_to_with_target_coordinates(self, tmp_path):
         camera = AsyncMock()
         camera.expose.return_value = MagicMock()
         obs = _make_obs(obs_dir=tmp_path, target=Target(name="Vega", ra=279.23, dec=38.78), guiding_camera=camera)
 
-        await Pointing72ed01Plugin().execute(obs)
+        await Pointing72edPlugin().execute(obs)
 
         obs.hardware["mount"].slew_to.assert_awaited_once_with(279.23, 38.78)
 
@@ -86,7 +86,7 @@ class TestPointing72ed01Plugin:
         camera.expose.return_value = MagicMock()
         obs = _make_obs(obs_dir=tmp_path, target=Target(name="Vega", ra=279.23, dec=38.78), guiding_camera=camera)
 
-        await Pointing72ed01Plugin().execute(obs)
+        await Pointing72edPlugin().execute(obs)
 
         obs.hardware["phd2"].start_guiding.assert_awaited_once_with()
 
@@ -95,7 +95,7 @@ class TestPointing72ed01Plugin:
         camera.expose.return_value = MagicMock()
         obs = _make_obs(obs_dir=tmp_path, target=Target(name="Vega", ra=279.23, dec=38.78), guiding_camera=camera)
 
-        await Pointing72ed01Plugin().execute(obs)
+        await Pointing72edPlugin().execute(obs)
 
         camera.expose.assert_awaited_once_with(GUIDE_EXPOSURE_TIME_SECONDS)
 
@@ -109,7 +109,7 @@ class TestPointing72ed01Plugin:
             queried_name=QUERIED_NAME, guiding_camera=camera,
         )
 
-        await Pointing72ed01Plugin().execute(obs)
+        await Pointing72edPlugin().execute(obs)
 
         header = fake_image[0].header
         assert header["RA"] == MOUNT_POSITION[0]
@@ -126,11 +126,11 @@ class TestPointing72ed01Plugin:
         camera.expose.return_value = fake_image
         obs = _make_obs(obs_dir=tmp_path, target=Target(name="Vega", ra=279.23, dec=38.78), guiding_camera=camera)
 
-        result = await Pointing72ed01Plugin().execute(obs)
+        result = await Pointing72edPlugin().execute(obs)
 
         expected_path = str(tmp_path / f"GUIDING_Vega_0_30s_{FIXED_TS}.fits")
         assert result is obs
-        assert obs.sequencer_data["pointing_72ed_01"] == {
+        assert obs.sequencer_data["pointing_72ed"] == {
             "target": "Vega",
             "guide_image": expected_path,
             "guiding_started": True,
