@@ -169,6 +169,26 @@ class TestPointing72edPlugin:
             LOCK_X - expected_dx, LOCK_Y - expected_dy, exact=True
         )
 
+    async def test_second_world_to_pixel_call_uses_the_real_target_not_the_aim_point(self, mock_dependencies):
+        """Regression test for a real bug found 2026-08-12 against a live observation:
+        this call must locate the real star (target_coord) in the corrected image to
+        compute the residual vs. the slit -- not corrected_coord, which is only the
+        artificial point the mount was aimed at during Phase 1's correction slew, and
+        differs from the real star by roughly the size of that same correction (a huge,
+        spurious residual fed to PHD2 -- empirically ~120px on the real observation that
+        caught this)."""
+        obs = _make_obs()
+
+        await Pointing72edPlugin().execute(obs)
+
+        call_args = mock_dependencies["world_to_pixel"].call_args
+        used_coord = call_args.args[1]
+        assert used_coord.ra.deg == pytest.approx(TARGET_COORD.ra.deg)
+        assert used_coord.dec.deg == pytest.approx(TARGET_COORD.dec.deg)
+        # Sanity: TARGET_COORD and CORRECTED_COORD are genuinely different in this test
+        # fixture -- a test that passed with either coordinate wouldn't have caught the bug.
+        assert used_coord.ra.deg != pytest.approx(CORRECTED_COORD.ra.deg)
+
     async def test_sets_sequencer_data(self):
         obs = _make_obs()
 

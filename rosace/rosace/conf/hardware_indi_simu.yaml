@@ -16,7 +16,7 @@ INDI_drivers:
         # against those two settings again if either one ever changes.
         sampling_arcsec : 1.143
         # Exposure time (seconds) for a direct guiding-camera capture.
-        exposure_seconds : 0.3
+        exposure_seconds : 3.0
         # Spectrograph slit position in this camera's field, in pixels.
         # Zero-indexed (pixel (0,0) = center of the first pixel, matching
         # astropy's WCS.pixel_to_world()) -- if read off a FITS viewer such

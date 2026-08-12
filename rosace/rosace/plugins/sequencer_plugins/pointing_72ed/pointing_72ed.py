@@ -117,8 +117,13 @@ class Pointing72edPlugin(SubPlugin):
         # (the pointing is already corrected, mount accuracy isn't what's being measured here)
         await solve_wcs(str(corrected_guide_image), sampling_arcsec=sampling_arcsec)
 
-        # Step 12: pixel position, in this 2nd image, of the corrected target -- then residual vs. the slit
-        target_pixel_x, target_pixel_y = world_to_pixel(str(corrected_guide_image), corrected_coord)
+        # Step 12: pixel position, in this 2nd image, of the real target star (target_coord,
+        # not corrected_coord -- corrected_coord is only the artificial point we aimed the
+        # mount at; using it here instead of the real star was a real bug, found 2026-08-12
+        # by comparing against a live observation: it measured the residual against the aim
+        # point, not the star, feeding PHD2 a spurious correction roughly the size of Phase
+        # 1's own pointing-error correction) -- then residual vs. the slit
+        target_pixel_x, target_pixel_y = world_to_pixel(str(corrected_guide_image), target_coord)
         dx, dy = target_pixel_x - slit_x, target_pixel_y - slit_y
 
         # Step 13: shift PHD2's lock position by the same offset as the desired field shift --
