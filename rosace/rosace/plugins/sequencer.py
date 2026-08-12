@@ -6,7 +6,7 @@ posé par SCHEDULER — donc rechargé à chaque observation, pas une fois pour
 toutes au démarrage.
 
 Structure :
-    programs/<program>.yaml  →  pipeline_loader  →  [Slew, Focus, Expose, …]
+    programs/<program>.yaml  →  pipeline_loader  →  [sous-plugin, sous-plugin, …]
 """
 
 import logging
@@ -59,6 +59,6 @@ class SequencerPlugin:
 
         log.info(
             f"[SEQUENCER] Séquence terminée — "
-            f"{len(obs.sequencer_data.get('expose', {}).get('raw_files', []))} fichier(s) brut(s)"
+            f"{len(obs.sequencer_data.get('star_spectra_images', []))} fichier(s) brut(s)"
         )
         return obs

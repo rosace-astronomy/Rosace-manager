@@ -80,19 +80,59 @@ async def capture_guide_image(
     return path
 
 
+async def capture_science_image(camera: Any, exposure_time: float, obs_dir: str, filename: str) -> Path:
+    """Exposes the science camera for exposure_time seconds and writes the
+    resulting FITS image to obs_dir/filename, returning the written path.
+    Same expose()-then-writeto() shape as capture_guide_image() below, named
+    to match it -- kept as its own function rather than one shared by both
+    (not just capture_guide_image(camera, ...) reused here) since guiding
+    needs to stamp FITS header cards on the image between expose() and
+    writeto(), which this one doesn't. Extracted 2026-08-12 out of what used
+    to be expose.py's own inline capture loop (now star_spectra_acquisition.py)
+    -- the shared foundation for future DARK/BIAS/FLAT/CALIB capture
+    sub-plugins, which will need exactly this same single-shot primitive; the
+    multi-sub-exposure loop itself stays in each calling sub-plugin, not
+    here."""
+    image = await camera.expose(exposure_time)
+    path = Path(obs_dir) / filename
+    image.writeto(path, overwrite=True)
+    return path
+
+
 def compute_exposure_time_and_count(
-    magnitude: float, exposure_time_mag0: float, max_exposure_time: float
+    *,
+    magnitude: float | None = None,
+    exposure_time: float | None = None,
+    exposure_time_mag0: float | None = None,
+    max_exposure_time: float,
 ) -> tuple[float, int]:
-    """(per-exposure duration in seconds, count) for a target of the given
-    magnitude: exposure_time_mag0 * 10**(magnitude / 2.5), split into several
-    equal max_exposure_time-long exposures once that raw value exceeds
-    max_exposure_time (e.g. a raw 700s at a 300s max -> (300.0, 3)). Maps
-    directly onto ExposureConfig.exposure_time/num_exposures — used by
-    expose.py whenever a program doesn't set an explicit exposure_time."""
-    exposure_time = exposure_time_mag0 * 10 ** (magnitude / 2.5)
-    if exposure_time <= max_exposure_time:
-        return exposure_time, 1
-    count = math.ceil(exposure_time / max_exposure_time)
+    """(per-sub-exposure duration in seconds, count) — the exposure-time
+    policy shared by every science-acquisition sub-plugin. Exactly one of
+    magnitude or exposure_time must be given:
+    - magnitude: no explicit exposure time is known for this star (no
+      program_stars.exposure_time set in targets.db) — the raw total
+      exposure time is computed from the target's magnitude:
+      exposure_time_mag0 * 10**(magnitude / 2.5). exposure_time_mag0 is
+      required in this case.
+    - exposure_time: an explicit total exposure time is already known
+      (program_stars.exposure_time) — used as-is as the raw total,
+      exposure_time_mag0 is not needed and ignored if given.
+    Either way, the raw total is then split into count identical
+    max_exposure_time-long sub-exposures once it exceeds max_exposure_time
+    (count = ceil(raw / max_exposure_time), e.g. a raw 780s at a 300s max ->
+    (300.0, 3)) — otherwise a single sub-exposure of the raw duration."""
+    if (magnitude is None) == (exposure_time is None):
+        raise ValueError("compute_exposure_time_and_count: exactly one of magnitude or exposure_time must be given")
+    if magnitude is not None:
+        if exposure_time_mag0 is None:
+            raise ValueError("compute_exposure_time_and_count: exposure_time_mag0 is required when magnitude is given")
+        raw_exposure_time = exposure_time_mag0 * 10 ** (magnitude / 2.5)
+    else:
+        raw_exposure_time = exposure_time
+
+    if raw_exposure_time <= max_exposure_time:
+        return raw_exposure_time, 1
+    count = math.ceil(raw_exposure_time / max_exposure_time)
     return max_exposure_time, count
 
 

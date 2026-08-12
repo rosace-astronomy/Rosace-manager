@@ -54,7 +54,7 @@ class TestSequencerPlugin:
         fake_pipeline = [
             FakeSubPlugin("slew", calls),
             FakeSubPlugin("focus", calls),
-            FakeSubPlugin("expose", calls),
+            FakeSubPlugin("star_spectra_acquisition", calls),
         ]
         monkeypatch.setattr(
             "rosace.plugins.sequencer.load_pipelines",
@@ -64,8 +64,8 @@ class TestSequencerPlugin:
         obs = _make_obs()
         result = await SequencerPlugin().run(obs)
 
-        assert calls == ["slew", "focus", "expose"]
-        assert result.sequencer_data["order"] == ["slew", "focus", "expose"]
+        assert calls == ["slew", "focus", "star_spectra_acquisition"]
+        assert result.sequencer_data["order"] == ["slew", "focus", "star_spectra_acquisition"]
 
     async def test_sets_program_file_and_steps_including_sharing(self, monkeypatch):
         """obs.program_steps doit lister sequencer, reduction ET sharing — sinon
@@ -81,7 +81,7 @@ class TestSequencerPlugin:
 
         assert result.program_file == "etoiles_be.yaml"
         assert result.program_steps == {
-            "sequencer": ["slew", "focus", "expose"],
+            "sequencer": ["slew", "focus", "star_spectra_acquisition"],
             "reduction": ["bias", "dark", "flat", "extract"],
             "sharing": "blank_share",
         }
@@ -106,7 +106,7 @@ class TestSequencerPlugin:
         fake_pipeline = [
             FakeSubPlugin("slew", calls),
             FakeSubPlugin("focus", calls, raises=RuntimeError("focus failed")),
-            FakeSubPlugin("expose", calls),
+            FakeSubPlugin("star_spectra_acquisition", calls),
         ]
         monkeypatch.setattr(
             "rosace.plugins.sequencer.load_pipelines",
@@ -117,4 +117,4 @@ class TestSequencerPlugin:
         with pytest.raises(RuntimeError, match="focus failed"):
             await SequencerPlugin().run(obs)
 
-        assert calls == ["slew", "focus"]  # expose jamais atteint
+        assert calls == ["slew", "focus"]  # star_spectra_acquisition jamais atteint

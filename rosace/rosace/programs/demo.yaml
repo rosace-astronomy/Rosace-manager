@@ -8,7 +8,7 @@ description: "Programme minimal pour démonstration et vérification rapide du p
 sequencer:
   - slew
   - focus
-  - expose
+  - star_spectra_acquisition
 
 reduction:
   - bias

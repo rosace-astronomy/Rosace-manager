@@ -8,8 +8,8 @@ program: nova_monitoring
 description: "Surveillance spectrale de novæ et transitoires — réactivité maximale"
 
 sequencer:
-  - slew        # Pointage immédiat
-  - expose      # Pose directe sans mise au point (urgence)
+  - slew                        # Pointage immédiat
+  - star_spectra_acquisition    # Pose directe sans mise au point (urgence)
 
 reduction:
   - bias        # Soustraction biais

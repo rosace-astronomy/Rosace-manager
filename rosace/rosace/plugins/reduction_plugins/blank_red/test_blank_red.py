@@ -14,15 +14,15 @@ from rosace.plugins.reduction_plugins.blank_red.blank_red import BlankRedPlugin
 def _make_obs(raw_files=None) -> Observation:
     obs = Observation(id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234")
     if raw_files is not None:
-        obs.sequencer_data["expose"] = {"raw_files": raw_files}
+        obs.sequencer_data["star_spectra_images"] = raw_files
     return obs
 
 
 class TestBlankRedPlugin:
 
-    async def test_raises_if_expose_missing(self):
-        obs = _make_obs()  # sequencer_data == {}, expose n'a jamais tourné
-        with pytest.raises(RuntimeError, match="expose"):
+    async def test_raises_if_star_spectra_images_missing(self):
+        obs = _make_obs()  # sequencer_data == {}, aucun sous-plugin d'acquisition n'a tourné
+        with pytest.raises(RuntimeError, match="star_spectra_images"):
             await BlankRedPlugin().execute(obs)
 
     async def test_processes_raw_files(self):

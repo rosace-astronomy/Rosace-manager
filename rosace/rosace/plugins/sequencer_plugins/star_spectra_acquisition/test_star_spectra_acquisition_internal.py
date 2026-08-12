@@ -1,6 +1,6 @@
 """
-Tests du sous-plugin EXPOSE (ExposePlugin), backend internal.
-Lancement : pytest plugins/sequencer_plugins/expose/test_expose_internal.py -v
+Tests for the STAR_SPECTRA_ACQUISITION sub-plugin (StarSpectraAcquisitionPlugin), internal backend.
+Run: pytest plugins/sequencer_plugins/star_spectra_acquisition/test_star_spectra_acquisition_internal.py -v
 """
 
 from datetime import datetime, timezone
@@ -10,7 +10,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from rosace.models import Observation, Target, ExposureConfig
-from rosace.plugins.sequencer_plugins.expose.expose_internal import ExposePlugin
+from rosace.plugins.sequencer_plugins.star_spectra_acquisition.star_spectra_acquisition_internal import (
+    StarSpectraAcquisitionPlugin,
+)
 
 
 def _make_obs(obs_dir=None, slew_done=True, exposure=None, target=None) -> Observation:
@@ -30,35 +32,37 @@ def _make_obs(obs_dir=None, slew_done=True, exposure=None, target=None) -> Obser
 @pytest.fixture(autouse=True)
 def fast_sleep(monkeypatch):
     monkeypatch.setattr(
-        "rosace.plugins.sequencer_plugins.expose.expose_internal.asyncio.sleep", AsyncMock(return_value=None)
+        "rosace.plugins.sequencer_plugins.star_spectra_acquisition.star_spectra_acquisition_internal.asyncio.sleep",
+        AsyncMock(return_value=None),
     )
 
 
-class TestExposePlugin:
+class TestStarSpectraAcquisitionPlugin:
 
     async def test_raises_if_slew_not_done(self, tmp_path):
         obs = _make_obs(obs_dir=tmp_path, slew_done=False, exposure=ExposureConfig(exposure_time=1.0))
         with pytest.raises(RuntimeError, match="slew"):
-            await ExposePlugin().execute(obs)
+            await StarSpectraAcquisitionPlugin().execute(obs)
 
     async def test_raises_if_obs_dir_missing(self):
         obs = _make_obs(obs_dir=None, exposure=ExposureConfig(exposure_time=1.0))
         with pytest.raises(RuntimeError, match="obs_dir"):
-            await ExposePlugin().execute(obs)
+            await StarSpectraAcquisitionPlugin().execute(obs)
 
     async def test_raises_if_exposure_missing(self, tmp_path):
         obs = _make_obs(obs_dir=tmp_path, exposure=None)
         with pytest.raises(RuntimeError, match="exposure"):
-            await ExposePlugin().execute(obs)
+            await StarSpectraAcquisitionPlugin().execute(obs)
 
     async def test_produces_expected_number_of_files(self, tmp_path):
         exposure = ExposureConfig(exposure_time=1.0, num_exposures=3)
         obs = _make_obs(obs_dir=tmp_path, exposure=exposure, target=Target(name="Vega", ra=1.0, dec=1.0))
 
-        result = await ExposePlugin().execute(obs)
+        result = await StarSpectraAcquisitionPlugin().execute(obs)
 
-        raw_files = result.sequencer_data["expose"]["raw_files"]
+        raw_files = result.sequencer_data["star_spectra_acquisition"]["raw_files"]
         assert len(raw_files) == 3
-        assert result.sequencer_data["expose"]["count"] == 3
+        assert result.sequencer_data["star_spectra_acquisition"]["count"] == 3
+        assert result.sequencer_data["star_spectra_images"] == raw_files
         for f in raw_files:
-            assert Path(f).is_file()  # vraiment créés sur disque (mode simulate)
+            assert Path(f).is_file()  # really created on disk (simulate mode)

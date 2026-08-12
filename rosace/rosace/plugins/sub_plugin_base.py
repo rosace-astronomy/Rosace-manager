@@ -20,7 +20,10 @@ class SubPlugin:
 
     Le sous-plugin lit/écrit dans le casier de son plugin de stage parent
     (obs.sequencer_data ou obs.reduction_data), et peut lire celui d'une
-    étape précédente si besoin (ex. bias lit obs.sequencer_data["expose"]["raw_files"]).
+    étape précédente si besoin (ex. bias lit obs.sequencer_data["star_spectra_images"]
+    — une clé partagée, écrite sous un nom fixe indépendant du sous-plugin
+    SEQUENCER qui l'a produite, pas obs.sequencer_data["<nom_du_sous_plugin>"]
+    : REDUCTION ne doit jamais avoir besoin de connaître ce nom).
 
     Toute configuration vit dans conf/ (config.yaml, hardware_<variant>.yaml)
     comme le reste de l'application — pas de config.yaml propre au sous-plugin.

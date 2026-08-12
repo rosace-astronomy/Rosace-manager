@@ -19,11 +19,14 @@ class BiasPlugin(SubPlugin):
     """Soustraction du biais (offset électronique du capteur) — simulation interne."""
 
     async def execute(self, obs: Observation) -> Observation:
-        if "expose" not in obs.sequencer_data:
-            raise RuntimeError("BIAS : sequencer_data['expose'] manquant — EXPOSE doit avoir tourné avant BIAS")
-        raw_files: list[str] = obs.sequencer_data["expose"]["raw_files"]
+        if "star_spectra_images" not in obs.sequencer_data:
+            raise RuntimeError(
+                "BIAS : sequencer_data['star_spectra_images'] manquant — "
+                "aucun sous-plugin d'acquisition n'a tourné avant BIAS"
+            )
+        raw_files: list[str] = obs.sequencer_data["star_spectra_images"]
         if not raw_files:
-            raise RuntimeError("BIAS : aucun fichier brut (sequencer_data['expose']['raw_files'] vide)")
+            raise RuntimeError("BIAS : aucun fichier brut (sequencer_data['star_spectra_images'] vide)")
 
         bias_level_adu = 1000
 

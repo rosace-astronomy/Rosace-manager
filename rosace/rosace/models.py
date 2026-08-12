@@ -40,7 +40,7 @@ class Target(BaseModel):
 
 
 class ExposureConfig(BaseModel):
-    exposure_time: Optional[float] = Field(default=None, gt=0, description="Temps d'exposition en secondes — absent si à calculer depuis la magnitude (sous-plugin expose)")
+    exposure_time: Optional[float] = Field(default=None, gt=0, description="Temps d'exposition en secondes — absent si à calculer depuis la magnitude (sous-plugin star_spectra_acquisition)")
     num_exposures: int = Field(default=1, ge=1)
     binning: int = Field(default=1, ge=1, le=4)
     grating: str = Field(default="R1200")
@@ -85,9 +85,9 @@ class Observation(BaseModel):
     program_steps: dict[str, Any] = {}
 
     # Un casier par plugin de stage connu — contenu libre, géré par le plugin
-    # et ses sous-plugins (ex. sequencer_data["expose"]["raw_files"], posé par
-    # ExposePlugin — la présence de la clé d'un sous-plugin signifie qu'il a
-    # terminé avec succès, pas besoin d'un flag "done" séparé).
+    # et ses sous-plugins (ex. sequencer_data["star_spectra_acquisition"]["raw_files"],
+    # posé par StarSpectraAcquisitionPlugin — la présence de la clé d'un sous-plugin
+    # signifie qu'il a terminé avec succès, pas besoin d'un flag "done" séparé).
     scheduler_data: dict[str, Any] = {}
     sequencer_data: dict[str, Any] = {}
     reduction_data: dict[str, Any] = {}
@@ -121,7 +121,7 @@ class Observation(BaseModel):
 
     # Live callback, set by session_runner() (main.py) on every freshly-created
     # Observation — lets a sub-plugin whose own work spans several internal
-    # steps (e.g. expose.py's multi-sub-exposure loop) notice a stop request
+    # steps (e.g. star_spectra_acquisition.py's multi-sub-exposure loop) notice a stop request
     # between two of its own steps, not just between stages. None outside a
     # real session run (e.g. in tests) — callers must check for that. Same
     # "live, not persisted" pattern as hardware above: a plain callable can't

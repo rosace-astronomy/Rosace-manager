@@ -13,6 +13,7 @@ from rosace.plugins.sequencer_plugins import acquisition_helpers
 from rosace.plugins.sequencer_plugins.acquisition_helpers import (
     build_fits_root_name,
     capture_guide_image,
+    capture_science_image,
     compute_exposure_time_and_count,
 )
 
@@ -141,8 +142,8 @@ class TestComputeExposureTimeAndCount:
 
     def test_matches_user_provided_example(self):
         # mag 2.5 -> 1.0 * 10**(2.5/2.5) = 10s ; mag 5 -> 1.0 * 10**(5/2.5) = 100s
-        assert compute_exposure_time_and_count(2.5, 1.0, 300) == (pytest.approx(10.0), 1)
-        assert compute_exposure_time_and_count(5.0, 1.0, 300) == (pytest.approx(100.0), 1)
+        assert compute_exposure_time_and_count(magnitude=2.5, exposure_time_mag0=1.0, max_exposure_time=300) == (pytest.approx(10.0), 1)
+        assert compute_exposure_time_and_count(magnitude=5.0, exposure_time_mag0=1.0, max_exposure_time=300) == (pytest.approx(100.0), 1)
 
     def test_splits_into_several_max_duration_exposures_once_over_max(self):
         # raw = 1.0 * 10**(7.5/2.5) = 1000s ; 1000/300 -> ceil = 4
@@ -156,6 +157,61 @@ class TestComputeExposureTimeAndCount:
 
         assert exposure_time == pytest.approx(300.0)
         assert count == 1
+
+    def test_explicit_exposure_time_below_max_is_not_split(self):
+        exposure_time, count = compute_exposure_time_and_count(exposure_time=180, max_exposure_time=300)
+
+        assert exposure_time == pytest.approx(180.0)
+        assert count == 1
+
+    def test_explicit_exposure_time_matches_user_provided_example(self):
+        # 780s at a 300s max -> ceil(780/300) = 3 sub-exposures of 300s each
+        exposure_time, count = compute_exposure_time_and_count(exposure_time=780, max_exposure_time=300)
+
+        assert exposure_time == pytest.approx(300.0)
+        assert count == 3
+
+    def test_explicit_exposure_time_ignores_exposure_time_mag0(self):
+        exposure_time, count = compute_exposure_time_and_count(
+            exposure_time=180, exposure_time_mag0=999.0, max_exposure_time=300
+        )
+
+        assert exposure_time == pytest.approx(180.0)
+        assert count == 1
+
+    def test_rejects_neither_magnitude_nor_exposure_time(self):
+        with pytest.raises(ValueError, match="exactly one"):
+            compute_exposure_time_and_count(max_exposure_time=300)
+
+    def test_rejects_both_magnitude_and_exposure_time(self):
+        with pytest.raises(ValueError, match="exactly one"):
+            compute_exposure_time_and_count(magnitude=2.5, exposure_time=180, max_exposure_time=300)
+
+    def test_rejects_magnitude_without_exposure_time_mag0(self):
+        with pytest.raises(ValueError, match="exposure_time_mag0"):
+            compute_exposure_time_and_count(magnitude=2.5, max_exposure_time=300)
+
+
+class TestCaptureScienceImage:
+
+    async def test_exposes_camera_for_given_duration(self, tmp_path):
+        camera = AsyncMock()
+        camera.expose.return_value = MagicMock()
+
+        await capture_science_image(camera, 30.0, str(tmp_path), "STAR_30s.fits")
+
+        camera.expose.assert_awaited_once_with(30.0)
+
+    async def test_writes_fits_and_returns_path(self, tmp_path):
+        fake_image = MagicMock()
+        camera = AsyncMock()
+        camera.expose.return_value = fake_image
+
+        result = await capture_science_image(camera, 30.0, str(tmp_path), "STAR_30s.fits")
+
+        expected_path = tmp_path / "STAR_30s.fits"
+        fake_image.writeto.assert_called_once_with(expected_path, overwrite=True)
+        assert result == expected_path
 
 
 class TestBuildFitsRootName:

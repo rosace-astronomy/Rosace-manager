@@ -8,8 +8,8 @@ program: etoiles_brillantes
 description: "Mesures de vitesse radiale sur étoiles brillantes — poses courtes"
 
 sequencer:
-  - slew        # Pointage télescope (focus omis : étoile brillante, réglage manuel)
-  - expose      # Exposition CCD
+  - slew                        # Pointage télescope (focus omis : étoile brillante, réglage manuel)
+  - star_spectra_acquisition    # Exposition CCD
 
 reduction:
   - bias        # Soustraction biais

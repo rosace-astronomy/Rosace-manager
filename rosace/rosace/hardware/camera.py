@@ -1,5 +1,5 @@
 """
-Generic Camera interface — what SEQUENCER's expose sub-plugin needs to
+Generic Camera interface — what a SEQUENCER sub-plugin needs to
 acquire an image, independent of the underlying protocol. Covers any
 camera role (science, guiding...): the role is a matter of which named
 device instance is configured (e.g. "science_camera", "guiding_camera" in

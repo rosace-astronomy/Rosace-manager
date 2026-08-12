@@ -1,7 +1,7 @@
 """
 Package des sous-plugins du SEQUENCER.
 
-Un répertoire par sous-plugin (slew/, focus/, expose/), chacun avec sa
+Un répertoire par sous-plugin (slew/, focus/, star_spectra_acquisition/), chacun avec sa
 classe et ses tests. Le nom nu (<name>/<name>.py) est la version canonique,
 utilisée quand SEQUENCER_BACKEND="indi" ; "internal" est une exception de
 démo (<name>/<name>_internal.py, uniquement là où c'est utile — pas un

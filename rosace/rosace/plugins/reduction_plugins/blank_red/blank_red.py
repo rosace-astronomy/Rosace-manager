@@ -13,11 +13,15 @@ from it: this is an ordinary implementation choice, not a dependency the
 framework tracks or enforces. If a key you need isn't there, raise an
 explicit error naming it — never guess or fall back silently.
 
-This example reads obs.sequencer_data["expose"]["raw_files"] (SEQUENCER's
-own output, always present by the time REDUCTION runs). A real REDUCTION
-sub-plugin further down a pipeline would typically read whatever an earlier
-REDUCTION step wrote instead (e.g. obs.reduction_data["bias"]) — same
-pattern, just a different key, entirely up to what that sub-plugin needs.
+This example reads obs.sequencer_data["star_spectra_images"] (SEQUENCER's own
+output, always present by the time REDUCTION runs) — a purpose-named,
+shared key, not the name of whichever SEQUENCER sub-plugin actually
+produced the raw files: this REDUCTION sub-plugin must never need to know
+that name, only the fixed key every acquisition sub-plugin writes to. A
+real REDUCTION sub-plugin further down a pipeline would typically read
+whatever an earlier REDUCTION step wrote instead (e.g.
+obs.reduction_data["bias"]) — same pattern, just a different key, entirely
+up to what that sub-plugin needs.
 
 Write your own result into obs.reduction_data under your own declared name
 — presence of the key means you completed, no separate "done" flag needed:
@@ -55,9 +59,12 @@ class BlankRedPlugin(SubPlugin):
     """Minimal example REDUCTION sub-plugin — see module docstring for the contract."""
 
     async def execute(self, obs: Observation) -> Observation:
-        if "expose" not in obs.sequencer_data:
-            raise RuntimeError("BLANK_RED : sequencer_data['expose'] manquant — EXPOSE doit avoir tourné avant BLANK_RED")
-        raw_files = obs.sequencer_data["expose"]["raw_files"]
+        if "star_spectra_images" not in obs.sequencer_data:
+            raise RuntimeError(
+                "BLANK_RED : sequencer_data['star_spectra_images'] manquant — "
+                "aucun sous-plugin d'acquisition n'a tourné avant BLANK_RED"
+            )
+        raw_files = obs.sequencer_data["star_spectra_images"]
 
         log.info(f"[BLANK_RED] Exemple de sous-plugin REDUCTION sur {len(raw_files)} fichier(s)")
 

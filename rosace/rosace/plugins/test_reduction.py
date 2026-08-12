@@ -17,7 +17,7 @@ from rosace.plugins.reduction import ReductionPlugin
 def _make_obs(with_raw_files=True, with_program=True) -> Observation:
     obs = Observation(id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234")
     if with_raw_files:
-        obs.sequencer_data["expose"] = {"raw_files": ["/tmp/spectrum_0001.fits"]}
+        obs.sequencer_data["star_spectra_images"] = ["/tmp/spectrum_0001.fits"]
     if with_program:
         obs.scheduler_data["program"] = "etoiles_be"
     return obs
@@ -41,7 +41,7 @@ class TestReductionPlugin:
 
     async def test_raises_if_no_raw_files(self):
         obs = _make_obs(with_raw_files=False)
-        with pytest.raises(RuntimeError, match="raw_files"):
+        with pytest.raises(RuntimeError, match="star_spectra_images"):
             await ReductionPlugin().run(obs)
 
     async def test_raises_if_program_missing(self):

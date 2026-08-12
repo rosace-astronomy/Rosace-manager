@@ -1496,8 +1496,9 @@ class TestSessionRunner:
 
     async def test_stop_check_reflects_is_running(self, monkeypatch, tmp_path):
         """Chaque Observation fraîchement créée reçoit un stop_check() qui reflète
-        state.is_running en direct — utilisé par des sous-plugins comme expose.py
-        pour s'interrompre entre deux de leurs propres sous-étapes."""
+        state.is_running en direct — utilisé par les sous-plugins dont le travail
+        s'étend sur plusieurs sous-étapes internes pour s'interrompre entre deux
+        de leurs propres sous-étapes."""
         import rosace.main as main_mod
 
         captured_stop_check = []

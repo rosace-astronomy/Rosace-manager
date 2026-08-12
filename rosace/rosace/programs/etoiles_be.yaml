@@ -6,9 +6,9 @@ program: etoiles_be
 description: "Suivi spectral d'étoiles Be — émission Hα et variations de profil"
 
 sequencer:
-  - slew        # Pointage télescope
-  - focus       # Mise au point automatique
-  - expose      # Exposition CCD
+  - slew                        # Pointage télescope
+  - focus                       # Mise au point automatique
+  - star_spectra_acquisition    # Exposition CCD
   # - tatatata    # Pour tester...
 
 reduction:

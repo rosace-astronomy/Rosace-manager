@@ -81,14 +81,14 @@ class TestBuildPipeline:
     config de test ("indi" — voir conf/config.yaml), donc sans suffixe."""
 
     def test_builds_full_sequencer_pipeline(self):
-        pipeline = build_pipeline(["slew", "focus", "expose"], "sequencer")
+        pipeline = build_pipeline(["slew", "focus", "star_spectra_acquisition"], "sequencer")
         assert len(pipeline) == 3
         names = [p.__class__.__name__ for p in pipeline]
-        assert names == ["SlewPlugin", "FocusPlugin", "ExposePlugin"]
+        assert names == ["SlewPlugin", "FocusPlugin", "StarSpectraAcquisitionPlugin"]
 
     def test_builds_partial_pipeline(self):
         """Un pipeline peut omettre des étapes (ex: pas de focus)."""
-        pipeline = build_pipeline(["slew", "expose"], "sequencer")
+        pipeline = build_pipeline(["slew", "star_spectra_acquisition"], "sequencer")
         assert len(pipeline) == 2
 
     def test_raises_on_unknown_step(self):
@@ -97,8 +97,8 @@ class TestBuildPipeline:
 
     def test_order_is_preserved(self):
         """L'ordre du YAML est strictement respecté."""
-        pipeline = build_pipeline(["expose", "slew"], "sequencer")
-        assert pipeline[0].__class__.__name__ == "ExposePlugin"
+        pipeline = build_pipeline(["star_spectra_acquisition", "slew"], "sequencer")
+        assert pipeline[0].__class__.__name__ == "StarSpectraAcquisitionPlugin"
         assert pipeline[1].__class__.__name__ == "SlewPlugin"
 
     def test_builds_reduction_pipeline(self):
@@ -130,7 +130,7 @@ class TestLoadPipelines:
         seq, red = load_pipelines("etoiles_be")
         seq_names = [p.__class__.__name__ for p in seq]
         red_names = [p.__class__.__name__ for p in red]
-        assert seq_names == ["SlewPlugin", "FocusPlugin", "ExposePlugin"]
+        assert seq_names == ["SlewPlugin", "FocusPlugin", "StarSpectraAcquisitionPlugin"]
         assert red_names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
 
     def test_etoiles_brillantes_no_focus_full_reduction(self):
@@ -157,7 +157,7 @@ class TestLoadPipelines:
         seq, red = load_pipelines("demo")
         seq_names = [p.__class__.__name__ for p in seq]
         red_names = [p.__class__.__name__ for p in red]
-        assert seq_names == ["SlewPlugin", "FocusPlugin", "ExposePlugin"]
+        assert seq_names == ["SlewPlugin", "FocusPlugin", "StarSpectraAcquisitionPlugin"]
         assert red_names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
 
     def test_raises_on_unknown_program(self):
@@ -172,7 +172,7 @@ class TestLoadPipelines:
         custom_yaml = tmp_path / "test_custom.yaml"
         custom_yaml.write_text(_yaml.dump({
             "program": "test_custom",
-            "sequencer": ["slew", "expose"],
+            "sequencer": ["slew", "star_spectra_acquisition"],
             "reduction": ["bias", "extract"],
         }))
 

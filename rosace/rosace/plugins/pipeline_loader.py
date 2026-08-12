@@ -9,13 +9,13 @@ Structure attendue du YAML :
     sequencer:
       - slew
       - focus
-      - expose
+      - star_spectra_acquisition
     reduction:
       - bias
       - dark
       - flat
       - extract
-    sharing: default
+    sharing: blank_share
 
 Usage :
     from .pipeline_loader import load_pipelines, load_sharing_plugin

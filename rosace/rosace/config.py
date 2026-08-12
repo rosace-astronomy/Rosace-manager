@@ -93,7 +93,7 @@ MAX_EXPOSURE_TIME_SECONDS = _cfg["max_exposure_time_seconds"]
 # "internal" : simulation interne, sans dépendance externe (démonstrateur niveau 1).
 # "indi"     : protocole INDI/PHD2 réel, piloté par ACTIVE_HARDWARE/HARDWARE_CONFIG_PATH
 #              (démonstrateur niveaux 2/3). Ne concerne que les sous-plugins SEQUENCER
-#              (slew/focus/expose) — REDUCTION n'a pas de dépendance matérielle.
+#              — REDUCTION n'a pas de dépendance matérielle.
 _VALID_SEQUENCER_BACKENDS = ("internal", "indi")
 
 _LOGGING_CFG_PATH = Path(__file__).parent / "conf" / "logging.cfg"

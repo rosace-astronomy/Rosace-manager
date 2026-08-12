@@ -62,7 +62,7 @@ class Program(ProgramCreate):
 class StarInProgram(Star):
     """Étoile telle que listée au sein d'un programme, avec son temps de pose
     éventuellement spécifique à ce programme (facultatif — si absent, dérivé
-    de magnitude_v par le sous-plugin expose)."""
+    de magnitude_v au moment de l'acquisition)."""
     exposure_time: Optional[float] = None
 
 
