@@ -27,6 +27,8 @@ class BiasPlugin(SubPlugin):
         raw_files: list[str] = obs.sequencer_data["star_spectra_images"]
         if not raw_files:
             raise RuntimeError("BIAS : aucun fichier brut (sequencer_data['star_spectra_images'] vide)")
+        if not obs.obs_dir:
+            raise RuntimeError("BIAS : observation directory (obs_dir) not set")
 
         bias_level_adu = 1000
 
@@ -34,12 +36,13 @@ class BiasPlugin(SubPlugin):
 
         bias_corrected: list[str] = []
         for raw in raw_files:
-            out = raw.replace(".fits", "_b.fits")
+            out_name = raw.replace(".fits", "_b.fits")
+            out_path = Path(obs.obs_dir) / out_name
             await asyncio.sleep(0.05)
-            Path(out).parent.mkdir(parents=True, exist_ok=True)
-            Path(out).touch()
-            log.info(f"[BIAS] Simulation : {Path(raw).name} → {Path(out).name}")
-            bias_corrected.append(out)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.touch()
+            log.info(f"[BIAS] Simulation : {raw} → {out_name}")
+            bias_corrected.append(out_name)
 
         obs.reduction_data["bias"] = {"corrected_files": bias_corrected}
         log.info(f"[BIAS] Correction terminée — {len(bias_corrected)} fichier(s)")

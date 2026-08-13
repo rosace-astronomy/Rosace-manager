@@ -58,15 +58,16 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
         )
 
         for i in range(1, num_exposures + 1):
-            filename = str(Path(obs.obs_dir) / f"{fits_prefix}_{i:04d}.fits")
-            log.info(f"[STAR_SPECTRA_ACQUISITION] Exposure {i}/{num_exposures} -> {filename}")
+            basename = f"{fits_prefix}_{i:04d}.fits"
+            filepath = Path(obs.obs_dir) / basename
+            log.info(f"[STAR_SPECTRA_ACQUISITION] Exposure {i}/{num_exposures} -> {basename}")
 
             await asyncio.sleep(exposure_time * simulate_speed)
-            Path(filename).parent.mkdir(parents=True, exist_ok=True)
-            Path(filename).touch()
-            log.info(f"[STAR_SPECTRA_ACQUISITION] Simulation -- file created: {filename}")
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+            filepath.touch()
+            log.info(f"[STAR_SPECTRA_ACQUISITION] Simulation -- file created: {basename}")
 
-            raw_files.append(filename)
+            raw_files.append(basename)
 
         obs.sequencer_data.setdefault("star_spectra_images", []).extend(raw_files)
 

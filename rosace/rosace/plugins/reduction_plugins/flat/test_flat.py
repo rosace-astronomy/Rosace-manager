@@ -12,8 +12,11 @@ from rosace.models import Observation
 from rosace.plugins.reduction_plugins.flat.flat import FlatPlugin
 
 
-def _make_obs(dark_corrected_files=None) -> Observation:
-    obs = Observation(id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234")
+def _make_obs(obs_dir=None, dark_corrected_files=None) -> Observation:
+    obs = Observation(
+        id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234",
+        obs_dir=str(obs_dir) if obs_dir else None,
+    )
     if dark_corrected_files is not None:
         obs.reduction_data["dark"] = {"corrected_files": dark_corrected_files}
     return obs
@@ -38,10 +41,14 @@ class TestFlatPlugin:
         with pytest.raises(RuntimeError, match="corrected_files"):
             await FlatPlugin().execute(obs)
 
+    async def test_raises_if_obs_dir_missing(self):
+        obs = _make_obs(obs_dir=None, dark_corrected_files=["spectrum_0001_bd.fits"])
+        with pytest.raises(RuntimeError, match="obs_dir"):
+            await FlatPlugin().execute(obs)
+
     async def test_produces_flat_suffixed_files(self, tmp_path):
-        dark_corrected = str(tmp_path / "spectrum_0001_bd.fits")
-        obs = _make_obs(dark_corrected_files=[dark_corrected])
+        obs = _make_obs(obs_dir=tmp_path, dark_corrected_files=["spectrum_0001_bd.fits"])
 
         result = await FlatPlugin().execute(obs)
 
-        assert result.reduction_data["flat"]["corrected_files"] == [str(tmp_path / "spectrum_0001_bdf.fits")]
+        assert result.reduction_data["flat"]["corrected_files"] == ["spectrum_0001_bdf.fits"]

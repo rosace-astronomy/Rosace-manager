@@ -37,6 +37,9 @@ CORRECTED_COORD = TARGET_COORD.spherical_offsets_by(-_d_lon, -_d_lat)
 LOCK_X, LOCK_Y = 300.0, 250.0
 TARGET_PIXEL_X, TARGET_PIXEL_Y = 15.0, 20.0  # distinct from SLIT_X/SLIT_Y, to exercise the residual
 
+INITIAL_IMAGE_NAME = "GUIDING_Vega_0_30s_20260813_120000.fits"
+CORRECTED_IMAGE_NAME = "GUIDING_Vega_0_30s_20260813_120010.fits"
+
 
 def _make_obs() -> Observation:
     obs = Observation(
@@ -59,7 +62,15 @@ def _make_obs() -> Observation:
 
 @pytest.fixture(autouse=True)
 def mock_dependencies(monkeypatch):
-    capture_mock = AsyncMock(side_effect=[MagicMock(name="initial_image"), MagicMock(name="corrected_image")])
+    # MagicMock(name=...) does NOT set a real `.name` attribute -- name= is
+    # special-cased by the constructor for the mock's own repr. Assigning
+    # `.name` after construction is what actually makes it a plain attribute,
+    # needed here since production code reads initial_guide_image.name.
+    initial_image = MagicMock()
+    initial_image.name = INITIAL_IMAGE_NAME
+    corrected_image = MagicMock()
+    corrected_image.name = CORRECTED_IMAGE_NAME
+    capture_mock = AsyncMock(side_effect=[initial_image, corrected_image])
     solve_wcs_mock = AsyncMock()
     solve_result_mock = MagicMock(return_value=REAL_POSITION)
     world_to_pixel_mock = MagicMock(return_value=(TARGET_PIXEL_X, TARGET_PIXEL_Y))
@@ -196,5 +207,5 @@ class TestPointing72edPlugin:
 
         assert result is obs
         data = obs.sequencer_data["pointing_72ed"]
-        assert "initial_guide_image" in data
-        assert "corrected_guide_image" in data
+        assert data["initial_guide_image"] == INITIAL_IMAGE_NAME
+        assert data["corrected_guide_image"] == CORRECTED_IMAGE_NAME

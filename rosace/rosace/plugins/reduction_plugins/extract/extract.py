@@ -24,6 +24,8 @@ class ExtractPlugin(SubPlugin):
         input_files: list[str] = obs.reduction_data["flat"]["corrected_files"]
         if not input_files:
             raise RuntimeError("EXTRACT : aucun fichier d'entrée (reduction_data['flat']['corrected_files'] vide)")
+        if not obs.obs_dir:
+            raise RuntimeError("EXTRACT : observation directory (obs_dir) not set")
 
         method = "sum"
         aperture_px = 10
@@ -36,12 +38,13 @@ class ExtractPlugin(SubPlugin):
 
         reduced_files: list[str] = []
         for f in input_files:
-            out = f.replace("_bdf.fits", "_reduced.fits")
+            out_name = f.replace("_bdf.fits", "_reduced.fits")
+            out_path = Path(obs.obs_dir) / out_name
             await asyncio.sleep(0.1)
-            Path(out).parent.mkdir(parents=True, exist_ok=True)
-            Path(out).touch()
-            log.info(f"[EXTRACT] Simulation : {Path(f).name} → {Path(out).name}")
-            reduced_files.append(out)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.touch()
+            log.info(f"[EXTRACT] Simulation : {f} → {out_name}")
+            reduced_files.append(out_name)
 
         obs.reduction_data["extract"] = {"reduced_files": reduced_files}
         log.info(f"[EXTRACT] Extraction terminée — {len(reduced_files)} spectre(s) produit(s)")

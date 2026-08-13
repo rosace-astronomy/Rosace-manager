@@ -24,6 +24,8 @@ class FlatPlugin(SubPlugin):
         input_files: list[str] = obs.reduction_data["dark"]["corrected_files"]
         if not input_files:
             raise RuntimeError("FLAT : aucun fichier d'entrée (reduction_data['dark']['corrected_files'] vide)")
+        if not obs.obs_dir:
+            raise RuntimeError("FLAT : observation directory (obs_dir) not set")
 
         normalize = True
 
@@ -31,12 +33,13 @@ class FlatPlugin(SubPlugin):
 
         flat_corrected: list[str] = []
         for f in input_files:
-            out = f.replace("_bd.fits", "_bdf.fits")
+            out_name = f.replace("_bd.fits", "_bdf.fits")
+            out_path = Path(obs.obs_dir) / out_name
             await asyncio.sleep(0.05)
-            Path(out).parent.mkdir(parents=True, exist_ok=True)
-            Path(out).touch()
-            log.info(f"[FLAT] Simulation : {Path(f).name} → {Path(out).name}")
-            flat_corrected.append(out)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.touch()
+            log.info(f"[FLAT] Simulation : {f} → {out_name}")
+            flat_corrected.append(out_name)
 
         obs.reduction_data["flat"] = {"corrected_files": flat_corrected}
         log.info(f"[FLAT] Correction terminée — {len(flat_corrected)} fichier(s)")

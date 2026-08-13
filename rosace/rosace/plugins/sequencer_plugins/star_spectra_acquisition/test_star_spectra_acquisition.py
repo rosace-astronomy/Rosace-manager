@@ -106,9 +106,9 @@ class TestStarSpectraAcquisitionPlugin:
 
         result = await StarSpectraAcquisitionPlugin().execute(obs)
 
-        expected_path = str(tmp_path / f"STAR_1s_{FIXED_TS}.fits")
-        fake_image.writeto.assert_called_once_with(tmp_path / f"STAR_1s_{FIXED_TS}.fits", overwrite=True)
-        assert result.sequencer_data["star_spectra_images"] == [expected_path]
+        expected_name = f"STAR_1s_{FIXED_TS}.fits"
+        fake_image.writeto.assert_called_once_with(tmp_path / expected_name, overwrite=True)
+        assert result.sequencer_data["star_spectra_images"] == [expected_name]
 
     async def test_uses_queried_name_as_fits_prefix(self, tmp_path):
         fake_image = MagicMock()
@@ -119,8 +119,8 @@ class TestStarSpectraAcquisitionPlugin:
 
         result = await StarSpectraAcquisitionPlugin().execute(obs)
 
-        expected_path = str(tmp_path / f"V831Cas_1s_{FIXED_TS}.fits")
-        assert result.sequencer_data["star_spectra_images"] == [expected_path]
+        expected_name = f"V831Cas_1s_{FIXED_TS}.fits"
+        assert result.sequencer_data["star_spectra_images"] == [expected_name]
 
     async def test_computes_exposure_time_from_magnitude_when_not_set(self, tmp_path, monkeypatch):
         monkeypatch.setattr(ssa_mod, "EXPOSURE_TIME_MAG0_SECONDS", 1.0)
@@ -149,7 +149,7 @@ class TestStarSpectraAcquisitionPlugin:
         assert camera.expose.await_count == 4
         camera.expose.assert_awaited_with(pytest.approx(300.0))
         root_name = f"STAR_4x300s_{FIXED_TS}"
-        expected_files = [str(tmp_path / f"{root_name}-{i}.fits") for i in range(1, 5)]
+        expected_files = [f"{root_name}-{i}.fits" for i in range(1, 5)]
         assert result.sequencer_data["star_spectra_images"] == expected_files
 
     async def test_appends_to_star_spectra_images_instead_of_overwriting(self, tmp_path):
@@ -165,8 +165,8 @@ class TestStarSpectraAcquisitionPlugin:
 
         result = await StarSpectraAcquisitionPlugin().execute(obs)
 
-        expected_path = str(tmp_path / f"STAR_1s_{FIXED_TS}.fits")
-        assert result.sequencer_data["star_spectra_images"] == ["earlier_image.fits", expected_path]
+        expected_name = f"STAR_1s_{FIXED_TS}.fits"
+        assert result.sequencer_data["star_spectra_images"] == ["earlier_image.fits", expected_name]
 
     async def test_splits_explicit_exposure_time_when_it_exceeds_max(self, tmp_path, monkeypatch):
         """exposure_time known in advance (program_stars.exposure_time), no magnitude needed."""
@@ -204,7 +204,7 @@ class TestStarSpectraAcquisitionPlugin:
 
         assert camera.expose.await_count == 2  # stopped after the 2nd sub-exposure, not all 4
         root_name = f"STAR_4x300s_{FIXED_TS}"  # reflects the planned series of 4, not how many actually ran
-        expected_files = [str(tmp_path / f"{root_name}-{i}.fits") for i in range(1, 3)]
+        expected_files = [f"{root_name}-{i}.fits" for i in range(1, 3)]
         assert result.sequencer_data["star_spectra_images"] == expected_files
 
     async def test_stop_check_ignored_on_the_last_sub_exposure(self, tmp_path):

@@ -24,6 +24,8 @@ class DarkPlugin(SubPlugin):
         input_files: list[str] = obs.reduction_data["bias"]["corrected_files"]
         if not input_files:
             raise RuntimeError("DARK : aucun fichier d'entrée (reduction_data['bias']['corrected_files'] vide)")
+        if not obs.obs_dir:
+            raise RuntimeError("DARK : observation directory (obs_dir) not set")
 
         scale_to_exposure = True
 
@@ -31,12 +33,13 @@ class DarkPlugin(SubPlugin):
 
         dark_corrected: list[str] = []
         for f in input_files:
-            out = f.replace("_b.fits", "_bd.fits")
+            out_name = f.replace("_b.fits", "_bd.fits")
+            out_path = Path(obs.obs_dir) / out_name
             await asyncio.sleep(0.05)
-            Path(out).parent.mkdir(parents=True, exist_ok=True)
-            Path(out).touch()
-            log.info(f"[DARK] Simulation : {Path(f).name} → {Path(out).name}")
-            dark_corrected.append(out)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.touch()
+            log.info(f"[DARK] Simulation : {f} → {out_name}")
+            dark_corrected.append(out_name)
 
         obs.reduction_data["dark"] = {"corrected_files": dark_corrected}
         log.info(f"[DARK] Correction terminée — {len(dark_corrected)} fichier(s)")

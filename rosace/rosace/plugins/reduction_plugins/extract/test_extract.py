@@ -4,7 +4,6 @@ Lancement : pytest plugins/reduction_plugins/extract/test_extract.py -v
 """
 
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -13,8 +12,11 @@ from rosace.models import Observation
 from rosace.plugins.reduction_plugins.extract.extract import ExtractPlugin
 
 
-def _make_obs(flat_corrected_files=None) -> Observation:
-    obs = Observation(id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234")
+def _make_obs(obs_dir=None, flat_corrected_files=None) -> Observation:
+    obs = Observation(
+        id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234",
+        obs_dir=str(obs_dir) if obs_dir else None,
+    )
     if flat_corrected_files is not None:
         obs.reduction_data["flat"] = {"corrected_files": flat_corrected_files}
     return obs
@@ -39,18 +41,22 @@ class TestExtractPlugin:
         with pytest.raises(RuntimeError, match="corrected_files"):
             await ExtractPlugin().execute(obs)
 
+    async def test_raises_if_obs_dir_missing(self):
+        obs = _make_obs(obs_dir=None, flat_corrected_files=["spectrum_0001_bdf.fits"])
+        with pytest.raises(RuntimeError, match="obs_dir"):
+            await ExtractPlugin().execute(obs)
+
     async def test_produces_reduced_files(self, tmp_path):
-        flat_corrected = str(tmp_path / "spectrum_0001_bdf.fits")
-        obs = _make_obs(flat_corrected_files=[flat_corrected])
+        obs = _make_obs(obs_dir=tmp_path, flat_corrected_files=["spectrum_0001_bdf.fits"])
 
         result = await ExtractPlugin().execute(obs)
 
-        assert result.reduction_data["extract"]["reduced_files"] == [str(tmp_path / "spectrum_0001_reduced.fits")]
+        assert result.reduction_data["extract"]["reduced_files"] == ["spectrum_0001_reduced.fits"]
 
     async def test_output_files_exist_on_disk(self, tmp_path):
-        flat_corrected = str(tmp_path / "spectrum_0001_bdf.fits")
-        obs = _make_obs(flat_corrected_files=[flat_corrected])
+        obs = _make_obs(obs_dir=tmp_path, flat_corrected_files=["spectrum_0001_bdf.fits"])
 
         result = await ExtractPlugin().execute(obs)
 
-        assert Path(result.reduction_data["extract"]["reduced_files"][0]).is_file()
+        reduced_name = result.reduction_data["extract"]["reduced_files"][0]
+        assert (tmp_path / reduced_name).is_file()

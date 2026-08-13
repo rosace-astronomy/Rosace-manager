@@ -56,4 +56,5 @@ class TestStarSpectraAcquisitionPlugin:
         raw_files = result.sequencer_data["star_spectra_images"]
         assert len(raw_files) == 3
         for f in raw_files:
-            assert Path(f).is_file()  # really created on disk (simulate mode)
+            assert "/" not in f  # basename only, not a full path
+            assert (Path(tmp_path) / f).is_file()  # really created on disk (simulate mode)

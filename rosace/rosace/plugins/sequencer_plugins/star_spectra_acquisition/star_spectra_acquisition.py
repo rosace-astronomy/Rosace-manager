@@ -79,7 +79,7 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
         for i in range(1, count + 1):
             suffix = f"-{i}" if count > 1 else ""
             path = await capture_science_image(camera, exposure_time, obs.obs_dir, f"{root_name}{suffix}.fits")
-            raw_files.append(str(path))
+            raw_files.append(path.name)
 
             if i < count and obs.stop_check and obs.stop_check():
                 log.info(

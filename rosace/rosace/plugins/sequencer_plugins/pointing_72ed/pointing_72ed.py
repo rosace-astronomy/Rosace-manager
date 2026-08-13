@@ -139,8 +139,8 @@ class Pointing72edPlugin(SubPlugin):
         # scheduler_data) or "guiding_started" flag (process info, not descriptive --
         # that's the log's job) -- only the two images this step actually produced.
         obs.sequencer_data["pointing_72ed"] = {
-            "initial_guide_image": str(initial_guide_image),
-            "corrected_guide_image": str(corrected_guide_image),
+            "initial_guide_image": initial_guide_image.name,
+            "corrected_guide_image": corrected_guide_image.name,
         }
         log.info(f"[POINTING_72ED] Star in the slit for {queried_name}, guiding active")
         return obs

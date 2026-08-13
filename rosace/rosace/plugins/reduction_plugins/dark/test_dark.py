@@ -12,8 +12,11 @@ from rosace.models import Observation
 from rosace.plugins.reduction_plugins.dark.dark import DarkPlugin
 
 
-def _make_obs(bias_corrected_files=None) -> Observation:
-    obs = Observation(id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234")
+def _make_obs(obs_dir=None, bias_corrected_files=None) -> Observation:
+    obs = Observation(
+        id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234",
+        obs_dir=str(obs_dir) if obs_dir else None,
+    )
     if bias_corrected_files is not None:
         obs.reduction_data["bias"] = {"corrected_files": bias_corrected_files}
     return obs
@@ -38,10 +41,14 @@ class TestDarkPlugin:
         with pytest.raises(RuntimeError, match="corrected_files"):
             await DarkPlugin().execute(obs)
 
+    async def test_raises_if_obs_dir_missing(self):
+        obs = _make_obs(obs_dir=None, bias_corrected_files=["spectrum_0001_b.fits"])
+        with pytest.raises(RuntimeError, match="obs_dir"):
+            await DarkPlugin().execute(obs)
+
     async def test_produces_dark_suffixed_files(self, tmp_path):
-        bias_corrected = str(tmp_path / "spectrum_0001_b.fits")
-        obs = _make_obs(bias_corrected_files=[bias_corrected])
+        obs = _make_obs(obs_dir=tmp_path, bias_corrected_files=["spectrum_0001_b.fits"])
 
         result = await DarkPlugin().execute(obs)
 
-        assert result.reduction_data["dark"]["corrected_files"] == [str(tmp_path / "spectrum_0001_bd.fits")]
+        assert result.reduction_data["dark"]["corrected_files"] == ["spectrum_0001_bd.fits"]

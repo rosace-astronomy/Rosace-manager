@@ -114,6 +114,7 @@ async def solve_wcs(
         raise ValueError("solve_wcs: ra_hint and dec_hint must be given together, or both omitted")
 
     path = Path(fits_path)
+    fits_name = path.name
     if path.suffix != ".fits":
         raise ValueError(f"solve_wcs: fits_path must end in .fits, got {fits_path!r}")
 
@@ -154,7 +155,7 @@ async def solve_wcs(
         ]
 
     cmd = [solve_field_bin, *options, fits_path]
-    log.info(f"[PLATE_SOLVE] Solving {fits_path} (up to {timeout:.0f}s)...")
+    log.info(f"[PLATE_SOLVE] Solving {fits_name} (up to {timeout:.0f}s)...")
     log.debug(f"[PLATE_SOLVE] Running: {' '.join(cmd)}")
 
     def _run() -> subprocess.CompletedProcess:
@@ -164,7 +165,7 @@ async def solve_wcs(
     try:
         proc = await asyncio.to_thread(_run)
     except subprocess.TimeoutExpired:
-        message = f"solve_wcs: solve-field timed out after {timeout}s for {fits_path}"
+        message = f"solve_wcs: solve-field timed out after {timeout}s for {fits_name}"
         log.error(f"[PLATE_SOLVE] {message}")
         raise PlateSolveError(message)
 
@@ -172,7 +173,7 @@ async def solve_wcs(
     if not solved_marker.exists():
         stars_detected = _count_detected_stars(f"{base}.axy")
         message = (
-            f"solve_wcs: no WCS solution for {fits_path} "
+            f"solve_wcs: no WCS solution for {fits_name} "
             f"(return_code={proc.returncode}, stars_detected={stars_detected})"
         )
         log.error(f"[PLATE_SOLVE] {message}")
@@ -182,7 +183,7 @@ async def solve_wcs(
     for suffix in (".solved", ".axy", ".rdls", "-indx.xyls", ".match", ".corr", ".wcs"):
         Path(f"{base}{suffix}").unlink(missing_ok=True)
 
-    log.info(f"[PLATE_SOLVE] WCS solved for {fits_path}")
+    log.info(f"[PLATE_SOLVE] WCS solved for {fits_name}")
 
     if record_error:
         with fits.open(fits_path) as hdul:
@@ -194,9 +195,7 @@ async def solve_wcs(
         solved_coord = solve_result(fits_path)
         separation_arcsec = SkyCoord(mount_ra, mount_dec, unit="deg").separation(solved_coord).arcsec
         log.info(
-            f"[PLATE_SOLVE] Pointing error for {target_name or '(no target name)'}: "
-            f"{separation_arcsec:.1f}\" (mount {mount_ra:.5f},{mount_dec:.5f} vs "
-            f"solved {solved_coord.ra.degree:.5f},{solved_coord.dec.degree:.5f})"
+            f"[PLATE_SOLVE] Pointing error for {target_name or '(no target name)'}: {separation_arcsec:.1f}\""
         )
         await db_insert_pointing_error(
             observation_id, target_name, mount_ra, mount_dec,
