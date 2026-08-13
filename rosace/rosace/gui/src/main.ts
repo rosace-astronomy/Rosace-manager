@@ -181,6 +181,39 @@ class AppHeader extends HBox {
 }
 
 /**
+ * Application Footer — UTC clock on the left, browser-local clock on the right,
+ * both ticking every second. Both sides deliberately share the exact same
+ * formatting rule (24h, no AM/PM) as the rest of the app's time displays
+ * (see logMany()/renderObs() above) — the whole point of showing both side by
+ * side is to let the observer compare them at a glance, which only works if
+ * they're in the same format.
+ */
+
+class AppFooter extends HBox {
+
+	constructor( props: BoxProps ) {
+		super( { cls: "app-footer", ...props } );
+
+		const formatUtc   = ( now: Date ) => "UTC   " + now.toLocaleTimeString( undefined, { timeZone: "UTC", hour12: false } );
+		const formatLocal = ( now: Date ) => "Local " + now.toLocaleTimeString( undefined, { hour12: false } );
+
+		const utcLabel   = new Label( { cls: "clock utc-clock",   text: formatUtc( new Date( ) ) } );
+		const localLabel = new Label( { cls: "clock local-clock", text: formatLocal( new Date( ) ) } );
+		this.setContent( [ utcLabel, localLabel ] );
+
+		// named/repeating timer (x4js CoreElement) — same idiom as fetchStatus()/
+		// fetchObs()'s own polling below; holds only a WeakRef on this component,
+		// so it self-clears once this AppFooter is no longer reachable, with no
+		// dispose hook needed.
+		this.setInterval( "clock", 1000, ( ) => {
+			const now = new Date( );
+			utcLabel.setText( formatUtc( now ) );
+			localLabel.setText( formatLocal( now ) );
+		} );
+	}
+}
+
+/**
  * MainView is the main dashboard view
  */
 
@@ -229,7 +262,9 @@ class MainView extends VBox {
 						new Label({ cls: "title", text: "Guidage" })
 					] })
 				] })
-			]})
+			]}),
+
+			new AppFooter( { } ),
 		]);
 
 		this.log( "application started" )
@@ -268,7 +303,7 @@ class MainView extends VBox {
 	private renderObs(rows: ObsRow[]) {
 
         this.obs_list.setItems( rows.map( obs => {
-			const time = new Date(obs.created_at).toLocaleTimeString("fr-FR");
+			const time = new Date(obs.created_at).toLocaleTimeString(undefined, { timeZone: "UTC", hour12: false });
 
 			const stages = DISPLAY_STAGES.map( (key) => {
 				const info    = obs.stages[key];
@@ -281,7 +316,7 @@ class MainView extends VBox {
 					});
 				}
 				else {
-					const doneAt  = info.done_at ? " @ " + new Date(info.done_at).toLocaleTimeString("fr-FR") : "";
+					const doneAt  = info.done_at ? " @ " + new Date(info.done_at).toLocaleTimeString(undefined, { timeZone: "UTC", hour12: false }) : "";
 
 					return new Tag({
 						label:    STAGE_LABEL[key].text,
@@ -361,7 +396,11 @@ class MainView extends VBox {
 	 */
 
 	private logMany(msgs: string[]) {
-        const ts = new Date().toLocaleTimeString("fr-FR");
+        // UTC to match rosace.log and everything else timestamp-related in the app
+        // (DB rows, FITS filenames, the astronomical-day boundary); locale left undefined
+        // (browser's own preference) rather than hardcoded, since the app runs anywhere.
+        // hour12: false avoids AM/PM ambiguity regardless of the browser's locale.
+        const ts = new Date().toLocaleTimeString(undefined, { timeZone: "UTC", hour12: false });
 
         for( const msg of msgs ) {
             this.log_lines.push(`[${ts}] ${msg}`);

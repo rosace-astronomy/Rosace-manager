@@ -3,12 +3,13 @@ SQLite access layer (aiosqlite) — sessions, observations, and per-stage status
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import aiosqlite
 
 from .config import DATABASES_DIR, DB_PATH
 from .models import OrchestratorStage, SessionContext, Observation
+from .time_helpers import astronomical_day_start_utc
 
 log = logging.getLogger("spectro.database")
 
@@ -147,7 +148,7 @@ async def db_count_observations_for_target(program_name: str, target_name: str) 
     used by SCHEDULER to know how many times a line from its observation list has
     already been consumed. Scoped by night rather than by session so that stopping
     and restarting the session (e.g. after a pause) doesn't reset the count."""
-    since = _astronomical_day_start_utc()
+    since = astronomical_day_start_utc()
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         async with db.execute(
             """SELECT COUNT(*) FROM observations
@@ -212,25 +213,11 @@ async def db_set_error(obs_id: str, message: str) -> None:
     log.info(f"[DB] Error recorded for {obs_id}")
 
 
-def _astronomical_day_start_utc(now: datetime | None = None) -> str:
-    """
-    Start of the current astronomical day (local noon at or before `now`), as a UTC
-    timestamp string in the same format as the created_at column, for a direct
-    lexicographic comparison. Assumes the server runs in the site's own local
-    timezone — there is no explicit site timezone setting in conf/config.yaml.
-    """
-    local_now = (now or datetime.now(timezone.utc)).astimezone()
-    local_noon = local_now.replace(hour=12, minute=0, second=0, microsecond=0)
-    if local_now < local_noon:
-        local_noon -= timedelta(days=1)
-    return local_noon.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
-
-
 async def db_get_recent_observations(limit: int | None = None) -> list[dict]:
     """Returns observations from the current astronomical day (local noon to noon), newest first.
     No limit by default: the astronomical-day filter alone already bounds the result set to one night.
     An explicit limit is still accepted (used by tests to isolate their own rows in the shared DB)."""
-    since = _astronomical_day_start_utc()
+    since = astronomical_day_start_utc()
     query = """SELECT id, target_name, queried_name, priority, created_at, error_message,
                       scheduler_done, sequencer_done, reduction_done,
                       sharing_done, archive_done,

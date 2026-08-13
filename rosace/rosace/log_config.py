@@ -6,6 +6,7 @@ Point d'entrée unique : configure_logging(), appelé au tout début de main.py.
 from __future__ import annotations
 
 import logging.config
+import time
 from pathlib import Path
 
 from .config import LOG_DIR
@@ -20,3 +21,7 @@ def configure_logging() -> None:
         disable_existing_loggers=False,
         defaults={"logfilename": str(LOG_DIR / "rosace.log")},
     )
+    # logging.Formatter defaults %(asctime)s to local time; the rest of the app
+    # (DB timestamps, FITS filenames, the astronomical-day boundary) is UTC, so
+    # logs must be too for cross-referencing to work.
+    logging.Formatter.converter = time.gmtime

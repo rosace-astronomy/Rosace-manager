@@ -3,7 +3,7 @@ Tests du plugin INIT_SESSION (InitSessionPlugin).
 Lancement : pytest plugins/test_init_session.py -v
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -12,6 +12,7 @@ import pytest
 from rosace.models import SessionContext
 from rosace.plugins.hardware_connectivity import ConnectedHardware
 from rosace.plugins.init_session import InitSessionPlugin
+from rosace.time_helpers import astronomical_day_local_date
 
 
 @pytest.fixture(autouse=True)
@@ -50,7 +51,7 @@ class TestInitSessionPlugin:
         ctx = SessionContext(site_name="St-Pancrasse")
         await InitSessionPlugin().run(ctx)
 
-        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        date_str = astronomical_day_local_date()
         assert f"{date_str}_St-Pancrasse" in ctx.session_dir
 
     async def test_idempotent_if_called_twice(self):
@@ -69,6 +70,30 @@ class TestInitSessionPlugin:
         original_id = ctx.session_id
         await InitSessionPlugin().run(ctx)
         assert ctx.session_id == original_id
+
+
+class TestSessionDirectoryUsesAstronomicalDay:
+    """Regression check: the session directory must switch to the next night at
+    local noon (astronomical day), not at UTC midnight — a historical bug, never
+    wired to the same logic as database.py::astronomical_day_start_utc."""
+
+    async def test_directory_keeps_previous_date_just_before_local_noon(self, monkeypatch):
+        system_tz = datetime.now().astimezone().tzinfo
+        local_date = datetime.now(system_tz).date()
+        just_before_noon = datetime(local_date.year, local_date.month, local_date.day, 11, 30, tzinfo=system_tz)
+
+        class _FrozenDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return just_before_noon.astimezone(tz) if tz else just_before_noon
+
+        monkeypatch.setattr("rosace.time_helpers.datetime", _FrozenDatetime)
+
+        ctx = SessionContext(site_name="St-Pancrasse")
+        await InitSessionPlugin().run(ctx)
+
+        expected_date = (local_date - timedelta(days=1)).strftime("%Y-%m-%d")
+        assert f"{expected_date}_St-Pancrasse" in ctx.session_dir
 
 
 class TestHardwareConnectivityDispatch:

@@ -52,7 +52,6 @@ from rosace.database import (
     db_get_recent_observations,
     db_count_observations_for_target,
     db_insert_pointing_error,
-    _astronomical_day_start_utc,
 )
 from rosace.targets import (
     targets_db_init,
@@ -734,22 +733,8 @@ class TestDatabase:
         count = await db_count_observations_for_target("CrossSessionProgram", "VegaCrossSessionTest")
         assert count == 2
 
-    def test_astronomical_day_start_utc_spans_local_noon(self):
-        """La frontière est le midi local précédent — robuste au fuseau de la machine de test."""
-        system_tz = datetime.now().astimezone().tzinfo
-        local_date = datetime.now(system_tz).date()
-        just_after_noon = datetime(local_date.year, local_date.month, local_date.day, 12, 30, tzinfo=system_tz)
-        just_before_noon = just_after_noon.replace(hour=11, minute=30)
-
-        boundary_after  = datetime.fromisoformat(_astronomical_day_start_utc(just_after_noon))
-        boundary_before = datetime.fromisoformat(_astronomical_day_start_utc(just_before_noon))
-
-        # crossing noon shifts the boundary by exactly one calendar day
-        assert boundary_after - boundary_before == timedelta(days=1)
-        # the boundary is always the most recent noon at or before `now`
-        assert boundary_after <= just_after_noon.astimezone(timezone.utc)
-        assert boundary_before <= just_before_noon.astimezone(timezone.utc)
-
+    # test_astronomical_day_start_utc_spans_local_noon moved to test_time_helpers.py
+    # (astronomical_day_start_utc now lives in time_helpers.py, shared with init_session.py)
 
 # ═════════════════════════════════════════════════════════════
 # GROUPE 3 — Base de données cibles (targets.py)

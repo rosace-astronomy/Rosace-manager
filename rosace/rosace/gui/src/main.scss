@@ -183,6 +183,23 @@ body {
 	}
 }
 
+// Footer — UTC clock (left) / browser-local clock (right), same height and
+// clock font-size as .appheader's own #title, for visual consistency top/bottom.
+.app-footer {
+	height: 66px;
+	padding: 0 1.5rem;
+	border-top: 1px solid var(--border);
+	align-items: center;
+	justify-content: space-between;
+
+	.clock {
+		font-size: 1.35rem;
+		font-weight: 700;
+		font-family: var(--font-mono);
+		color: var(--accent);
+	}
+}
+
 // Draggable divider (x4js's HSizer) between the left column (Observations/Journal)
 // and the right column (Spectre/Guidage) — lets either side be widened at the
 // other's expense, e.g. to reveal an observation row that doesn't fit at the
