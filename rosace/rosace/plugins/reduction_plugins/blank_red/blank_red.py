@@ -33,6 +33,16 @@ the app. No backend axis either: REDUCTION sub-plugins process
 already-acquired files, no hardware dependency — unlike SEQUENCER, there's
 never a "<name>_internal.py" variant.
 
+LOGGING
+--------
+The orchestrator already announces each step before running it
+("[REDUCTION] → YourPlugin") and logs a failure itself if execute() raises
+— don't repeat that with your own "starting X" line, it's redundant. Log
+once you have something informative to report: parameters used, a count,
+or the outcome. Exception: if your sub-plugin has several genuinely
+distinct internal phases (not just one action), a log line per phase is
+legitimate.
+
 TO WRITE YOUR OWN REDUCTION SUB-PLUGIN
 -----------------------------------------
 1. Copy this whole directory (plugins/reduction_plugins/blank_red/) to

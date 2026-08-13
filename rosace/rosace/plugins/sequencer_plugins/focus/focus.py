@@ -23,7 +23,6 @@ class FocusPlugin(SubPlugin):
         if "slew" not in obs.sequencer_data:
             raise RuntimeError("FOCUS : le télescope n'est pas encore pointé (sequencer_data['slew'] manquant)")
 
-        log.info("[FOCUS] (placeholder INDI) Mise au point")
         # TODO : autofocus réel via INDI (focuser.autofocus(...) via un client INDI)
         await asyncio.sleep(1)
 

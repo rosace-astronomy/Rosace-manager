@@ -21,6 +21,16 @@ Write your own result into obs.sequencer_data under your own declared name
 No config of your own — all configuration lives in conf/, like the rest of
 the app.
 
+LOGGING
+--------
+The orchestrator already announces each step before running it
+("[SEQUENCER] → YourPlugin") and logs a failure itself if execute() raises
+— don't repeat that with your own "starting X" line, it's redundant. Log
+once you have something informative to report: parameters used, a count,
+or the outcome. Exception: if your sub-plugin has several genuinely
+distinct internal phases (not just one action), a log line per phase is
+legitimate.
+
 BACKEND AXIS (SEQUENCER only)
 -------------------------------
 SEQUENCER sub-plugins are the only family with a backend axis

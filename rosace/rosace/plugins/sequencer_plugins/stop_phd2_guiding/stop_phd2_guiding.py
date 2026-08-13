@@ -23,7 +23,6 @@ class StopPhd2GuidingPlugin(SubPlugin):
     async def execute(self, obs: Observation) -> Observation:
         phd2 = obs.hardware["phd2"]
 
-        log.info("[STOP_PHD2_GUIDING] Stopping PHD2 guiding")
         await phd2.stop_capture()
 
         obs.sequencer_data["stop_phd2_guiding"] = {"guiding_stopped": True}

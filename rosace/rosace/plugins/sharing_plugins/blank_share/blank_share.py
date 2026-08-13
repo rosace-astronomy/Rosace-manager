@@ -23,6 +23,16 @@ mechanism deliberately only supports one sub-plugin per program, not a list.
 PLACEHOLDER: the actual distribution logic below is a stand-in (it only logs
 each file) — real email/FTP/API integration is a separate future chantier.
 
+LOGGING
+--------
+The orchestrator already announces which sub-plugin it's calling
+("[SHARING] Diffusion via 'YourPlugin'") and would log a failure itself if
+execute() raised — don't repeat that with your own "starting X" line, it's
+redundant. Log once you have something informative to report: parameters
+used, a count, or the outcome. Exception: if your sub-plugin has several
+genuinely distinct internal phases (not just one action), a log line per
+phase is legitimate.
+
 TO WRITE YOUR OWN SHARING SUB-PLUGIN
 --------------------------------------
 1. Copy this whole directory (plugins/sharing_plugins/blank_share/) to
