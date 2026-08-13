@@ -28,15 +28,14 @@ def fast_sleep(monkeypatch):
 
 class TestSlewPlugin:
 
-    async def test_sets_slew_target(self):
+    async def test_returns_the_same_observation(self):
         obs = _make_obs(target=Target(name="Vega", ra=279.23, dec=38.78))
         result = await SlewPlugin().execute(obs)
 
         assert result is obs
-        assert obs.sequencer_data["slew"] == {"target": "Vega"}
 
     async def test_handles_missing_target_gracefully(self):
         obs = _make_obs(target=None)
         result = await SlewPlugin().execute(obs)
 
-        assert result.sequencer_data["slew"] == {"target": "inconnue"}
+        assert result is obs

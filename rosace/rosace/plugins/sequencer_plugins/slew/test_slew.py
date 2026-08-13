@@ -31,12 +31,6 @@ class TestSlewPlugin:
         assert result is obs
         obs.hardware["mount"].slew_to.assert_awaited_once_with(279.23, 38.78)
 
-    async def test_sets_slew_target(self):
-        obs = _make_obs(target=Target(name="Vega", ra=279.23, dec=38.78))
-        await SlewPlugin().execute(obs)
-
-        assert obs.sequencer_data["slew"] == {"target": "Vega"}
-
     async def test_raises_on_missing_target(self):
         obs = _make_obs(target=None)
 

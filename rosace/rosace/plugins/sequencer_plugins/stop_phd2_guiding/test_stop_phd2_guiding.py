@@ -25,10 +25,9 @@ class TestStopPhd2GuidingPlugin:
 
         obs.hardware["phd2"].stop_capture.assert_awaited_once_with()
 
-    async def test_sets_sequencer_data(self):
+    async def test_returns_the_same_observation(self):
         obs = _make_obs()
 
         result = await StopPhd2GuidingPlugin().execute(obs)
 
         assert result is obs
-        assert obs.sequencer_data["stop_phd2_guiding"] == {"guiding_stopped": True}

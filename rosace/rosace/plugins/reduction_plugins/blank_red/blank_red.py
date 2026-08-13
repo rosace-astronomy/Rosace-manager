@@ -23,10 +23,21 @@ whatever an earlier REDUCTION step wrote instead (e.g.
 obs.reduction_data["bias"]) — same pattern, just a different key, entirely
 up to what that sub-plugin needs.
 
-Write your own result into obs.reduction_data under your own declared name
-— presence of the key means you completed, no separate "done" flag needed:
+You *may* write a result into obs.reduction_data under your own declared
+name:
 
     obs.reduction_data["blank_red"] = {...}
+
+...but only if you have something genuinely descriptive to add to the
+observation record — not by default (a cleanup step with nothing to
+report writes no casier at all). And whether a previous step ran/succeeded
+is not your concern to verify: the orchestrator's own try/except already
+guarantees a failed step stops the whole sequence before you'd ever run.
+Reading a previous casier (like this example does with
+sequencer_data["star_spectra_images"]) is for its actual *data*, not to
+check that the step that wrote it "succeeded" — if that data genuinely
+isn't there, raise an explicit error naming what's missing, same as any
+other required input.
 
 No config of your own — all configuration lives in conf/, like the rest of
 the app. No backend axis either: REDUCTION sub-plugins process

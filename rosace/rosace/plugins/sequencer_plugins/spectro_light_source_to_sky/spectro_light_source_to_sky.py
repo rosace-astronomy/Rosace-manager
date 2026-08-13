@@ -27,6 +27,7 @@ class SpectroLightSourceToSkyPlugin(SubPlugin):
 
         await spectroscope.set_light_source(LightSource.SKY)
 
-        obs.sequencer_data["spectro_light_source_to_sky"] = {"light_source": "sky"}
+        # No sequencer_data casier: this step has nothing descriptive to add to the
+        # observation record, only that it ran -- that's the log's job, not the YAML's.
         log.info("[SPECTRO_LIGHT_SOURCE_TO_SKY] Spectroscope reset to SKY")
         return obs

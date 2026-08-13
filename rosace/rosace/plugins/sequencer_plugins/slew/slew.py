@@ -30,6 +30,8 @@ class SlewPlugin(SubPlugin):
         mount = obs.hardware["mount"]
         await mount.slew_to(target.ra, target.dec)
 
-        obs.sequencer_data["slew"] = {"target": target.name}
+        # No sequencer_data casier: the target is already in scheduler_data, and
+        # nothing downstream needs to know specifically which SEQUENCER sub-plugin
+        # pointed the telescope.
         log.info(f"[SLEW] Télescope en position sur {queried_name}")
         return obs

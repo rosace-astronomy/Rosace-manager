@@ -18,15 +18,14 @@ def _make_obs(target=None) -> Observation:
 
 class TestBlankSeqPlugin:
 
-    async def test_sets_blank_target(self):
+    async def test_returns_the_same_observation(self):
         obs = _make_obs(target=Target(name="Vega", ra=279.23, dec=38.78))
         result = await BlankSeqPlugin().execute(obs)
 
         assert result is obs
-        assert obs.sequencer_data["blank_seq"] == {"target": "Vega"}
 
     async def test_handles_missing_target_gracefully(self):
         obs = _make_obs(target=None)
         result = await BlankSeqPlugin().execute(obs)
 
-        assert result.sequencer_data["blank_seq"] == {"target": "inconnue"}
+        assert result is obs

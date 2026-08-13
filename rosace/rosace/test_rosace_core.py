@@ -508,11 +508,19 @@ class TestDatabase:
         await db_insert_observation(obs, ctx.session_id)
 
     async def test_set_yaml_file(self):
+        import aiosqlite
+        from rosace.database import DB_PATH
+
         ctx = self._make_ctx()
         await db_insert_session(ctx)
         obs = self._make_obs(ctx.session_id)
         await db_insert_observation(obs, ctx.session_id)
-        await db_set_yaml_file(obs.id, "/tmp/obs.yaml")
+        await db_set_yaml_file(obs.id, "obs.yaml")
+
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT yaml_file FROM observations WHERE id = ?", (obs.id,)) as cursor:
+                row = await cursor.fetchone()
+        assert row[0] == "obs.yaml"
 
     async def test_stamp_stages(self):
         ctx = self._make_ctx()
@@ -1240,6 +1248,49 @@ class TestSessionRunner:
 
         assert close_called == [True]
         assert main_mod.state.stage == OrchestratorStage.IDLE
+
+    async def test_yaml_file_recorded_in_db_is_basename_not_full_path(self, monkeypatch):
+        """Regression: main.py used to pass create_observation_file()'s full Path
+        return value to db_set_yaml_file() instead of obs.yaml_file (already just
+        the basename) -- silently stored the full filesystem path in rosace.db."""
+        import aiosqlite
+        import rosace.main as main_mod
+        from rosace.database import DB_PATH
+
+        captured: list[Observation] = []
+
+        class FakeInit:
+            async def run(self, ctx):
+                Path("/tmp/fake_session_dir").mkdir(parents=True, exist_ok=True)
+                ctx.session_dir = "/tmp/fake_session_dir"
+                return ctx
+
+        class FakeScheduler:
+            async def run(self, obs):
+                obs.scheduler_data["target"] = Target(name="YamlFileTestStar", ra=0.0, dec=0.0)
+                obs.scheduler_data["queried_name"] = "YamlFileTestStar"
+                obs.scheduler_data["program"] = "test_program"
+                captured.append(obs)
+                main_mod.state.is_running = False
+                return obs
+
+        class FakeClose:
+            async def run(self, ctx): return ctx
+
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.INIT_SESSION, FakeInit())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SCHEDULER, FakeScheduler())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.CLOSE_SESSION, FakeClose())
+
+        main_mod.state.is_running = True
+        await main_mod.session_runner()
+
+        obs = captured[0]
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT yaml_file FROM observations WHERE id = ?", (obs.id,)) as cursor:
+                row = await cursor.fetchone()
+
+        assert row[0] == obs.yaml_file
+        assert "/" not in row[0]
 
     async def test_scheduler_nothing_to_observe_retries_without_error(self, monkeypatch):
         """target=None n'est pas une erreur : pas de db_set_error, juste une nouvelle tentative."""

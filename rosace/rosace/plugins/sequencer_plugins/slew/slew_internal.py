@@ -20,7 +20,6 @@ class SlewPlugin(SubPlugin):
 
     async def execute(self, obs: Observation) -> Observation:
         target = obs.scheduler_data.get("target")
-        target_name = target.name if target else "inconnue"  # persisted data: canonical name
         queried_name = obs.scheduler_data.get("queried_name") or "inconnue"  # logs: name as requested
         ra = target.ra if target else 0.0
         dec = target.dec if target else 0.0
@@ -34,6 +33,8 @@ class SlewPlugin(SubPlugin):
         await asyncio.sleep(slew_duration * 0.1)  # accéléré en simulation
         log.info(f"[SLEW] Simulation — pointage terminé en {slew_duration:.1f}s (accéléré)")
 
-        obs.sequencer_data["slew"] = {"target": target_name}
+        # No sequencer_data casier: the target is already in scheduler_data, and
+        # nothing downstream needs to know specifically which SEQUENCER sub-plugin
+        # pointed the telescope.
         log.info(f"[SLEW] Télescope en position sur {queried_name}")
         return obs

@@ -19,9 +19,9 @@ class FocusPlugin(SubPlugin):
     """Mise au point automatique du spectro/télescope — simulation interne."""
 
     async def execute(self, obs: Observation) -> Observation:
-        if "slew" not in obs.sequencer_data:
-            raise RuntimeError("FOCUS : le télescope n'est pas encore pointé (sequencer_data['slew'] manquant)")
-
+        # No precondition check on a previous step's casier: if pointing had failed,
+        # the orchestrator's own try/except would already have stopped the sequence
+        # before ever reaching this sub-plugin -- not this sub-plugin's job to re-verify.
         method = "v_curve"
         step_size = 50  # µm
         n_steps = 7

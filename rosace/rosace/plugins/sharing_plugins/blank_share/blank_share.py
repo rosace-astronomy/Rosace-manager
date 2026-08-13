@@ -11,10 +11,11 @@ key in the active program YAML (not a list, unlike `sequencer:`/`reduction:`).
 Its `execute(self, obs) -> Observation` reads `obs.reduction_data["extract"]
 ["reduced_files"]` (REDUCTION's own output — always present by the time
 SHARING runs) and does whatever this program needs to distribute results
-(email, FTP, publish to an API...). It writes its own nested key into
-`obs.sharing_data`, keyed by its own declared name — presence of the key
-means it completed, no separate `"done"` flag needed, same convention as
-every other sub-plugin family (see CLAUDE.md).
+(email, FTP, publish to an API...). It *may* write its own nested key into
+`obs.sharing_data`, keyed by its own declared name — but only if it has
+something genuinely descriptive to add to the observation record, not by
+default; whether it "succeeded" is the log's concern, not the YAML's (see
+CLAUDE.md's Plugin system section).
 
 If a program needs to notify several destinations, that happens *inside*
 this one sub-plugin's own logic (e.g. loop over a list of recipients) — the

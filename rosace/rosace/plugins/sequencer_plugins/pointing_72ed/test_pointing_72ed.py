@@ -196,7 +196,5 @@ class TestPointing72edPlugin:
 
         assert result is obs
         data = obs.sequencer_data["pointing_72ed"]
-        assert data["target"] == TARGET_NAME
-        assert data["guiding_started"] is True
         assert "initial_guide_image" in data
         assert "corrected_guide_image" in data

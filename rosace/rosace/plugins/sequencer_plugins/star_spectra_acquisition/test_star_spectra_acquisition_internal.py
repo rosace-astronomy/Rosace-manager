@@ -15,13 +15,11 @@ from rosace.plugins.sequencer_plugins.star_spectra_acquisition.star_spectra_acqu
 )
 
 
-def _make_obs(obs_dir=None, slew_done=True, exposure=None, target=None) -> Observation:
+def _make_obs(obs_dir=None, exposure=None, target=None) -> Observation:
     obs = Observation(
         id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234",
         obs_dir=str(obs_dir) if obs_dir else None,
     )
-    if slew_done:
-        obs.sequencer_data["slew"] = {"target": "Vega"}
     if exposure is not None:
         obs.scheduler_data["exposure"] = exposure
     if target is not None:
@@ -39,11 +37,6 @@ def fast_sleep(monkeypatch):
 
 class TestStarSpectraAcquisitionPlugin:
 
-    async def test_raises_if_slew_not_done(self, tmp_path):
-        obs = _make_obs(obs_dir=tmp_path, slew_done=False, exposure=ExposureConfig(exposure_time=1.0))
-        with pytest.raises(RuntimeError, match="slew"):
-            await StarSpectraAcquisitionPlugin().execute(obs)
-
     async def test_raises_if_obs_dir_missing(self):
         obs = _make_obs(obs_dir=None, exposure=ExposureConfig(exposure_time=1.0))
         with pytest.raises(RuntimeError, match="obs_dir"):
@@ -60,9 +53,7 @@ class TestStarSpectraAcquisitionPlugin:
 
         result = await StarSpectraAcquisitionPlugin().execute(obs)
 
-        raw_files = result.sequencer_data["star_spectra_acquisition"]["raw_files"]
+        raw_files = result.sequencer_data["star_spectra_images"]
         assert len(raw_files) == 3
-        assert result.sequencer_data["star_spectra_acquisition"]["count"] == 3
-        assert result.sequencer_data["star_spectra_images"] == raw_files
         for f in raw_files:
             assert Path(f).is_file()  # really created on disk (simulate mode)

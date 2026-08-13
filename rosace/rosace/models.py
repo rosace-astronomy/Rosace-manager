@@ -85,9 +85,10 @@ class Observation(BaseModel):
     program_steps: dict[str, Any] = {}
 
     # Un casier par plugin de stage connu — contenu libre, géré par le plugin
-    # et ses sous-plugins (ex. sequencer_data["star_spectra_acquisition"]["raw_files"],
-    # posé par StarSpectraAcquisitionPlugin — la présence de la clé d'un sous-plugin
-    # signifie qu'il a terminé avec succès, pas besoin d'un flag "done" séparé).
+    # et ses sous-plugins (ex. reduction_data["bias"]["corrected_files"]). Un
+    # sous-plugin n'écrit sa propre clé que s'il a quelque chose de descriptif
+    # à y ajouter — le suivi du déroulement (qui a tourné, dans quel ordre)
+    # reste le rôle du fichier de log, pas de ce dossier (voir CLAUDE.md).
     scheduler_data: dict[str, Any] = {}
     sequencer_data: dict[str, Any] = {}
     reduction_data: dict[str, Any] = {}

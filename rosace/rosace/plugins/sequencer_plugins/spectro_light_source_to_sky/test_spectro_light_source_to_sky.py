@@ -28,10 +28,9 @@ class TestSpectroLightSourceToSkyPlugin:
 
         obs.hardware["spectroscope"].set_light_source.assert_awaited_once_with(LightSource.SKY)
 
-    async def test_sets_sequencer_data(self):
+    async def test_returns_the_same_observation(self):
         obs = _make_obs()
 
         result = await SpectroLightSourceToSkyPlugin().execute(obs)
 
         assert result is obs
-        assert obs.sequencer_data["spectro_light_source_to_sky"] == {"light_source": "sky"}

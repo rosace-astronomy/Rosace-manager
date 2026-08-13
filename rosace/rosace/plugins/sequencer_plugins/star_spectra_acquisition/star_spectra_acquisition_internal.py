@@ -6,11 +6,11 @@ the spectroscope to SKY mode is logged but not hardware-simulated -- the
 internal backend never connects any hardware, obs.hardware stays empty in
 this mode).
 
-In addition to its own casier (obs.sequencer_data["star_spectra_acquisition"]),
-also appends every produced filename to the shared
-obs.sequencer_data["star_spectra_images"] list -- see star_spectra_acquisition.py
-(the indi backend) for why: REDUCTION reads this fixed, purpose-named key,
-never the name of whichever SEQUENCER sub-plugin actually produced the files.
+No casier of its own: every produced filename is appended straight to the
+shared obs.sequencer_data["star_spectra_images"] list -- see
+star_spectra_acquisition.py (the indi backend) for why: REDUCTION reads
+this fixed, purpose-named key, never the name of whichever SEQUENCER
+sub-plugin actually produced the files.
 """
 
 from __future__ import annotations
@@ -29,11 +29,9 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
     """Runs the science sub-exposure series and produces the raw FITS files -- internal simulation."""
 
     async def execute(self, obs: Observation) -> Observation:
-        if "slew" not in obs.sequencer_data:
-            raise RuntimeError(
-                "STAR_SPECTRA_ACQUISITION: telescope not pointed (sequencer_data['slew'] missing)"
-            )
-
+        # No precondition check on a previous step's casier: if pointing had failed,
+        # the orchestrator's own try/except would already have stopped the sequence
+        # before ever reaching this sub-plugin -- not this sub-plugin's job to re-verify.
         if not obs.obs_dir:
             raise RuntimeError("STAR_SPECTRA_ACQUISITION: observation directory (obs_dir) not set")
 
@@ -70,7 +68,6 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
 
             raw_files.append(filename)
 
-        obs.sequencer_data["star_spectra_acquisition"] = {"raw_files": raw_files, "count": num_exposures}
         obs.sequencer_data.setdefault("star_spectra_images", []).extend(raw_files)
 
         log.info(

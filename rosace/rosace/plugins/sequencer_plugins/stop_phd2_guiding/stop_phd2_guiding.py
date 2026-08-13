@@ -25,6 +25,7 @@ class StopPhd2GuidingPlugin(SubPlugin):
 
         await phd2.stop_capture()
 
-        obs.sequencer_data["stop_phd2_guiding"] = {"guiding_stopped": True}
+        # No sequencer_data casier: this step has nothing descriptive to add to the
+        # observation record, only that it ran -- that's the log's job, not the YAML's.
         log.info("[STOP_PHD2_GUIDING] PHD2 guiding stopped")
         return obs

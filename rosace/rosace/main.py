@@ -336,8 +336,8 @@ async def _session_runner_body():
 
                 if stage == OrchestratorStage.SCHEDULER:
                     await db_insert_observation(obs, session.session_id)
-                    yaml_path = create_observation_file(obs, session_dir)
-                    await db_set_yaml_file(obs.id, str(yaml_path))
+                    create_observation_file(obs, session_dir)
+                    await db_set_yaml_file(obs.id, obs.yaml_file)
                 else:
                     await db_stamp_stage(obs.id, stage)
 

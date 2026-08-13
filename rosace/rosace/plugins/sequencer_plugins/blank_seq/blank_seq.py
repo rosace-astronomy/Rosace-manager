@@ -13,10 +13,25 @@ from it: this is an ordinary implementation choice, not a dependency the
 framework tracks or enforces. If a key you need isn't there, raise an
 explicit error naming it — never guess or fall back silently.
 
-Write your own result into obs.sequencer_data under your own declared name
-— presence of the key means you completed, no separate "done" flag needed:
+You *may* write a result into obs.sequencer_data under your own declared
+name:
 
     obs.sequencer_data["blank_seq"] = {...}
+
+...but only if you have something genuinely descriptive to add to the
+observation record (data about what the observation contains -- images,
+positions, computed values) -- not by default. Don't repeat data that's
+already elsewhere in obs (e.g. the target's name, already in
+scheduler_data) just to "complete" your casier. And whether a previous
+step ran/succeeded is not your concern to verify: the orchestrator's own
+try/except already guarantees a failed step stops the whole sequence
+before you'd ever run -- checking a previous casier's presence "just in
+case" is dead code that can never actually catch anything. If you
+genuinely need a previous step's *data* to do your own job, read it
+directly and raise an explicit error naming what's missing if it isn't
+there -- that's a real input dependency, not a completion check. This
+example below has nothing of its own to report, so it writes no casier at
+all.
 
 No config of your own — all configuration lives in conf/, like the rest of
 the app.
@@ -66,11 +81,9 @@ class BlankSeqPlugin(SubPlugin):
     """Minimal example SEQUENCER sub-plugin — see module docstring for the contract."""
 
     async def execute(self, obs: Observation) -> Observation:
-        target = obs.scheduler_data.get("target")
-        target_name = target.name if target else "inconnue"  # persisted data: canonical name
-        queried_name = obs.scheduler_data.get("queried_name") or "inconnue"  # logs: name as requested
+        queried_name = obs.scheduler_data.get("queried_name") or "inconnue"
 
         log.info(f"[BLANK_SEQ] Exemple de sous-plugin SEQUENCER pour {queried_name}")
 
-        obs.sequencer_data["blank_seq"] = {"target": target_name}
+        # No casier: this example has nothing descriptive of its own to report.
         return obs

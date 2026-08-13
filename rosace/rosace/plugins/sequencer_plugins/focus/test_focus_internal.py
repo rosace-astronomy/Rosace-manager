@@ -12,10 +12,8 @@ from rosace.models import Observation
 from rosace.plugins.sequencer_plugins.focus.focus_internal import FocusPlugin
 
 
-def _make_obs(slew_done=True) -> Observation:
+def _make_obs() -> Observation:
     obs = Observation(id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234")
-    if slew_done:
-        obs.sequencer_data["slew"] = {"target": "Vega"}
     return obs
 
 
@@ -27,11 +25,6 @@ def fast_sleep(monkeypatch):
 
 
 class TestFocusPlugin:
-
-    async def test_raises_if_slew_not_done(self):
-        obs = _make_obs(slew_done=False)
-        with pytest.raises(RuntimeError, match="slew"):
-            await FocusPlugin().execute(obs)
 
     async def test_sets_focus_with_simulated_values(self):
         obs = _make_obs()

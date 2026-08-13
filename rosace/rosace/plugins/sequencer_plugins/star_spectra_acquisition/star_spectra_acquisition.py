@@ -13,13 +13,13 @@ targets.db). Checks obs.stop_check() between two sub-exposures (not during
 one already running on the camera -- no real hardware abort here), same as
 the old expose.py did.
 
-In addition to its own casier (obs.sequencer_data["star_spectra_acquisition"]),
-also appends every produced filename to the shared
-obs.sequencer_data["star_spectra_images"] list -- a purpose-named key, not
-this sub-plugin's own name, so that REDUCTION (and any other downstream
-consumer) never needs to know which specific SEQUENCER sub-plugin produced
-the science raw files, only that they land under this fixed key. Any future
-alternative acquisition sub-plugin is expected to append to the same key.
+No casier of its own: every produced filename is appended straight to the
+shared obs.sequencer_data["star_spectra_images"] list -- a purpose-named
+key, not this sub-plugin's own name, so that REDUCTION (and any other
+downstream consumer) never needs to know which specific SEQUENCER
+sub-plugin produced the science raw files, only that they land under this
+fixed key. Any future alternative acquisition sub-plugin is expected to
+append to the same key.
 """
 
 from __future__ import annotations
@@ -87,7 +87,9 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
                 )
                 break
 
-        obs.sequencer_data["star_spectra_acquisition"] = {"raw_files": raw_files, "count": len(raw_files)}
+        # No sequencer_data["star_spectra_acquisition"] casier: everything descriptive this
+        # step produces is already the shared star_spectra_images list below -- REDUCTION
+        # (and anyone else) reads that fixed key, never this sub-plugin's own name.
         obs.sequencer_data.setdefault("star_spectra_images", []).extend(raw_files)
         log.info(f"[STAR_SPECTRA_ACQUISITION] Acquisition complete -- {raw_files}")
         return obs
