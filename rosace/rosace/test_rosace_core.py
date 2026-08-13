@@ -367,8 +367,22 @@ class TestObservation:
         obs.hardware_config["mount"] = {"slit_x": 0}
         assert "hardware_config" not in obs.model_dump(mode="json")
 
-    def test_suggested_filename_uses_target_name(self):
+    def test_suggested_filename_prefers_queried_name_over_canonical(self):
         obs = self._make()
+        obs.scheduler_data["queried_name"] = "Altair"  # _make()'s target is Target(name="Altair", ...)
+        assert obs.suggested_filename.endswith("_Altair.yaml")
+
+    def test_suggested_filename_uses_queried_name_not_canonical_when_they_differ(self):
+        obs = Observation(id="x", created_at=datetime.now(timezone.utc), session_id="sess1234")
+        obs.scheduler_data["target"] = Target(name="* bet Lyr", ra=1.0, dec=1.0)
+        obs.scheduler_data["queried_name"] = "Sheliak"
+        assert obs.suggested_filename.endswith("_Sheliak.yaml")
+        assert "bet_Lyr" not in obs.suggested_filename
+
+    def test_suggested_filename_falls_back_to_target_name_when_no_queried_name(self):
+        """Should not happen once SCHEDULER has run (both are set together) -- still
+        a defensive fallback, same as falling back to "target" when no target at all."""
+        obs = self._make()  # sets target, not queried_name
         assert obs.suggested_filename.endswith("_Altair.yaml")
 
     def test_suggested_filename_falls_back_when_no_target(self):
@@ -378,6 +392,7 @@ class TestObservation:
     def test_suggested_filename_sanitizes_special_characters(self):
         obs = Observation(id="x", created_at=datetime.now(timezone.utc), session_id="sess1234")
         obs.scheduler_data["target"] = Target(name="V/380 Cyg", ra=1.0, dec=1.0)
+        obs.scheduler_data["queried_name"] = "V/380 Cyg"
         assert "/" not in obs.suggested_filename
         assert " " not in obs.suggested_filename
 

@@ -63,14 +63,14 @@ class Pointing72edPlugin(SubPlugin):
         # Step 0: stop any leftover PHD2 guiding/looping from the previous observation
         # (nothing else stops it explicitly) -- otherwise its own corrections would
         # fight the Phase 1 slews below.
-        log.info(f"[POINTING_72ED] Stopping any leftover PHD2 capture before pointing to {target.name}")
+        log.info(f"[POINTING_72ED] Stopping any leftover PHD2 capture before pointing to {queried_name}")
         await phd2.stop_capture()
 
         # ── Phase 1: initial pointing + mount-precision correction ──
 
         # Step 1: two-step slew toward the target
         target_coord = SkyCoord(ra=target.ra, dec=target.dec, unit="deg", frame="icrs")
-        log.info(f"[POINTING_72ED] Initial pointing toward {target.name}")
+        log.info(f"[POINTING_72ED] Initial pointing toward {queried_name}")
         await _slew_with_backlash_approach(mount, target_coord, backlash_offset_deg)
 
         # Step 2: guide image, taken directly (not through PHD2)
@@ -95,7 +95,7 @@ class Pointing72edPlugin(SubPlugin):
         corrected_coord = target_coord.spherical_offsets_by(-d_lon, -d_lat)
 
         # Step 7: two-step slew toward the corrected target
-        log.info(f"[POINTING_72ED] Corrected re-pointing toward {target.name}")
+        log.info(f"[POINTING_72ED] Corrected re-pointing toward {queried_name}")
         await _slew_with_backlash_approach(mount, corrected_coord, backlash_offset_deg)
 
         # ── Phase 2: PHD2-guiding-precision refinement ──
@@ -107,7 +107,7 @@ class Pointing72edPlugin(SubPlugin):
         )
 
         # Step 9: start PHD2 guiding (auto-selects a guide star), waits for settle
-        log.info(f"[POINTING_72ED] Starting PHD2 guiding on {target.name}")
+        log.info(f"[POINTING_72ED] Starting PHD2 guiding on {queried_name}")
         await phd2.start_guiding()
 
         # Step 10: lock position PHD2 chose (its own guide star, generally not the target itself)
@@ -132,7 +132,7 @@ class Pointing72edPlugin(SubPlugin):
         await phd2.set_lock_position(lock_x - dx, lock_y - dy, exact=True)
 
         # Step 14: wait for the new settle around the corrected lock position
-        log.info(f"[POINTING_72ED] Refining PHD2 lock position on {target.name}")
+        log.info(f"[POINTING_72ED] Refining PHD2 lock position on {queried_name}")
         await phd2.start_guiding()
 
         # Step 15: done -- star in the slit, guiding active
@@ -142,5 +142,5 @@ class Pointing72edPlugin(SubPlugin):
             "corrected_guide_image": str(corrected_guide_image),
             "guiding_started": True,
         }
-        log.info(f"[POINTING_72ED] Star in the slit for {target.name}, guiding active")
+        log.info(f"[POINTING_72ED] Star in the slit for {queried_name}, guiding active")
         return obs

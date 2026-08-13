@@ -57,9 +57,10 @@ class BlankSeqPlugin(SubPlugin):
 
     async def execute(self, obs: Observation) -> Observation:
         target = obs.scheduler_data.get("target")
-        target_name = target.name if target else "inconnue"
+        target_name = target.name if target else "inconnue"  # persisted data: canonical name
+        queried_name = obs.scheduler_data.get("queried_name") or "inconnue"  # logs: name as requested
 
-        log.info(f"[BLANK_SEQ] Exemple de sous-plugin SEQUENCER pour {target_name}")
+        log.info(f"[BLANK_SEQ] Exemple de sous-plugin SEQUENCER pour {queried_name}")
 
         obs.sequencer_data["blank_seq"] = {"target": target_name}
         return obs

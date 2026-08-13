@@ -25,10 +25,11 @@ class SlewPlugin(SubPlugin):
         if not target:
             raise RuntimeError("SLEW : target manquant dans scheduler_data")
 
-        log.info(f"[SLEW] Pointage vers {target.name}")
+        queried_name = obs.scheduler_data.get("queried_name")
+        log.info(f"[SLEW] Pointage vers {queried_name}")
         mount = obs.hardware["mount"]
         await mount.slew_to(target.ra, target.dec)
 
         obs.sequencer_data["slew"] = {"target": target.name}
-        log.info(f"[SLEW] Télescope en position sur {target.name}")
+        log.info(f"[SLEW] Télescope en position sur {queried_name}")
         return obs

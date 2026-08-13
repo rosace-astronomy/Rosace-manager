@@ -43,7 +43,7 @@ class SequencerPlugin:
         seq_pipeline, _ = load_pipelines(program)
         steps = [s.__class__.__name__ for s in seq_pipeline]
         log.info(
-            f"[SEQUENCER] Début séquence '{program}' pour {obs.scheduler_data['target'].name} "
+            f"[SEQUENCER] Début séquence '{program}' pour {obs.scheduler_data.get('queried_name')} "
             f"— étapes : {steps}"
         )
 

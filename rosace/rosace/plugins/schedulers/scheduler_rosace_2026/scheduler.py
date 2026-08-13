@@ -139,7 +139,7 @@ class SchedulerPlugin:
             matching = next((s for s in program_stars if s.id == star.id), None)
             if matching is None:
                 log.warning(
-                    f"[SCHEDULER] Étoile '{star.name}' non liée au programme "
+                    f"[SCHEDULER] Étoile '{row['star']}' non liée au programme "
                     f"'{program.name}', ligne ignorée"
                 )
                 continue
@@ -174,7 +174,7 @@ class SchedulerPlugin:
             altitude = _target_altitude_deg(star.ra, star.dec)
             if altitude < MIN_TARGET_ALTITUDE_DEG:
                 log.info(
-                    f"[SCHEDULER] {star.name} sous la hauteur minimale "
+                    f"[SCHEDULER] {item['queried_name']} sous la hauteur minimale "
                     f"({altitude:.1f}° < {MIN_TARGET_ALTITUDE_DEG}°), ligne ignorée"
                 )
                 continue
@@ -187,8 +187,8 @@ class SchedulerPlugin:
             obs.scheduler_data["priority"] = item["priority"]
             obs.scheduler_data["exposure"] = ExposureConfig(exposure_time=item["exposure_time"])
             log.info(
-                f"[SCHEDULER] Cible sélectionnée : {star.name} "
-                f"(demandée sous '{item['queried_name']}', priorité {item['priority']}) "
+                f"[SCHEDULER] Cible sélectionnée : {item['queried_name']} "
+                f"({star.name}, priorité {item['priority']}) "
                 f"— programme : {item['program'].name}"
             )
             return obs

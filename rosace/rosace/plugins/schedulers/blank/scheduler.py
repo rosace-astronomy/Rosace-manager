@@ -91,7 +91,7 @@ class BlankPlugin:
             obs.scheduler_data["program"] = _PROGRAM
             obs.scheduler_data["priority"] = priority
             obs.scheduler_data["exposure"] = ExposureConfig(exposure_time=None)
-            log.info(f"[SCHEDULER:blank] Target selected: {target.name}")
+            log.info(f"[SCHEDULER:blank] Target selected: {obs.scheduler_data['queried_name']}")
             return obs
 
         log.info("[SCHEDULER:blank] No target left (Vega/Arcturus/Castor already observed tonight)")

@@ -37,7 +37,6 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
         if not obs.obs_dir:
             raise RuntimeError("STAR_SPECTRA_ACQUISITION: observation directory (obs_dir) not set")
 
-        target_obj = obs.scheduler_data.get("target")
         exposure = obs.scheduler_data.get("exposure")
         if not exposure:
             raise RuntimeError("STAR_SPECTRA_ACQUISITION: exposure missing from scheduler_data")
@@ -52,11 +51,11 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
         fits_prefix = "spectrum"
         simulate_speed = 0.05
 
-        target = target_obj.name if target_obj else "target"
+        queried_name = obs.scheduler_data.get("queried_name") or "target"
         raw_files: list[str] = []
 
         log.info(
-            f"[STAR_SPECTRA_ACQUISITION] Target={target}, t={exposure_time}s x {num_exposures}, "
+            f"[STAR_SPECTRA_ACQUISITION] Target={queried_name}, t={exposure_time}s x {num_exposures}, "
             f"binning={binning}x, grating={grating}"
         )
 

@@ -141,16 +141,20 @@ class Observation(BaseModel):
     def suggested_filename(self) -> str:
         """
         Nom de fichier suggéré pour le YAML de cette observation :
-        <datetime_iso>_<target_name>.yaml (repli sur "target" si la cible
-        n'est pas encore connue, ex. avant que SCHEDULER n'ait tourné).
+        <datetime_iso>_<name>.yaml (repli sur "target" si la cible n'est pas
+        encore connue, ex. avant que SCHEDULER n'ait tourné). Utilise le nom
+        interrogé (queried_name) plutôt que le nom canonique Simbad, cohérent
+        avec le reste de l'app — repli sur le nom canonique si queried_name
+        n'est pas posé (ne devrait pas arriver une fois SCHEDULER passé, les
+        deux sont toujours posés ensemble).
         Seule concession business du modèle : lire son propre
         scheduler_data pour se donner un nom lisible.
         """
         target = self.scheduler_data.get("target")
-        target_name = target.name if target else "target"
+        name = self.scheduler_data.get("queried_name") or (target.name if target else None) or "target"
         iso_str = self.created_at.strftime("%Y%m%dT%H%M%S")
-        safe_target = target_name.replace(" ", "_").replace("/", "-")
-        return f"{iso_str}_{safe_target}.yaml"
+        safe_name = name.replace(" ", "_").replace("/", "-")
+        return f"{iso_str}_{safe_name}.yaml"
 
 
 # ─────────────────────────────────────────────────────────────
