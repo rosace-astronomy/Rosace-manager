@@ -86,17 +86,14 @@ INDI_drivers:
 
     spectroscope:
         role: spectroscope
-        module: spectroscope_placeholder
+        module: spectro_Alpy600
         module_dir: rosace.hardware_indi.devices
-        class_name: SpectroscopePlaceholder
-        # TODO: provisional placeholder, not the real Alpy module driven by
-        # the Stellarmate's two On/Off switches -- to be replaced once that
-        # wiring is done (see hardware/spectroscope.py).
-        # indi_client/indi_name below are unused by SpectroscopePlaceholder --
-        # present only so every device entry satisfies the same
-        # required-fields check, with no per-role exception in
-        # hardware_connectivity.py.
-        indi_name: Spectroscope Placeholder
+        class_name: IndiSpectroAlpy600
+        # Alpy600 light source, driven via the Stellarmate SM Pro's two
+        # relay power channels (POWER_CHANNELS.POWER_CHANNEL_3/4) -- see
+        # hardware_indi/devices/spectro_Alpy600.py for the SKY/DARK/FLAT/
+        # CALIB mapping, fully confirmed on the real instrument.
+        indi_name: SM Pro
         indi_client:
             indi_host: 192.168.144.48
             indi_port: 7624
