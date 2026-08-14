@@ -6,6 +6,13 @@ the spectroscope to SKY mode is logged but not hardware-simulated -- the
 internal backend never connects any hardware, obs.hardware stays empty in
 this mode).
 
+Exposure-time/sub-exposure-count policy shared with the indi backend
+(compute_exposure_time_and_count, acquisition_helpers.py) -- starts from
+either the target's magnitude or an explicit exposure time
+(program_stars.exposure_time in targets.db), same as star_spectra_acquisition.py.
+exposure.num_exposures is not honored here either (same deferred limitation
+as the indi backend, see its own docstring).
+
 No casier of its own: every produced filename is appended straight to the
 shared obs.sequencer_data["star_spectra_images"] list -- see
 star_spectra_acquisition.py (the indi backend) for why: REDUCTION reads
@@ -19,8 +26,10 @@ import asyncio
 import logging
 from pathlib import Path
 
+from ....config import EXPOSURE_TIME_MAG0_SECONDS, MAX_EXPOSURE_TIME_SECONDS
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
+from ..acquisition_helpers import compute_exposure_time_and_count
 
 log = logging.getLogger("spectro.subplugin.star_spectra_acquisition")
 
@@ -39,8 +48,22 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
         if not exposure:
             raise RuntimeError("STAR_SPECTRA_ACQUISITION: exposure missing from scheduler_data")
 
-        exposure_time = exposure.exposure_time
-        num_exposures = exposure.num_exposures
+        if exposure.exposure_time is not None:
+            exposure_time, num_exposures = compute_exposure_time_and_count(
+                exposure_time=exposure.exposure_time, max_exposure_time=MAX_EXPOSURE_TIME_SECONDS
+            )
+        else:
+            target = obs.scheduler_data.get("target")
+            if not target or target.magnitude_v is None:
+                raise RuntimeError(
+                    "STAR_SPECTRA_ACQUISITION: exposure_time not set and magnitude missing "
+                    "(scheduler_data['target'].magnitude_v) -- cannot compute it"
+                )
+            exposure_time, num_exposures = compute_exposure_time_and_count(
+                magnitude=target.magnitude_v,
+                exposure_time_mag0=EXPOSURE_TIME_MAG0_SECONDS,
+                max_exposure_time=MAX_EXPOSURE_TIME_SECONDS,
+            )
         binning = exposure.binning
         grating = exposure.grating
 

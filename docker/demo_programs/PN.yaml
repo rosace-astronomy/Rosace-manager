@@ -1,0 +1,22 @@
+# ── Demo-only program: PN ────────────────────────────────────────────────
+# seed_demo_data.py seeds a "PN" targets.db program (for a realistic
+# catalogue), but no programs/PN.yaml exists in the real app — pipeline_loader
+# resolves a program name directly to a program YAML of the same name, so one
+# must exist. This file is copied into the image at build time (see
+# Dockerfile) — same content as demo.yaml, backend-agnostic.
+
+program: PN
+description: "Nébuleuses planétaires (démo, sans matériel réel)"
+
+sequencer:
+  - slew
+  - focus
+  - star_spectra_acquisition
+
+reduction:
+  - bias
+  - dark
+  - flat
+  - extract
+
+sharing: blank_share

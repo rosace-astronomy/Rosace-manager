@@ -53,6 +53,16 @@ COPY --from=gui-builder /gui/bin /app/rosace/rosace/gui/bin
 COPY docker/config.demo.yaml docker/seed_demo_data.py docker/entrypoint.sh /app/docker/
 RUN chmod +x /app/docker/entrypoint.sh
 
+# seed_demo_data.py seeds targets.db programs named "Be_stars"/"PN" (a
+# realistic catalogue) — pipeline_loader.py resolves a program name directly
+# to a programs/<name>.yaml file, which must be backend-agnostic since this
+# image runs sequencer_backend=internal (no real hardware). The real
+# programs/Be_stars.yaml drives the actual 72ED pipeline (pointing_72ed) and
+# is unusable here; programs/PN.yaml doesn't exist at all in the real app.
+# These demo-only overrides (same steps as demo.yaml) replace/add them in the
+# image only — the real files on disk are untouched.
+COPY docker/demo_programs/Be_stars.yaml docker/demo_programs/PN.yaml /app/rosace/rosace/programs/
+
 ENV ROSACE_CONFIG=/app/docker/config.demo.yaml
 ENV PYTHONUNBUFFERED=1
 

@@ -1,0 +1,23 @@
+# ── Demo-only override of programs/Be_stars.yaml ────────────────────────────
+# The real Be_stars.yaml (rosace/programs/) drives the actual 72ED pipeline
+# (pointing_72ed, real hardware) — unusable with this image's
+# sequencer_backend=internal. seed_demo_data.py seeds a "Be_stars" targets.db
+# program (for a realistic catalogue), so a program YAML of that exact name
+# must exist and must be backend-agnostic. This file is copied over the real
+# one at image build time (see Dockerfile) — same content as demo.yaml.
+
+program: Be_stars
+description: "Suivi spectral d'étoiles Be (démo, sans matériel réel)"
+
+sequencer:
+  - slew
+  - focus
+  - star_spectra_acquisition
+
+reduction:
+  - bias
+  - dark
+  - flat
+  - extract
+
+sharing: blank_share

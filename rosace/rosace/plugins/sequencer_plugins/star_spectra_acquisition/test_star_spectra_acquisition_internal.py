@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from rosace.models import Observation, Target, ExposureConfig
+from rosace.plugins.sequencer_plugins.star_spectra_acquisition import star_spectra_acquisition_internal as ssa_mod
 from rosace.plugins.sequencer_plugins.star_spectra_acquisition.star_spectra_acquisition_internal import (
     StarSpectraAcquisitionPlugin,
 )
@@ -47,14 +48,69 @@ class TestStarSpectraAcquisitionPlugin:
         with pytest.raises(RuntimeError, match="exposure"):
             await StarSpectraAcquisitionPlugin().execute(obs)
 
-    async def test_produces_expected_number_of_files(self, tmp_path):
+    async def test_produces_one_file_for_a_short_explicit_exposure_time(self, tmp_path):
+        # exposure.num_exposures is not honored (same deferred limitation as the indi
+        # backend) -- count comes from compute_exposure_time_and_count instead.
         exposure = ExposureConfig(exposure_time=1.0, num_exposures=3)
         obs = _make_obs(obs_dir=tmp_path, exposure=exposure, target=Target(name="Vega", ra=1.0, dec=1.0))
 
         result = await StarSpectraAcquisitionPlugin().execute(obs)
 
         raw_files = result.sequencer_data["star_spectra_images"]
-        assert len(raw_files) == 3
+        assert len(raw_files) == 1
         for f in raw_files:
             assert "/" not in f  # basename only, not a full path
             assert (Path(tmp_path) / f).is_file()  # really created on disk (simulate mode)
+
+    async def test_raises_if_exposure_time_none_and_no_magnitude(self, tmp_path):
+        obs = _make_obs(obs_dir=tmp_path, exposure=ExposureConfig(exposure_time=None), target=None)
+        with pytest.raises(RuntimeError, match="magnitude"):
+            await StarSpectraAcquisitionPlugin().execute(obs)
+
+    async def test_raises_if_exposure_time_none_and_target_magnitude_none(self, tmp_path):
+        target = Target(name="NoMagStar", ra=1.0, dec=1.0, magnitude_v=None)
+        obs = _make_obs(obs_dir=tmp_path, exposure=ExposureConfig(exposure_time=None), target=target)
+        with pytest.raises(RuntimeError, match="magnitude"):
+            await StarSpectraAcquisitionPlugin().execute(obs)
+
+    async def test_computes_exposure_time_from_magnitude_when_not_set(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ssa_mod, "EXPOSURE_TIME_MAG0_SECONDS", 1.0)
+        monkeypatch.setattr(ssa_mod, "MAX_EXPOSURE_TIME_SECONDS", 300)
+        target = Target(name="MagStar", ra=1.0, dec=1.0, magnitude_v=2.5)  # -> 10s, count=1
+        obs = _make_obs(obs_dir=tmp_path, exposure=ExposureConfig(exposure_time=None), target=target)
+
+        result = await StarSpectraAcquisitionPlugin().execute(obs)
+
+        assert len(result.sequencer_data["star_spectra_images"]) == 1
+
+    async def test_splits_into_several_exposures_when_computed_time_exceeds_max(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ssa_mod, "EXPOSURE_TIME_MAG0_SECONDS", 1.0)
+        monkeypatch.setattr(ssa_mod, "MAX_EXPOSURE_TIME_SECONDS", 300)
+        target = Target(name="FaintStar", ra=1.0, dec=1.0, magnitude_v=7.5)  # raw 1000s -> 4x300s
+        obs = _make_obs(obs_dir=tmp_path, exposure=ExposureConfig(exposure_time=None), target=target)
+
+        result = await StarSpectraAcquisitionPlugin().execute(obs)
+
+        assert len(result.sequencer_data["star_spectra_images"]) == 4
+
+    async def test_splits_explicit_exposure_time_when_it_exceeds_max(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ssa_mod, "MAX_EXPOSURE_TIME_SECONDS", 300)
+        exposure = ExposureConfig(exposure_time=780)  # -> ceil(780/300) = 3x300s
+        obs = _make_obs(obs_dir=tmp_path, exposure=exposure, target=Target(name="Vega", ra=1.0, dec=1.0))
+
+        result = await StarSpectraAcquisitionPlugin().execute(obs)
+
+        assert len(result.sequencer_data["star_spectra_images"]) == 3
+
+    async def test_appends_to_star_spectra_images_instead_of_overwriting(self, tmp_path):
+        """star_spectra_images is a shared key -- a value already present (e.g.
+        from an earlier acquisition sub-plugin in the same program) must be
+        kept, not clobbered."""
+        exposure = ExposureConfig(exposure_time=1.0)
+        obs = _make_obs(obs_dir=tmp_path, exposure=exposure, target=Target(name="Vega", ra=1.0, dec=1.0))
+        obs.sequencer_data["star_spectra_images"] = ["earlier_image.fits"]
+
+        result = await StarSpectraAcquisitionPlugin().execute(obs)
+
+        assert result.sequencer_data["star_spectra_images"][0] == "earlier_image.fits"
+        assert len(result.sequencer_data["star_spectra_images"]) == 2
