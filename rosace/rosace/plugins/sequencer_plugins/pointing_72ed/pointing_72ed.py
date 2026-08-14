@@ -77,6 +77,7 @@ class Pointing72edPlugin(SubPlugin):
         initial_guide_image = await capture_guide_image(
             guiding_camera, exposure_seconds, obs.obs_dir,
             ra_deg=target_coord.ra.deg, dec_deg=target_coord.dec.deg, target_name=queried_name,
+            image_to_gui=True,
         )
         log.info(f"[POINTING_72ED] Guiding image acquisition: {initial_guide_image.name}")
 
@@ -105,6 +106,7 @@ class Pointing72edPlugin(SubPlugin):
         corrected_guide_image = await capture_guide_image(
             guiding_camera, exposure_seconds, obs.obs_dir,
             ra_deg=corrected_coord.ra.deg, dec_deg=corrected_coord.dec.deg, target_name=queried_name,
+            image_to_gui=True,
         )
         log.info(f"[POINTING_72ED] Guiding image acquisition: {corrected_guide_image.name}")
 

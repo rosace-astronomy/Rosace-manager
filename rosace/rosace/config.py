@@ -52,6 +52,10 @@ DATABASES_DIR = BASE_DATA_DIR / _cfg["databases_dir"]
 DB_PATH       = DATABASES_DIR / "rosace.db"
 LOG_DIR          = BASE_DATA_DIR / _cfg["log_dir"]
 OBSERVATIONS_DIR = BASE_DATA_DIR / _cfg["observations_dir"]
+# One fixed-name FITS file per GUI panel (e.g. "guidage.fits"), overwritten by each new
+# capture -- a technical GUI preview copy, not observation data, so deliberately kept
+# outside OBSERVATIONS_DIR. See image_broadcast.py / acquisition_helpers.py.
+GUI_PREVIEW_DIR = BASE_DATA_DIR / "gui_preview"
 
 # ── Site d'observation ─────────────────────────────────────────
 # Nom générique utilisé pour nommer les répertoires de session.

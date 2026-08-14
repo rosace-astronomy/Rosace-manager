@@ -139,9 +139,11 @@ class TestPointing72edPlugin:
         assert calls[0].kwargs["ra_deg"] == pytest.approx(TARGET_RA)
         assert calls[0].kwargs["dec_deg"] == pytest.approx(TARGET_DEC)
         assert calls[0].kwargs["target_name"] == QUERIED_NAME
+        assert calls[0].kwargs["image_to_gui"] is True
         assert calls[1].kwargs["ra_deg"] == pytest.approx(CORRECTED_COORD.ra.deg)
         assert calls[1].kwargs["dec_deg"] == pytest.approx(CORRECTED_COORD.dec.deg)
         assert calls[1].kwargs["target_name"] == QUERIED_NAME
+        assert calls[1].kwargs["image_to_gui"] is True
 
     async def test_first_solve_records_pointing_error(self, mock_dependencies):
         obs = _make_obs()

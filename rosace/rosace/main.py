@@ -114,6 +114,7 @@ if __name__ == "__main__":
 
 import asyncio
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -126,15 +127,17 @@ from fastapi import (
     APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException,
     Request, Response, UploadFile, WebSocket, WebSocketDisconnect,
 )
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .config     import SITE_NAME, SCHEDULER_RETRY_SECONDS, SESSION_COOKIE_SECURE, SESSION_TTL_HOURS
+from .config     import GUI_PREVIEW_DIR, SITE_NAME, SCHEDULER_RETRY_SECONDS, SESSION_COOKIE_SECURE, SESSION_TTL_HOURS
 from .log_config import configure_logging
 
 configure_logging()
 
 from .log_broadcast import ws_log_handler
+from .image_broadcast import ws_image_broadcaster
 
 from .auth import (
     auth_db_init, get_current_user, require_admin,
@@ -472,6 +475,7 @@ async def ws_logs(websocket: WebSocket):
         return
     await websocket.accept(subprotocol="messaging")
     ws_log_handler.add_client(websocket)
+    ws_image_broadcaster.add_client(websocket)
     try:
         while True:
             try:
@@ -482,6 +486,25 @@ async def ws_logs(websocket: WebSocket):
         pass
     finally:
         ws_log_handler.remove_client(websocket)
+        ws_image_broadcaster.remove_client(websocket)
+
+
+_SAFE_PANEL_NAME = re.compile(r"^[A-Za-z0-9_]+$")
+
+
+@protected.get("/images/{panel}")
+async def get_gui_image(panel: str):
+    """Serves a GUI panel's current preview image (e.g. "guidage" -> gui_preview/guidage.fits)
+    -- a fixed filename per panel, overwritten by each new capture, see
+    acquisition_helpers.py's image_to_gui parameter and image_broadcast.py. panel is
+    validated the same way ProgramCreate.name/pipeline_loader.py's _validate_name() are,
+    since it's interpolated straight into a filesystem path."""
+    if not _SAFE_PANEL_NAME.match(panel):
+        raise HTTPException(status_code=404, detail="Image introuvable")
+    path = GUI_PREVIEW_DIR / f"{panel}.fits"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Image introuvable")
+    return FileResponse(path, media_type="application/octet-stream", headers={"Cache-Control": "no-store"})
 
 
 # ─────────────────────────────────────────────────────────────

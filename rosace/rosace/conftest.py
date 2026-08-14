@@ -22,6 +22,7 @@ def tmp_data_dir(tmp_path_factory):
     cfg.DB_PATH            = tmp / "rosace.db"
     cfg.LOG_DIR            = tmp
     cfg.OBSERVATIONS_DIR   = tmp / "observations"
+    cfg.GUI_PREVIEW_DIR    = tmp / "gui_preview"
     import rosace.targets as tgt
     tgt.DATABASES_DIR   = tmp
     tgt.TARGETS_DB_PATH = tmp / "targets.db"
@@ -34,6 +35,15 @@ def tmp_data_dir(tmp_path_factory):
     log_cfg_mod.LOG_DIR = tmp
     import rosace.plugins.init_session as init_session_mod
     init_session_mod.OBSERVATIONS_DIR = tmp / "observations"
+    import rosace.plugins.sequencer_plugins.acquisition_helpers as acq_helpers_mod
+    acq_helpers_mod.GUI_PREVIEW_DIR = tmp / "gui_preview"
+    # rosace.main itself is deliberately NOT imported/patched here: importing it runs
+    # configure_logging() (module level), which applies conf/logging.cfg's propagate=0
+    # on the "spectro" logger -- fine normally, but forcing that as a side effect of
+    # this autouse session fixture broke caplog-based tests in files that otherwise
+    # never import rosace.main (found the hard way: 5 failures across two unrelated
+    # test files). Tests that exercise main.py's own GET /images/{panel} route patch
+    # main's GUI_PREVIEW_DIR locally instead (see test_rosace_core.py).
     return tmp
 
 

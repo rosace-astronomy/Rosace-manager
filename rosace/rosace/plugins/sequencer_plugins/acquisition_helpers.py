@@ -15,6 +15,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ...config import GUI_PREVIEW_DIR
+from ...image_broadcast import ws_image_broadcaster
+
 ALLOWED_IMAGE_TYPES = {"STAR", "BIAS", "DARK", "FLAT", "CALIB", "GUIDING"}
 
 _TEMP_ALLOWED_TYPES = {"DARK", "BIAS"}
@@ -36,6 +39,7 @@ async def capture_guide_image(
     ra_deg: float | None = None,
     dec_deg: float | None = None,
     target_name: str | None = None,
+    image_to_gui: bool = False,
 ) -> Path:
     """Exposes a guiding-role camera for exposure_time seconds and writes the
     resulting FITS image to obs_dir/filename. Returns the written path. Same
@@ -63,7 +67,14 @@ async def capture_guide_image(
     degrades gracefully (comment cut short) instead of failing. All three
     (ra_deg/dec_deg/target_name) default to omitted, so an existing caller
     that doesn't pass them keeps writing a plain, unstamped image,
-    unchanged."""
+    unchanged.
+
+    image_to_gui=True additionally writes the same (already stamped) image to
+    GUI_PREVIEW_DIR/"guidage.fits" -- a fixed name, overwritten by each call --
+    and notifies connected GUI clients over the WebSocket (image_broadcast.py),
+    so the web GUI's "Guidage" panel can fetch and display it. False by
+    default: an existing caller that doesn't pass it keeps behaving exactly
+    as before, no extra write, no notification."""
     if (ra_deg is None) != (dec_deg is None):
         raise ValueError("capture_guide_image: ra_deg and dec_deg must be given together, or both omitted")
     if filename is None:
@@ -77,6 +88,10 @@ async def capture_guide_image(
         image[0].header["OBJECT"] = (target_name, "Queried name, stamped by Rosace")
     path = Path(obs_dir) / filename
     image.writeto(path, overwrite=True)
+    if image_to_gui:
+        GUI_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+        image.writeto(GUI_PREVIEW_DIR / "guidage.fits", overwrite=True)
+        await ws_image_broadcaster.broadcast("guidage")
     return path
 
 

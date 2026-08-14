@@ -2005,6 +2005,56 @@ class TestApiEndpoints:
         texts = [line["text"] for line in message["params"]["lines"]]
         assert any("hello over websocket" in t for t in texts)
 
+    def test_ws_streams_image_new(self):
+        """End-to-end: image_broadcast.ws_image_broadcaster.broadcast() reaches a
+        connected /ws client as image.new — same channel as log.create."""
+        import rosace.image_broadcast as image_broadcast_mod
+
+        with self._client() as client:
+            with client.websocket_connect("/ws", subprotocols=["messaging"]) as ws:
+                asyncio.run(image_broadcast_mod.ws_image_broadcaster.broadcast("guidage"))
+                message = ws.receive_json()
+
+        assert message == {"msg": "image.new", "params": {"panel": "guidage"}}
+
+    def test_get_gui_image_serves_the_panel_file(self, tmp_path, monkeypatch):
+        import rosace.main as main_mod
+
+        monkeypatch.setattr(main_mod, "GUI_PREVIEW_DIR", tmp_path)
+        (tmp_path / "guidage.fits").write_bytes(b"fake fits bytes")
+
+        with self._client() as client:
+            res = client.get("/images/guidage")
+
+        assert res.status_code == 200
+        assert res.content == b"fake fits bytes"
+        assert res.headers["cache-control"] == "no-store"
+
+    def test_get_gui_image_404_when_no_file_yet(self, tmp_path, monkeypatch):
+        import rosace.main as main_mod
+
+        monkeypatch.setattr(main_mod, "GUI_PREVIEW_DIR", tmp_path)
+
+        with self._client() as client:
+            res = client.get("/images/guidage")
+
+        assert res.status_code == 404
+
+    def test_get_gui_image_rejects_unsafe_panel_name(self, tmp_path, monkeypatch):
+        """A single path segment can't itself traverse directories (no "/" survives
+        routing to reach _SAFE_PANEL_NAME) -- this checks the regex rejects any
+        other character outside [A-Za-z0-9_], the defense-in-depth posture used
+        elsewhere in the app (e.g. ProgramCreate.name)."""
+        import rosace.main as main_mod
+
+        monkeypatch.setattr(main_mod, "GUI_PREVIEW_DIR", tmp_path)
+        (tmp_path / "foo-bar.fits").write_bytes(b"should never be served")
+
+        with self._client() as client:
+            res = client.get("/images/foo-bar")
+
+        assert res.status_code == 404
+
 
 # ═════════════════════════════════════════════════════════════
 # GROUPE 8 — Authentification (auth.py)

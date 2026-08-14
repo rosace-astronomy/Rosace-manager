@@ -5,6 +5,7 @@ import { VBox, HBox, Button, Label, Application, BoxProps, Image, Listbox, ListI
 import "./main.scss";
 
 import { LoginView, fetchCurrentUser, logout as authLogout, UserOut } from "./auth";
+import { FitsViewer } from "./widgets/fits_viewer";
 
 import play_icon from "./assets/play.svg";
 import stop_icon from "./assets/stop.svg";
@@ -123,6 +124,7 @@ const STATUS_FETCH_TIME = 5000;
 const WS_RETRY_DELAY = 5000;
 
 const LOG_CREATE_MSG = "log.create";
+const IMAGE_NEW_MSG = "image.new";
 const AUTH_LOGOUT_MSG = "auth.logout";	// fired locally (Application.fireGlobal) on logout — AppShell listens
 
 const STAGE_LABEL: Record<StageType, { text: string, icon: string }> = {	//allow only a value of stages in stage_label
@@ -222,6 +224,8 @@ class MainView extends VBox {
 	private obs_list: Listbox;
 	private log_lines: string[];
 	private last_stage: OrchestratorStageType;
+	private spectre_viewer: FitsViewer;
+	private guidage_viewer: FitsViewer;
 	
 	constructor( props: BoxProps ) {
 		super( props );
@@ -255,11 +259,13 @@ class MainView extends VBox {
 				]}),
 				new HSizer(),
 				new VBox({ cls: "right-col", flex: 1, content: [
-					new VBox({ cls: "panel spectre image-placeholder", flex: 1, content: [
-						new Label({ cls: "title", text: "Spectre" })
+					new VBox({ cls: "panel spectre", flex: 1, content: [
+						new Label({ cls: "title", text: "Spectre" }),
+						this.spectre_viewer = new FitsViewer({ flex: 1 }),
 					] }),
-					new VBox({ cls: "panel guidage image-placeholder", flex: 1, content: [
-						new Label({ cls: "title", text: "Guidage" })
+					new VBox({ cls: "panel guidage", flex: 1, content: [
+						new Label({ cls: "title", text: "Guidage" }),
+						this.guidage_viewer = new FitsViewer({ flex: 1 }),
 					] })
 				] })
 			]}),
@@ -274,6 +280,10 @@ class MainView extends VBox {
 			if( ev.msg === LOG_CREATE_MSG ) {
 				const lines = ev.params.lines as { level: string, text: string }[];
 				this.logMany( lines.map( l => `[${l.level}] ${l.text}` ) );
+			}
+			else if( ev.msg === IMAGE_NEW_MSG ) {
+				const { panel } = ev.params as { panel: string };
+				this.loadPanelImage( panel );
 			}
 		} );
 
@@ -291,8 +301,42 @@ class MainView extends VBox {
 		asap( () => {
 			this.fetchStatus();
 			this.fetchObs();
+			this.loadDemoImages();
 		});
     }
+
+	/**
+	 * Temporary: loads a bundled demo FITS into both viewers as a startup placeholder,
+	 * replaced by a real image as soon as one is pushed (see loadPanelImage below) --
+	 * "Spectre" isn't wired to a real push yet, so it keeps showing the demo image.
+	 */
+
+	private async loadDemoImages() {
+		const buffer = await ( await fetch( "assets/demo.fits" ) ).arrayBuffer();
+		this.spectre_viewer.loadFits( buffer );
+		this.guidage_viewer.loadFits( buffer );
+	}
+
+	/**
+	 * Fetches a panel's current preview image (pushed by the backend, see
+	 * image_broadcast.py) and displays it. panel is "guidage" or "spectre".
+	 */
+
+	private async loadPanelImage( panel: string ) {
+		const viewer = panel === "guidage" ? this.guidage_viewer
+		             : panel === "spectre" ? this.spectre_viewer
+		             : undefined;
+		if( !viewer ) {
+			return;
+		}
+
+		const res = await fetch( `${API}/images/${panel}`, { cache: "no-store" } );
+		if( !res.ok ) {
+			return;
+		}
+
+		viewer.loadFits( await res.arrayBuffer() );
+	}
 
 
 	/**
