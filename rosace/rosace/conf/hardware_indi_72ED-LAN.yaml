@@ -1,0 +1,117 @@
+# This is the configuration file for all the INDI devices
+INDI_drivers:
+
+    guiding_camera:
+        role: camera
+        module: camera
+        # module: asi_camera
+        module_dir: rosace.hardware_indi.devices
+        indi_name : ZWO CCD ASI120MM Mini
+        # indi_name : Atik 314L
+        class_name : IndiCamera
+        # class_name : IndiASICamera
+        indi_client :
+            indi_host : 192.168.144.48
+            indi_port : 7624
+        cooling : true
+        cooling_capability : -20
+        sampling_arcsec : 1.75
+        # Exposure time (seconds) for a direct guiding-camera capture.
+        exposure_seconds : 3
+        # Spectrograph slit position in this camera's field, in pixels.
+        # Zero-indexed (pixel (0,0) = center of the first pixel, matching
+        # astropy's WCS.pixel_to_world()) -- if read off a FITS viewer such
+        # as DS9 (one-indexed), subtract 1 from each axis first.
+        # TODO placeholder values below, not yet calibrated for this instrument.
+        slit_x : 200
+        slit_y : 230
+    science_camera:
+        role: camera
+        module: camera
+        module_dir: rosace.hardware_indi.devices
+        indi_name : Atik 314L
+        # indi_name : ZWO CCD ASI120MM Mini
+        class_name : IndiCamera
+        indi_client :
+            indi_host : 192.168.144.48
+            indi_port : 7624
+        cooling : true
+        cooling_capability : -20
+
+    mount:
+        role: mount
+        module: mount
+        module_dir: rosace.hardware_indi.devices
+        indi_name : ZWO AM3 USB
+        class_name : IndiMount
+        indi_client :
+            indi_host : 192.168.144.48
+            indi_port : 7624
+        # Offset (degrees), added to both RA and DEC, for a preliminary slew
+        # before the final slew to the exact target position -- always
+        # approaching from the same side makes mechanical backlash consistent
+        # from one slew to the next, instead of varying with slew direction.
+        backlash_offset_deg : 2
+
+    pointing_camera:
+        role: camera
+        module: asi_camera
+        module_dir: rosace.hardware_indi.devices
+        indi_name : ZWO CCD ASI224MC
+        class_name : IndiASICamera
+        indi_client :
+            indi_host : 192.168.144.48
+            indi_port : 7624
+        cooling : false
+
+    focuser:
+        role: focuser
+        module: focuser
+        module_dir: rosace.hardware_indi.devices
+        indi_name: ZWO EAF
+        class_name : IndiFocuser
+        port: /dev/serial/by-id/usb-Optec__Inc._Optec_USB_Serial_Cable_OP5AORA9-if00-port0
+        indi_client:
+            indi_host: 192.168.144.48
+            indi_port: 7624
+        focus_range:
+            min: 10200
+            max: 11400
+        autofocus_step:
+            fine: 300
+            coarse: 300
+        autofocus_range:
+            fine: 2000
+            coarse: 2000
+
+    spectroscope:
+        role: spectroscope
+        module: spectroscope_placeholder
+        module_dir: rosace.hardware_indi.devices
+        class_name: SpectroscopePlaceholder
+        # TODO: provisional placeholder, not the real Alpy module driven by
+        # the Stellarmate's two On/Off switches -- to be replaced once that
+        # wiring is done (see hardware/spectroscope.py).
+        # indi_client/indi_name below are unused by SpectroscopePlaceholder --
+        # present only so every device entry satisfies the same
+        # required-fields check, with no per-role exception in
+        # hardware_connectivity.py.
+        indi_name: Spectroscope Placeholder
+        indi_client:
+            indi_host: 192.168.144.48
+            indi_port: 7624
+
+PHD2_config:
+    # host: 192.168.144.32
+    host: 192.168.144.48 # Stellarmate
+    port: 4400
+    do_calibration: False
+    # profile_name: St-Pancrasse
+    # profile_name: Simulators
+    # profile_name: Simulator
+    profile_name: 72ED Stellarmate
+    exposure_time_sec: 1.0
+    settle:
+        pixels: 7
+        time: 3
+        timeout: 120

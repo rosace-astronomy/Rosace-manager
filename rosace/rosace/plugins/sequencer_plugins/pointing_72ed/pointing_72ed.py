@@ -78,6 +78,7 @@ class Pointing72edPlugin(SubPlugin):
             guiding_camera, exposure_seconds, obs.obs_dir,
             ra_deg=target_coord.ra.deg, dec_deg=target_coord.dec.deg, target_name=queried_name,
         )
+        log.info(f"[POINTING_72ED] Guiding image acquisition: {initial_guide_image.name}")
 
         # Step 3: plate solve + record the mount's pointing error
         await solve_wcs(
@@ -105,6 +106,7 @@ class Pointing72edPlugin(SubPlugin):
             guiding_camera, exposure_seconds, obs.obs_dir,
             ra_deg=corrected_coord.ra.deg, dec_deg=corrected_coord.dec.deg, target_name=queried_name,
         )
+        log.info(f"[POINTING_72ED] Guiding image acquisition: {corrected_guide_image.name}")
 
         # Step 9: start PHD2 guiding (auto-selects a guide star), waits for settle
         log.info(f"[POINTING_72ED] Starting PHD2 guiding on {queried_name}")

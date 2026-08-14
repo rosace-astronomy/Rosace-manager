@@ -17,14 +17,14 @@ INDI_drivers:
         cooling_capability : -20
         sampling_arcsec : 1.75
         # Exposure time (seconds) for a direct guiding-camera capture.
-        exposure_seconds : 0.3
+        exposure_seconds : 3
         # Spectrograph slit position in this camera's field, in pixels.
         # Zero-indexed (pixel (0,0) = center of the first pixel, matching
         # astropy's WCS.pixel_to_world()) -- if read off a FITS viewer such
         # as DS9 (one-indexed), subtract 1 from each axis first.
         # TODO placeholder values below, not yet calibrated for this instrument.
-        slit_x : 0
-        slit_y : 0
+        slit_x : 200
+        slit_y : 230
     science_camera:
         role: camera
         module: camera

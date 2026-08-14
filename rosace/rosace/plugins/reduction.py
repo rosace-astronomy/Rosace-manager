@@ -33,10 +33,9 @@ class ReductionPlugin:
             raise RuntimeError("REDUCTION : program manquant dans scheduler_data")
 
         _, red_pipeline = load_pipelines(program)
-        steps = [s.__class__.__name__ for s in red_pipeline]
         log.info(
             f"[REDUCTION] Début réduction '{program}' — "
-            f"{len(raw_files)} fichier(s) brut(s), étapes : {steps}"
+            f"{len(raw_files)} fichier(s) brut(s)"
         )
 
         # Chaque sous-plugin lit/écrit directement dans obs.reduction_data
