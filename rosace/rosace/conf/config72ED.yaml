@@ -38,7 +38,7 @@ min_target_altitude_deg: 10
 # Name (without extension) of the active hardware profile in conf/ — only
 # consulted when sequencer_backend (below) is 'indi'.
 # Exposed as ACTIVE_HARDWARE / HARDWARE_CONFIG_PATH in config.py.
-active_hardware: hardware_indi_72ED-WIFI
+active_hardware: hardware_indi_72ED-LAN
 
 # Delay before main.py asks SCHEDULER again after it reports nothing to observe.
 # Exposed as SCHEDULER_RETRY_SECONDS in config.py.
