@@ -5,12 +5,16 @@ Lancement : pytest plugins/test_hardware_connectivity.py -v
 
 import asyncio
 import time
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import yaml
 
 from rosace.plugins import hardware_connectivity as hc
+
+_CONF_DIR = Path(__file__).parent.parent / "conf"
+_HARDWARE_YAML_FILES = sorted(_CONF_DIR.glob("hardware_indi_*.yaml"))
 
 
 @pytest.fixture
@@ -240,3 +244,39 @@ class TestConnectSessionHardware:
         await hc.connect_session_hardware()
 
         assert max_concurrent == 1
+
+
+class TestRealHardwareYamlFiles:
+    """Static, connection-free smoke test over every conf/hardware_indi_*.yaml
+    actually shipped in the repo -- catches a malformed file or a device
+    entry missing a plumbing field (_PLUMBING_KEYS) at test time, the same
+    class of mistake --check-config already catches for config.yaml, instead
+    of only surfacing at INIT_SESSION against real hardware."""
+
+    @pytest.mark.parametrize("path", _HARDWARE_YAML_FILES, ids=lambda p: p.name)
+    def test_parses_and_declares_every_plumbing_key(self, path):
+        with open(path, encoding="utf-8") as f:
+            hw_config = yaml.safe_load(f)
+
+        devices = hw_config.get("INDI_drivers", {})
+        assert devices, f"{path.name}: no INDI_drivers declared"
+
+        for device_name, device_cfg in devices.items():
+            hc._extract_device_params(device_name, device_cfg)
+
+    @pytest.mark.parametrize("path", _HARDWARE_YAML_FILES, ids=lambda p: p.name)
+    def test_phd2_config_declares_required_keys(self, path):
+        with open(path, encoding="utf-8") as f:
+            hw_config = yaml.safe_load(f)
+
+        phd2_cfg = hw_config.get("PHD2_config")
+        assert phd2_cfg, f"{path.name}: no PHD2_config declared"
+
+        missing = {"host", "port", "settle"} - phd2_cfg.keys()
+        assert not missing, f"{path.name}: PHD2_config missing {sorted(missing)}"
+
+    def test_at_least_one_hardware_profile_found(self):
+        """Guards against the glob silently matching nothing (e.g. a future
+        conf/ layout change) and every test above trivially passing on an
+        empty parametrize list."""
+        assert _HARDWARE_YAML_FILES
