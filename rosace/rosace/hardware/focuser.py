@@ -21,3 +21,12 @@ class Focuser(Protocol):
     async def get_position(self) -> int:
         """Current absolute focuser position."""
         ...
+
+    async def get_temperature(self) -> float:
+        """Ambient temperature reported by the focuser's own probe, in degrees
+        Celsius -- used as the observatory's ambient temperature reference for
+        the science camera's cooldown target (see plugins/camera_cooldown.py).
+        Not every focuser has a probe; a real INDI focuser without one will
+        raise from the device layer rather than silently returning a bogus
+        value."""
+        ...

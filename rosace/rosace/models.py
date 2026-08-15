@@ -84,6 +84,14 @@ class Observation(BaseModel):
     # programme scientifique demandé par l'observateur.
     program_steps: dict[str, Any] = {}
 
+    # Session-wide temperature reference, copied from SessionContext by
+    # session_runner() onto every fresh Observation (see camera_target_temperature_deg_c
+    # below on SessionContext for how it's computed) -- not stage-owned, so kept
+    # top-level like program_file/program_steps above, and persisted (unlike
+    # hardware/hardware_config below, which are live connection handles).
+    ambient_temperature_deg_c: Optional[float] = None
+    camera_target_temperature_deg_c: Optional[float] = None
+
     # Un casier par plugin de stage connu — contenu libre, géré par le plugin
     # et ses sous-plugins (ex. reduction_data["bias"]["corrected_files"]). Un
     # sous-plugin n'écrit sa propre clé que s'il a quelque chose de descriptif
@@ -182,6 +190,22 @@ class SessionContext(BaseModel):
     # copied onto every freshly-created Observation by session_runner() since
     # sub-plugins only ever see Observation, never SessionContext.
     hardware_config: dict[str, dict[str, Any]] = Field(default_factory=dict, exclude=True)
+
+    # Live callback, same role and lifecycle as Observation.stop_check above —
+    # set by session_runner() right before INIT_SESSION runs (the one stage
+    # that acts on a SessionContext, not yet an Observation), so a
+    # multi-step wait inside INIT_SESSION (e.g. camera_cooldown.py's cooldown
+    # poll loop) can notice a stop request without importing main.py itself.
+    stop_check: Optional[Callable[[], bool]] = Field(default=None, exclude=True)
+
+    # Ambient temperature (read from the focuser's probe) and the science
+    # camera's resulting cooldown target, both computed once by INIT_SESSION
+    # (see plugins/camera_cooldown.py) and held fixed for the whole session —
+    # copied onto every freshly-created Observation by session_runner() (see
+    # Observation.camera_target_temperature_deg_c above), which is what
+    # actually persists them (SessionContext itself is never dumped to disk).
+    ambient_temperature_deg_c: Optional[float] = None
+    camera_target_temperature_deg_c: Optional[float] = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

@@ -59,6 +59,25 @@ hardware_connect_timeout_seconds: 5 # INIT_SESSION: max time to wait for each IN
 exposure_time_mag0_seconds: 1.0
 max_exposure_time_seconds: 300
 
+# Number of DARK/BIAS frames per series, fixed for the whole session.
+# Exposed as DARK_COUNT / BIAS_COUNT in config.py.
+dark_count: 5
+bias_count: 5
+
+# BIAS exposure time (seconds) -- 0 by definition (no integration), but some
+# cameras refuse a literal 0s exposure -- raise this (e.g. 0.1) if so.
+# Exposed as BIAS_EXPOSURE_TIME_SECONDS in config.py.
+bias_exposure_time_seconds: 0.0
+
+# Subdirectory (under base_data_dir) holding the reusable dark-frame library,
+# one folder per temperature bucket. Exposed as DARK_LIBRARY_DIR in config.py.
+dark_library_dir: dark_library
+
+# INIT_SESSION (sequencer_backend=indi only): max time to wait for the
+# science camera to reach its computed cooldown target temperature.
+# Exposed as CAMERA_COOLDOWN_TIMEOUT_SECONDS in config.py.
+camera_cooldown_timeout_seconds: 300
+
 # Full path (any location, not necessarily under base_data_dir) to the text
 # file SCHEDULER reads to pick the next target — see
 # plugins/schedulers/scheduler_rosace_2026/scheduler.py.

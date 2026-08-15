@@ -38,3 +38,22 @@ class CameraAdapter:
             return await asyncio.to_thread(_blocking_expose)
         except Exception as e:
             raise DeviceCommandError(f"expose({duration_sec}) failed: {e}") from e
+
+    async def set_temperature(self, temperature_deg_c: float) -> None:
+        try:
+            await asyncio.to_thread(self._indi_camera.set_temperature, temperature_deg_c)
+        except Exception as e:
+            raise DeviceCommandError(f"set_temperature({temperature_deg_c}) failed: {e}") from e
+
+    async def get_temperature(self) -> float:
+        try:
+            return await asyncio.to_thread(self._indi_camera.get_temperature)
+        except Exception as e:
+            raise DeviceCommandError(f"get_temperature() failed: {e}") from e
+
+    async def get_sensor_size(self) -> tuple[int, int]:
+        try:
+            size = await asyncio.to_thread(self._indi_camera.get_sensor_size)
+            return int(size["CCD_MAX_X"]), int(size["CCD_MAX_Y"])
+        except Exception as e:
+            raise DeviceCommandError(f"get_sensor_size() failed: {e}") from e

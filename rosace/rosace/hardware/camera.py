@@ -16,3 +16,17 @@ class Camera(Protocol):
         """Start an exposure of the given duration and return the acquired image
         once available. Image type is backend-defined for now (FITS data)."""
         ...
+
+    async def set_temperature(self, temperature_deg_c: float) -> None:
+        """Command the sensor cooler to a target temperature. May take time to
+        reach it -- this call only issues the setpoint, it does not wait."""
+        ...
+
+    async def get_temperature(self) -> float:
+        """Current sensor temperature, in degrees Celsius."""
+        ...
+
+    async def get_sensor_size(self) -> tuple[int, int]:
+        """(width, height) in pixels -- the full sensor resolution, i.e. the
+        NAXIS1/NAXIS2 of an image acquired with no ROI cropping applied."""
+        ...

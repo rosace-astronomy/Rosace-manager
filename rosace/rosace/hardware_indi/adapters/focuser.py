@@ -33,3 +33,9 @@ class FocuserAdapter:
             return await asyncio.to_thread(self._indi_focuser.get_position)
         except Exception as e:
             raise DeviceCommandError(f"get_position() failed: {e}") from e
+
+    async def get_temperature(self) -> float:
+        try:
+            return await asyncio.to_thread(self._indi_focuser.get_temperature)
+        except Exception as e:
+            raise DeviceCommandError(f"get_temperature() failed: {e}") from e

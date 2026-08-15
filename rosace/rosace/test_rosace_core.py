@@ -2176,6 +2176,11 @@ sequencer_backend: internal
 hardware_connect_timeout_seconds: 5
 exposure_time_mag0_seconds: 1.0
 max_exposure_time_seconds: 300
+dark_count: 5
+bias_count: 5
+bias_exposure_time_seconds: 0.0
+dark_library_dir: dark_library
+camera_cooldown_timeout_seconds: 300
 observation_list_path: {tmp_path / "ObservationList.txt"}
 active_scheduler: blank
 session_ttl_hours: 336

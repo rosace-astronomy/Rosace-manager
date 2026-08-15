@@ -77,6 +77,12 @@ class IndiFocuser(IndiDevice):
         self.logger.debug(f"{self} : current position is {ret}")
         return ret
 
+    def get_temperature(self):
+        """ Ambient temperature reported by the focuser's own probe (INDI FOCUS_TEMPERATURE) """
+        ret = self.get_number("FOCUS_TEMPERATURE")["TEMPERATURE"]
+        self.logger.debug(f"{self} : current temperature is {ret}")
+        return ret
+
     def move_to(self, position):
         """ Move focuser to new encoder position """
         self.logger.debug(f"{self}  moving to position {position}")

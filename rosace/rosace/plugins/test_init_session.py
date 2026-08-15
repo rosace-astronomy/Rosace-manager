@@ -156,3 +156,74 @@ class TestHardwareConnectivityDispatch:
 
         with pytest.raises(RuntimeError, match="mount"):
             await InitSessionPlugin().run(ctx)
+
+
+class TestCameraCooldownDispatch:
+    """La caméra science n'est refroidie que si backend=indi ET que son entrée
+    hardware déclare cooling: true (voir camera_cooldown.py)."""
+
+    def _mock_hardware_with_camera(self, cooling: bool):
+        return AsyncMock(return_value=ConnectedHardware(
+            adapters={"science_camera": object(), "focuser": object()},
+            hardware_config={
+                "science_camera": {
+                    "cooling": cooling,
+                    "cooling_capability": -30,
+                    "temperature_tolerance_deg_c": 2,
+                },
+            },
+        ))
+
+    async def test_cools_camera_when_cooling_enabled(self, monkeypatch):
+        monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "indi")
+        monkeypatch.setattr(
+            "rosace.plugins.init_session.connect_session_hardware",
+            self._mock_hardware_with_camera(cooling=True),
+        )
+        mock_cooldown = AsyncMock(return_value=(15.0, -5))
+        monkeypatch.setattr("rosace.plugins.init_session.cool_science_camera_to_target", mock_cooldown)
+        ctx = SessionContext(site_name="St-Pancrasse")
+
+        await InitSessionPlugin().run(ctx)
+
+        mock_cooldown.assert_awaited_once()
+        assert ctx.ambient_temperature_deg_c == 15.0
+        assert ctx.camera_target_temperature_deg_c == -5
+
+    async def test_skips_cooldown_when_cooling_disabled(self, monkeypatch):
+        monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "indi")
+        monkeypatch.setattr(
+            "rosace.plugins.init_session.connect_session_hardware",
+            self._mock_hardware_with_camera(cooling=False),
+        )
+        mock_cooldown = AsyncMock()
+        monkeypatch.setattr("rosace.plugins.init_session.cool_science_camera_to_target", mock_cooldown)
+        ctx = SessionContext(site_name="St-Pancrasse")
+
+        await InitSessionPlugin().run(ctx)
+
+        mock_cooldown.assert_not_awaited()
+        assert ctx.camera_target_temperature_deg_c is None
+
+    async def test_skips_cooldown_when_no_science_camera_declared(self, monkeypatch, mock_hardware_check):
+        monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "indi")
+        mock_cooldown = AsyncMock()
+        monkeypatch.setattr("rosace.plugins.init_session.cool_science_camera_to_target", mock_cooldown)
+        ctx = SessionContext(site_name="St-Pancrasse")
+
+        await InitSessionPlugin().run(ctx)
+
+        mock_cooldown.assert_not_awaited()
+
+    async def test_propagates_cooldown_failure(self, monkeypatch):
+        monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "indi")
+        monkeypatch.setattr(
+            "rosace.plugins.init_session.connect_session_hardware",
+            self._mock_hardware_with_camera(cooling=True),
+        )
+        mock_cooldown = AsyncMock(side_effect=RuntimeError("CAMERA_COOLDOWN: target -5C not reached within 300s"))
+        monkeypatch.setattr("rosace.plugins.init_session.cool_science_camera_to_target", mock_cooldown)
+        ctx = SessionContext(site_name="St-Pancrasse")
+
+        with pytest.raises(RuntimeError, match="not reached"):
+            await InitSessionPlugin().run(ctx)

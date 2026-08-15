@@ -296,6 +296,7 @@ async def _session_runner_body():
     await db_init()
     await targets_db_init()
     session = SessionContext(site_name=SITE_NAME)
+    session.stop_check = lambda: not state.is_running
 
     try:
         session = await run_stage(OrchestratorStage.INIT_SESSION, session)
@@ -324,6 +325,8 @@ async def _session_runner_body():
                         obs_dir=str(session_dir),
                         hardware=session.hardware,
                         hardware_config=session.hardware_config,
+                        ambient_temperature_deg_c=session.ambient_temperature_deg_c,
+                        camera_target_temperature_deg_c=session.camera_target_temperature_deg_c,
                         stop_check=lambda: not state.is_running,
                     )
                 else:

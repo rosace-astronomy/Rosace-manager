@@ -93,6 +93,19 @@ HARDWARE_CONNECT_TIMEOUT_SECONDS = _cfg["hardware_connect_timeout_seconds"]
 EXPOSURE_TIME_MAG0_SECONDS = _cfg["exposure_time_mag0_seconds"]
 MAX_EXPOSURE_TIME_SECONDS = _cfg["max_exposure_time_seconds"]
 
+# ── Darks / bias ──────────────────────────────────────────────
+# Nombre d'images par série, fixé pour toute la session. Voir
+# plugins/sequencer_plugins/dark_acquisition/.
+DARK_COUNT = _cfg["dark_count"]
+BIAS_COUNT = _cfg["bias_count"]
+BIAS_EXPOSURE_TIME_SECONDS = _cfg["bias_exposure_time_seconds"]
+DARK_LIBRARY_DIR = BASE_DATA_DIR / _cfg["dark_library_dir"]
+
+# ── Refroidissement caméra (INIT_SESSION, sequencer_backend=indi) ──────
+# Délai maximum accordé à la caméra science pour atteindre sa température
+# cible calculée. Voir plugins/camera_cooldown.py.
+CAMERA_COOLDOWN_TIMEOUT_SECONDS = _cfg["camera_cooldown_timeout_seconds"]
+
 # ── Backend d'exécution SEQUENCER ────────────────────────────────
 # "internal" : simulation interne, sans dépendance externe (démonstrateur niveau 1).
 # "indi"     : protocole INDI/PHD2 réel, piloté par ACTIVE_HARDWARE/HARDWARE_CONFIG_PATH

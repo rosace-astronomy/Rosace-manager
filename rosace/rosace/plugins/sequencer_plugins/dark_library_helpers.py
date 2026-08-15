@@ -1,0 +1,103 @@
+"""
+Shared helpers for DARK acquisition and its temperature-bucketed library
+(see plugins/sequencer_plugins/dark_acquisition/, plugins/camera_cooldown.py)
+-- plain functions, not a sub-plugin of their own, same status as
+acquisition_helpers.py: not resolved by pipeline_loader.py's dynamic
+importlib convention, no program YAML ever declares this module as a step.
+
+find_usable_frame_series() (below) is also reused by
+plugins/sequencer_plugins/bias_acquisition/ for its current_session/camera
+lookup -- BIAS has no library, so temperature_bucket_dirname()/
+copy_darks_from_library() stay DARK-only.
+"""
+
+from __future__ import annotations
+
+import math
+import shutil
+from pathlib import Path
+
+from astropy.io import fits
+
+
+def round_to_5(value: float) -> int:
+    """Rounds up to the next multiple of 5 (e.g. -9 -> -5, 3 -> 5, -5 -> -5,
+    0 -> 0) -- used both for the camera cooldown target and for picking which
+    dark-library temperature bucket a given temperature falls into, so the
+    two always agree on the same buckets."""
+    return 5 * math.ceil(value / 5)
+
+
+def compute_camera_target_temperature(ambient_temp_c: float, cooling_capability_deg_c: float) -> int:
+    """Target sensor temperature for the whole session: 80% of the camera's
+    cooling capability (a delta, taken as abs() since cooling_capability_deg_c
+    is stored as a negative value in the hardware YAML) below ambient, rounded
+    up to the next multiple of 5 -- the margin keeps enough cooling headroom
+    for the whole night, and the rounding is what lets darks be reused across
+    sessions/observations at the same bucket instead of one-off temperatures."""
+    delta = 0.8 * abs(cooling_capability_deg_c)
+    return round_to_5(ambient_temp_c - delta)
+
+
+def temperature_bucket_dirname(temp_c: float) -> str:
+    """Dark-library subdirectory name for a given (already 5-rounded)
+    temperature -- e.g. -5 -> "TempMinus5degrees", 0 -> "Temp0degrees",
+    5 -> "TempPlus5degrees". Never a leading "-" in the name: a literal
+    minus sign at the start of a path segment is best avoided (shell
+    globbing, some tools mistaking it for an option flag)."""
+    temp = round(temp_c)
+    if temp < 0:
+        return f"TempMinus{abs(temp)}degrees"
+    if temp > 0:
+        return f"TempPlus{temp}degrees"
+    return "Temp0degrees"
+
+
+def find_usable_frame_series(
+    directory: Path,
+    *,
+    image_type: str,
+    temp_c: float,
+    count_required: int,
+    exposure_time_required: float,
+    sensor_size: tuple[int, int],
+) -> list[str] | None:
+    """Looks for a usable DARK or BIAS series in `directory` (the session
+    directory, or -- DARK only -- one dark-library temperature bucket, same
+    rule either way, see CLAUDE.md's dark_acquisition section): at least
+    count_required files of this image_type ("DARK" or "BIAS") matching this
+    temperature (parsed from the filename convention build_fits_root_name()
+    already writes, e.g. "..._-5deg_...", see acquisition_helpers.py), whose
+    first file's FITS header (read alone, not the pixel data) reports the
+    same sensor size (NAXIS1/NAXIS2) as sensor_size and an EXPTIME at least
+    exposure_time_required. Returns the first count_required matching
+    filenames (sorted -- the trailing timestamp in each name makes this
+    chronological), or None if no usable series was found. Never opens more
+    than one file's header."""
+    if not directory.is_dir():
+        return None
+
+    temp_token = f"_{round(temp_c)}deg_"
+    candidates = sorted(p for p in directory.glob(f"{image_type}_*.fits") if temp_token in p.name)
+    if len(candidates) < count_required:
+        return None
+
+    selected = candidates[:count_required]
+    header = fits.getheader(selected[0])
+    if (header.get("NAXIS1"), header.get("NAXIS2")) != tuple(sensor_size):
+        return None
+    exptime = header.get("EXPTIME")
+    if exptime is None or exptime < exposure_time_required:
+        return None
+
+    return [p.name for p in selected]
+
+
+def copy_darks_from_library(library_dir: Path, filenames: list[str], dest_dir: Path) -> list[str]:
+    """Copies each named file from library_dir into dest_dir (the session
+    directory -- every session image must live there, see CLAUDE.md's
+    on-disk layout). One-way only: nothing in this module ever writes into
+    the library itself, that stays a manual transfer by the observer."""
+    for name in filenames:
+        shutil.copy2(library_dir / name, dest_dir / name)
+    return list(filenames)
