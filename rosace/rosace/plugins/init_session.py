@@ -4,7 +4,7 @@ import logging
 from ..config import OBSERVATIONS_DIR, SEQUENCER_BACKEND, SITE_NAME
 from ..models import SessionContext
 from ..time_helpers import astronomical_day_local_date
-from .camera_cooldown import cool_science_camera_to_target
+from .camera_cooldown import activate_cooling_for_every_camera, cool_science_camera_to_target
 from .hardware_connectivity import connect_session_hardware
 
 log = logging.getLogger("spectro.plugin.init_session")
@@ -30,6 +30,8 @@ class InitSessionPlugin:
             ctx.hardware_config = connected.hardware_config
             log.info(f"[INIT_SESSION] Hardware connected: {list(ctx.hardware)}")
 
+            await activate_cooling_for_every_camera(ctx.hardware, ctx.hardware_config)
+
             science_camera_config = ctx.hardware_config.get("science_camera", {})
             if science_camera_config.get("cooling"):
                 log.info("[INIT_SESSION] Cooling science camera to session target temperature…")
@@ -42,7 +44,6 @@ class InitSessionPlugin:
                 )
                 ctx.ambient_temperature_deg_c = ambient
                 ctx.camera_target_temperature_deg_c = target
-                log.info(f"[INIT_SESSION] Science camera at target temperature ({target}°C, ambient {ambient}°C)")
         else:
             log.info("[INIT_SESSION] Running in DEMO mode (sequencer_backend=internal) — no hardware involved")
 

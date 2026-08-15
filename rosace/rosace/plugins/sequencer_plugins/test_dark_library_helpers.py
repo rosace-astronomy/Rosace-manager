@@ -12,11 +12,14 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
+from rosace.plugins.sequencer_plugins import dark_library_helpers as dlh_mod
 from rosace.plugins.sequencer_plugins.dark_library_helpers import (
     compute_camera_target_temperature,
     copy_darks_from_library,
+    ensure_dark_library_structure,
     find_usable_frame_series,
     round_to_5,
+    summarize_series_root_name,
     temperature_bucket_dirname,
 )
 
@@ -159,3 +162,46 @@ class TestCopyDarksFromLibrary:
         assert result == [name]
         assert (dest_dir / name).exists()
         assert (library_dir / name).exists()  # source untouched, copy not move
+
+
+class TestSummarizeSeriesRootName:
+
+    def test_replaces_trailing_series_index_with_xxx(self):
+        files = [
+            "DARK_-15deg_5x300s_20260815_130137-1.fits",
+            "DARK_-15deg_5x300s_20260815_130137-2.fits",
+        ]
+        assert summarize_series_root_name(files) == "DARK_-15deg_5x300s_20260815_130137-xxx.fits"
+
+    def test_single_file_series_has_no_index_and_is_unchanged(self):
+        files = ["DARK_-15deg_300s_20260815_130137.fits"]
+        assert summarize_series_root_name(files) == "DARK_-15deg_300s_20260815_130137.fits"
+
+    def test_empty_list_returns_empty_string(self):
+        assert summarize_series_root_name([]) == ""
+
+
+class TestEnsureDarkLibraryStructure:
+
+    def test_creates_one_subdirectory_per_temperature_bucket(self, tmp_path, monkeypatch):
+        library_dir = tmp_path / "dark_library"
+        monkeypatch.setattr(dlh_mod, "DARK_LIBRARY_DIR", library_dir)
+
+        ensure_dark_library_structure()
+
+        assert {p.name for p in library_dir.iterdir()} == {
+            "TempMinus20degrees", "TempMinus15degrees", "TempMinus10degrees",
+            "TempMinus5degrees", "Temp0degrees",
+        }
+
+    def test_idempotent_and_leaves_existing_content_untouched(self, tmp_path, monkeypatch):
+        library_dir = tmp_path / "dark_library"
+        monkeypatch.setattr(dlh_mod, "DARK_LIBRARY_DIR", library_dir)
+        ensure_dark_library_structure()
+        marker = library_dir / "TempMinus5degrees" / "DARK_-5deg_5x300s_20260815_120000-1.fits"
+        marker.write_text("not a real fits file, just a marker")
+
+        ensure_dark_library_structure()  # second call, e.g. a second server startup
+
+        assert marker.exists()
+        assert marker.read_text() == "not a real fits file, just a marker"

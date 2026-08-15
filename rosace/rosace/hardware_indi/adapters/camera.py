@@ -57,3 +57,15 @@ class CameraAdapter:
             return int(size["CCD_MAX_X"]), int(size["CCD_MAX_Y"])
         except Exception as e:
             raise DeviceCommandError(f"get_sensor_size() failed: {e}") from e
+
+    async def set_cooling_on(self) -> None:
+        try:
+            await asyncio.to_thread(self._indi_camera.set_cooling_on)
+        except Exception as e:
+            raise DeviceCommandError(f"set_cooling_on() failed: {e}") from e
+
+    async def set_cooling_off(self) -> None:
+        try:
+            await asyncio.to_thread(self._indi_camera.set_cooling_off)
+        except Exception as e:
+            raise DeviceCommandError(f"set_cooling_off() failed: {e}") from e

@@ -123,6 +123,9 @@ const OBS_FETCH_TIME = 3000;
 const STATUS_FETCH_TIME = 5000;
 const WS_RETRY_DELAY = 5000;
 
+// In-browser Journal history cap -- not a real retention limit, rosace.log keeps everything.
+const MAX_JOURNAL_LINES = 1000;
+
 const LOG_CREATE_MSG = "log.create";
 const IMAGE_NEW_MSG = "image.new";
 const AUTH_LOGOUT_MSG = "auth.logout";	// fired locally (Application.fireGlobal) on logout — AppShell listens
@@ -450,8 +453,8 @@ class MainView extends VBox {
             this.log_lines.push(`[${ts}] ${msg}`);
         }
 
-        if (this.log_lines.length > 100) {
-			this.log_lines.splice( 0, this.log_lines.length - 100 );
+        if (this.log_lines.length > MAX_JOURNAL_LINES) {
+			this.log_lines.splice( 0, this.log_lines.length - MAX_JOURNAL_LINES );
 		}
 
 		const l = this.query<SimpleTextArea>( "#logger" );

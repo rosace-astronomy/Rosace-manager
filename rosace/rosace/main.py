@@ -156,6 +156,7 @@ from .database import (
 )
 from .observation_file import create_observation_file, write_observation_file
 from .plugins  import plugins
+from .plugins.sequencer_plugins.dark_library_helpers import ensure_dark_library_structure
 from .plugins.schedulers import SchedulerFatalError
 from .simbad   import simbad_search, SimbadNotFoundError, SimbadQueryError
 from .targets  import (
@@ -178,6 +179,7 @@ async def lifespan(_app: FastAPI):
     await db_init()
     await targets_db_init()
     await auth_db_init()
+    ensure_dark_library_structure()
     ws_log_handler.bind_loop(asyncio.get_running_loop())
     logging.getLogger("spectro").addHandler(ws_log_handler)
     yield

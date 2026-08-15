@@ -42,6 +42,14 @@ def small_dark_count(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def fixed_max_exposure_time(monkeypatch):
+    """Pin this rather than trust conf/config.yaml's current value -- these
+    tests must not depend on whatever max_exposure_time_seconds a real
+    deployment happens to have configured (e.g. lowered for manual testing)."""
+    monkeypatch.setattr(da_mod, "MAX_EXPOSURE_TIME_SECONDS", 300)
+
+
+@pytest.fixture(autouse=True)
 def library_under_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(da_mod, "DARK_LIBRARY_DIR", tmp_path / "dark_library")
 
@@ -128,7 +136,8 @@ class TestDarkAcquisitionPlugin:
         assert result.sequencer_data["dark_acquisition"]["origin"] == "camera"
         assert len(result.sequencer_data["dark_acquisition"]["dark_files"]) == 2
         assert camera.expose.await_count == 2
-        assert fake_image.writeto.call_count == 2
+        # 2 per capture: the real file plus the GUI preview copy (image_to_gui=True).
+        assert fake_image.writeto.call_count == 4
         spectroscope.set_light_source.assert_awaited_once()
 
     async def test_camera_origin_when_library_series_is_too_short_a_count(self, tmp_path):

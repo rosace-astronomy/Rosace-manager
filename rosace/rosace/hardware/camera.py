@@ -30,3 +30,15 @@ class Camera(Protocol):
         """(width, height) in pixels -- the full sensor resolution, i.e. the
         NAXIS1/NAXIS2 of an image acquired with no ROI cropping applied."""
         ...
+
+    async def set_cooling_on(self) -> None:
+        """Enables the sensor cooler. On many cameras this is a separate
+        switch from the temperature setpoint (set_temperature) -- the
+        setpoint alone has no effect until the cooler is actually turned
+        on. Only meaningful for a camera whose hardware YAML entry declares
+        cooling: true; callers are responsible for checking that first."""
+        ...
+
+    async def set_cooling_off(self) -> None:
+        """Disables the sensor cooler."""
+        ...

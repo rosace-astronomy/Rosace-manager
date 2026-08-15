@@ -107,7 +107,9 @@ class TestStarSpectraAcquisitionPlugin:
         result = await StarSpectraAcquisitionPlugin().execute(obs)
 
         expected_name = f"STAR_1s_{FIXED_TS}.fits"
-        fake_image.writeto.assert_called_once_with(tmp_path / expected_name, overwrite=True)
+        # Also written to the GUI preview copy (image_to_gui=True) -- assert_any_call
+        # rather than assert_called_once_with since writeto is now called twice.
+        fake_image.writeto.assert_any_call(tmp_path / expected_name, overwrite=True)
         assert result.sequencer_data["star_spectra_images"] == [expected_name]
 
     async def test_uses_queried_name_as_fits_prefix(self, tmp_path):

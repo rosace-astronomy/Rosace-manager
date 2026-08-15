@@ -318,7 +318,7 @@ def load_pipelines(program_name: str) -> tuple[list, list]:
     seq_steps = data["sequencer"]
     red_steps = data["reduction"]
 
-    log.info(f"[PIPELINE] Programme '{program_name}' chargé")
+    log.debug(f"[PIPELINE] Programme '{program_name}' chargé")
 
     seq_pipeline = build_pipeline(seq_steps, "sequencer")
     red_pipeline = build_pipeline(red_steps, "reduction")

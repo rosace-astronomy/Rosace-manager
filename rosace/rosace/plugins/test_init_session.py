@@ -162,6 +162,14 @@ class TestCameraCooldownDispatch:
     """La caméra science n'est refroidie que si backend=indi ET que son entrée
     hardware déclare cooling: true (voir camera_cooldown.py)."""
 
+    @pytest.fixture(autouse=True)
+    def mock_activate_cooling(self, monkeypatch):
+        """activate_cooling_for_every_camera() is tested on its own in
+        test_camera_cooldown.py -- these tests only care about the
+        science-camera cooldown dispatch logic, so it's mocked away here to
+        keep the hardware mocks (plain object()) simple."""
+        monkeypatch.setattr("rosace.plugins.init_session.activate_cooling_for_every_camera", AsyncMock())
+
     def _mock_hardware_with_camera(self, cooling: bool):
         return AsyncMock(return_value=ConnectedHardware(
             adapters={"science_camera": object(), "focuser": object()},

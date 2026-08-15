@@ -40,6 +40,15 @@ def small_bias_count(monkeypatch):
     monkeypatch.setattr(ba_mod, "BIAS_COUNT", 2)
 
 
+@pytest.fixture(autouse=True)
+def fixed_bias_exposure_time(monkeypatch):
+    """Pin this rather than trust conf/config.yaml's current value -- these
+    tests must not depend on whatever bias_exposure_time_seconds a real
+    deployment happens to have configured (e.g. raised for a camera that
+    refuses a literal 0s exposure)."""
+    monkeypatch.setattr(ba_mod, "BIAS_EXPOSURE_TIME_SECONDS", 0.0)
+
+
 def _write_bias_fits(directory, *, temp_c=TARGET_TEMP, exptime=0.0, naxis=SENSOR_SIZE, index=1):
     directory.mkdir(parents=True, exist_ok=True)
     width, height = naxis
@@ -104,7 +113,8 @@ class TestBiasAcquisitionPlugin:
         assert len(result.sequencer_data["bias_acquisition"]["bias_files"]) == 2
         assert camera.expose.await_count == 2
         camera.expose.assert_awaited_with(0.0)
-        assert fake_image.writeto.call_count == 2
+        # 2 per capture: the real file plus the GUI preview copy (image_to_gui=True).
+        assert fake_image.writeto.call_count == 4
         spectroscope.set_light_source.assert_awaited_once()
 
     async def test_stop_check_interrupts_camera_capture_loop(self, tmp_path):

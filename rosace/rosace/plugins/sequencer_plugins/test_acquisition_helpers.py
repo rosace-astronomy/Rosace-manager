@@ -243,6 +243,36 @@ class TestCaptureScienceImage:
         fake_image.writeto.assert_called_once_with(expected_path, overwrite=True)
         assert result == expected_path
 
+    async def test_image_to_gui_false_by_default_no_extra_write_no_broadcast(self, tmp_path, monkeypatch):
+        gui_dir = tmp_path / "gui_preview"
+        monkeypatch.setattr(acquisition_helpers, "GUI_PREVIEW_DIR", gui_dir)
+        broadcast_mock = AsyncMock()
+        monkeypatch.setattr(acquisition_helpers.ws_image_broadcaster, "broadcast", broadcast_mock)
+        fake_image = MagicMock()
+        camera = AsyncMock()
+        camera.expose.return_value = fake_image
+
+        await capture_science_image(camera, 30.0, str(tmp_path), "STAR_30s.fits")
+
+        assert fake_image.writeto.call_count == 1
+        broadcast_mock.assert_not_awaited()
+        assert not gui_dir.exists()
+
+    async def test_image_to_gui_true_writes_fixed_name_copy_and_broadcasts(self, tmp_path, monkeypatch):
+        gui_dir = tmp_path / "gui_preview"
+        monkeypatch.setattr(acquisition_helpers, "GUI_PREVIEW_DIR", gui_dir)
+        broadcast_mock = AsyncMock()
+        monkeypatch.setattr(acquisition_helpers.ws_image_broadcaster, "broadcast", broadcast_mock)
+        fake_image = MagicMock()
+        camera = AsyncMock()
+        camera.expose.return_value = fake_image
+
+        await capture_science_image(camera, 30.0, str(tmp_path), "STAR_30s.fits", image_to_gui=True)
+
+        assert fake_image.writeto.call_count == 2
+        fake_image.writeto.assert_any_call(gui_dir / "spectre.fits", overwrite=True)
+        broadcast_mock.assert_awaited_once_with("spectre")
+
 
 class TestBuildFitsRootName:
 

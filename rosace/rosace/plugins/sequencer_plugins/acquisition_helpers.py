@@ -95,22 +95,41 @@ async def capture_guide_image(
     return path
 
 
-async def capture_science_image(camera: Any, exposure_time: float, obs_dir: str, filename: str) -> Path:
+async def capture_science_image(
+    camera: Any, exposure_time: float, obs_dir: str, filename: str, image_to_gui: bool = False
+) -> Path:
     """Exposes the science camera for exposure_time seconds and writes the
     resulting FITS image to obs_dir/filename, returning the written path.
-    Same expose()-then-writeto() shape as capture_guide_image() below, named
+    Same expose()-then-writeto() shape as capture_guide_image() above, named
     to match it -- kept as its own function rather than one shared by both
     (not just capture_guide_image(camera, ...) reused here) since guiding
     needs to stamp FITS header cards on the image between expose() and
     writeto(), which this one doesn't. Extracted 2026-08-12 out of what used
     to be expose.py's own inline capture loop (now star_spectra_acquisition.py)
-    -- the shared foundation for future DARK/BIAS/FLAT/CALIB capture
-    sub-plugins, which will need exactly this same single-shot primitive; the
+    -- the shared foundation for the DARK/BIAS capture sub-plugins added
+    since, which use exactly this same single-shot primitive; the
     multi-sub-exposure loop itself stays in each calling sub-plugin, not
-    here."""
+    here.
+
+    image_to_gui=True additionally writes the same image to
+    GUI_PREVIEW_DIR/"spectre.fits" -- a fixed name, overwritten by each call
+    -- and notifies connected GUI clients over the WebSocket
+    (image_broadcast.py), so the web GUI's "Spectre" panel can fetch and
+    display it -- same mechanism and panel-per-fixed-file convention as
+    capture_guide_image()'s own image_to_gui, just a different panel name.
+    Every caller of this function (star_spectra_acquisition.py,
+    dark_acquisition.py, bias_acquisition.py) shares the one "Spectre"
+    panel -- it shows whichever kind of frame was captured most recently,
+    not a per-image-type history. False by default: an existing caller that
+    doesn't pass it keeps behaving exactly as before, no extra write, no
+    notification."""
     image = await camera.expose(exposure_time)
     path = Path(obs_dir) / filename
     image.writeto(path, overwrite=True)
+    if image_to_gui:
+        GUI_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+        image.writeto(GUI_PREVIEW_DIR / "spectre.fits", overwrite=True)
+        await ws_image_broadcaster.broadcast("spectre")
     return path
 
 

@@ -55,3 +55,31 @@ class TestCloseSessionPlugin:
         await CloseSessionPlugin().run(ctx)  # ne doit pas lever
 
         ctx.hardware["science_camera"].disconnect.assert_awaited_once()
+
+    async def test_turns_off_cooling_for_every_camera_that_has_it(self):
+        ctx = SessionContext(site_name="St-Pancrasse")
+        ctx.hardware = {"science_camera": AsyncMock(), "guiding_camera": AsyncMock(), "mount": AsyncMock()}
+        ctx.hardware_config = {
+            "science_camera": {"cooling": True},
+            "guiding_camera": {"cooling": True},
+            "mount": {"backlash_offset_deg": 2},
+        }
+
+        await CloseSessionPlugin().run(ctx)
+
+        ctx.hardware["science_camera"].set_cooling_off.assert_awaited_once()
+        ctx.hardware["guiding_camera"].set_cooling_off.assert_awaited_once()
+
+    async def test_cooling_turned_off_before_devices_disconnect(self):
+        """The cooler command needs a live connection -- must happen before disconnect()."""
+        calls = []
+        camera = AsyncMock()
+        camera.set_cooling_off.side_effect = lambda: calls.append("cooling_off")
+        camera.disconnect.side_effect = lambda: calls.append("disconnect")
+        ctx = SessionContext(site_name="St-Pancrasse")
+        ctx.hardware = {"science_camera": camera}
+        ctx.hardware_config = {"science_camera": {"cooling": True}}
+
+        await CloseSessionPlugin().run(ctx)
+
+        assert calls == ["cooling_off", "disconnect"]

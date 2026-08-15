@@ -36,7 +36,7 @@ from ....hardware.spectroscope import LightSource
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
 from ..acquisition_helpers import build_fits_root_name, capture_science_image
-from ..dark_library_helpers import find_usable_frame_series
+from ..dark_library_helpers import find_usable_frame_series, summarize_series_root_name
 
 log = logging.getLogger("spectro.subplugin.bias_acquisition")
 
@@ -78,7 +78,7 @@ class BiasAcquisitionPlugin(SubPlugin):
             for i in range(1, BIAS_COUNT + 1):
                 suffix = f"-{i}" if BIAS_COUNT > 1 else ""
                 path = await capture_science_image(
-                    camera, BIAS_EXPOSURE_TIME_SECONDS, obs.obs_dir, f"{root_name}{suffix}.fits"
+                    camera, BIAS_EXPOSURE_TIME_SECONDS, obs.obs_dir, f"{root_name}{suffix}.fits", image_to_gui=True
                 )
                 captured.append(path.name)
 
@@ -91,5 +91,6 @@ class BiasAcquisitionPlugin(SubPlugin):
             origin = "camera"
 
         obs.sequencer_data["bias_acquisition"] = {"origin": origin, "bias_files": files}
-        log.info(f"[BIAS_ACQUISITION] origin={origin} -- {files}")
+        log.info(f"[BIAS_ACQUISITION] Origin={origin}, series of {len(files)}x{BIAS_EXPOSURE_TIME_SECONDS:g}s at {round(target_temp)}deg")
+        log.info(f"[BIAS_ACQUISITION] Done, root name = '{summarize_series_root_name(files)}'")
         return obs

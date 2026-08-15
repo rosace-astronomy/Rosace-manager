@@ -14,10 +14,23 @@ copy_darks_from_library() stay DARK-only.
 from __future__ import annotations
 
 import math
+import re
 import shutil
 from pathlib import Path
 
 from astropy.io import fits
+
+from ...config import DARK_LIBRARY_DIR
+
+_SERIES_INDEX_RE = re.compile(r"-\d+$")
+
+# Fixed range of temperature buckets pre-created by ensure_dark_library_structure()
+# below -- deliberately not a conf/config.yaml key: a couple of extra empty
+# directories cost nothing, so a wide-enough fixed range removes the need for a
+# config knob entirely. User-confirmed bounds, 2026-08-15.
+DARK_LIBRARY_MIN_TEMP_C = -20
+DARK_LIBRARY_MAX_TEMP_C = 0
+DARK_LIBRARY_TEMP_STEP_C = 5
 
 
 def round_to_5(value: float) -> int:
@@ -101,3 +114,35 @@ def copy_darks_from_library(library_dir: Path, filenames: list[str], dest_dir: P
     for name in filenames:
         shutil.copy2(library_dir / name, dest_dir / name)
     return list(filenames)
+
+
+def summarize_series_root_name(files: list[str]) -> str:
+    """Human-readable stand-in for a whole DARK/BIAS series in a single log
+    line, instead of listing every filename (found too noisy in practice --
+    a 5-file series already makes for an unreadable log line). Takes the
+    first file's name and replaces its trailing per-file series index (the
+    "-<N>" build_fits_root_name() appends when a series has more than one
+    file, see its own docstring) with "-xxx" -- e.g.
+    "DARK_-15deg_5x300s_20260815_130137-1.fits" ->
+    "DARK_-15deg_5x300s_20260815_130137-xxx.fits". A single-file series (no
+    index suffix at all) is returned unchanged."""
+    if not files:
+        return ""
+    stem = files[0].removesuffix(".fits")
+    return f"{_SERIES_INDEX_RE.sub('-xxx', stem)}.fits"
+
+
+def ensure_dark_library_structure() -> None:
+    """Creates DARK_LIBRARY_DIR and one subdirectory per temperature bucket
+    from DARK_LIBRARY_MIN_TEMP_C to DARK_LIBRARY_MAX_TEMP_C (step
+    DARK_LIBRARY_TEMP_STEP_C), if they don't already exist. Called once at
+    server startup (main.py's lifespan()), not per-session -- the library is
+    a persistent, cross-session structure, not something INIT_SESSION owns.
+    Uses temperature_bucket_dirname() for every name, the exact same
+    function dark_acquisition.py itself calls to look a bucket up, so the
+    two can never name a bucket differently. Safe to call on every server
+    startup, not just the first: mkdir(..., exist_ok=True) never touches a
+    directory that already exists, so it never disturbs darks a previous
+    session or a manual transfer already put there."""
+    for temp in range(DARK_LIBRARY_MIN_TEMP_C, DARK_LIBRARY_MAX_TEMP_C + 1, DARK_LIBRARY_TEMP_STEP_C):
+        (DARK_LIBRARY_DIR / temperature_bucket_dirname(temp)).mkdir(parents=True, exist_ok=True)

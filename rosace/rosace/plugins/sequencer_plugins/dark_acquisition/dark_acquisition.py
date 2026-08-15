@@ -50,7 +50,12 @@ from ....hardware.spectroscope import LightSource
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
 from ..acquisition_helpers import build_fits_root_name, capture_science_image
-from ..dark_library_helpers import copy_darks_from_library, find_usable_frame_series, temperature_bucket_dirname
+from ..dark_library_helpers import (
+    copy_darks_from_library,
+    find_usable_frame_series,
+    summarize_series_root_name,
+    temperature_bucket_dirname,
+)
 
 log = logging.getLogger("spectro.subplugin.dark_acquisition")
 
@@ -103,7 +108,7 @@ class DarkAcquisitionPlugin(SubPlugin):
             for i in range(1, DARK_COUNT + 1):
                 suffix = f"-{i}" if DARK_COUNT > 1 else ""
                 path = await capture_science_image(
-                    camera, MAX_EXPOSURE_TIME_SECONDS, obs.obs_dir, f"{root_name}{suffix}.fits"
+                    camera, MAX_EXPOSURE_TIME_SECONDS, obs.obs_dir, f"{root_name}{suffix}.fits", image_to_gui=True
                 )
                 captured.append(path.name)
 
@@ -116,5 +121,6 @@ class DarkAcquisitionPlugin(SubPlugin):
             origin = "camera"
 
         obs.sequencer_data["dark_acquisition"] = {"origin": origin, "dark_files": files}
-        log.info(f"[DARK_ACQUISITION] origin={origin} -- {files}")
+        log.info(f"[DARK_ACQUISITION] Origin={origin}, series of {len(files)}x{MAX_EXPOSURE_TIME_SECONDS:g}s at {round(target_temp)}deg")
+        log.info(f"[DARK_ACQUISITION] Done, root name = '{summarize_series_root_name(files)}'")
         return obs

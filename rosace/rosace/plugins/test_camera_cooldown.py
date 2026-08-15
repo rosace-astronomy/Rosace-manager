@@ -11,7 +11,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from rosace.plugins import camera_cooldown as cooldown_mod
-from rosace.plugins.camera_cooldown import cool_science_camera_to_target
+from rosace.plugins.camera_cooldown import (
+    activate_cooling_for_every_camera,
+    cool_science_camera_to_target,
+    deactivate_cooling_for_every_camera,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -79,3 +83,71 @@ class TestCoolScienceCameraToTarget:
         )
 
         assert target == -5
+
+
+class TestActivateCoolingForEveryCamera:
+
+    async def test_turns_on_cooling_for_every_camera_that_has_it(self):
+        science_camera = AsyncMock()
+        guiding_camera = AsyncMock()
+        mount = AsyncMock()
+        hardware = {"science_camera": science_camera, "guiding_camera": guiding_camera, "mount": mount}
+        hardware_config = {
+            "science_camera": {"cooling": True},
+            "guiding_camera": {"cooling": True},
+            "mount": {"backlash_offset_deg": 2},
+        }
+
+        await activate_cooling_for_every_camera(hardware, hardware_config)
+
+        science_camera.set_cooling_on.assert_awaited_once()
+        guiding_camera.set_cooling_on.assert_awaited_once()
+
+    async def test_skips_devices_without_cooling(self):
+        pointing_camera = AsyncMock()
+        hardware = {"pointing_camera": pointing_camera}
+        hardware_config = {"pointing_camera": {"cooling": False}}
+
+        await activate_cooling_for_every_camera(hardware, hardware_config)
+
+        pointing_camera.set_cooling_on.assert_not_awaited()
+
+    async def test_skips_devices_that_never_declare_cooling(self):
+        mount = AsyncMock()
+        hardware = {"mount": mount}
+        hardware_config = {"mount": {"backlash_offset_deg": 2}}
+
+        await activate_cooling_for_every_camera(hardware, hardware_config)
+
+        mount.set_cooling_on.assert_not_awaited()
+
+
+class TestDeactivateCoolingForEveryCamera:
+
+    async def test_turns_off_cooling_for_every_camera_that_has_it(self):
+        science_camera = AsyncMock()
+        guiding_camera = AsyncMock()
+        hardware = {"science_camera": science_camera, "guiding_camera": guiding_camera}
+        hardware_config = {
+            "science_camera": {"cooling": True},
+            "guiding_camera": {"cooling": True},
+        }
+
+        await deactivate_cooling_for_every_camera(hardware, hardware_config)
+
+        science_camera.set_cooling_off.assert_awaited_once()
+        guiding_camera.set_cooling_off.assert_awaited_once()
+
+    async def test_one_failure_does_not_block_the_others(self):
+        failing = AsyncMock()
+        failing.set_cooling_off.side_effect = RuntimeError("boom")
+        science_camera = AsyncMock()
+        hardware = {"guiding_camera": failing, "science_camera": science_camera}
+        hardware_config = {
+            "guiding_camera": {"cooling": True},
+            "science_camera": {"cooling": True},
+        }
+
+        await deactivate_cooling_for_every_camera(hardware, hardware_config)  # must not raise
+
+        science_camera.set_cooling_off.assert_awaited_once()

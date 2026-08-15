@@ -119,8 +119,8 @@ class IndiCamera(IndiDevice):
         try:
             if exp_time_sec is None:
                 exp_time_sec = self.exp_time_sec
-            if exp_time_sec == 0:
-                return
+            # A 0s exposure (BIAS) still delivers a real blob -- it must still be waited
+            # for, just with no exposure time added to the margin below.
             self.logger.debug(f"synchronize_with_image_reception: Start waiting for " \
                               f"{exp_time_sec}s with margin {self.READOUT_TIME_MARGIN}s")
             self.wait_for_incoming_blob_vector(timeout=exp_time_sec + self.READOUT_TIME_MARGIN)

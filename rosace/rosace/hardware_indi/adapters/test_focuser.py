@@ -38,6 +38,13 @@ class TestFocuserAdapter:
 
         assert await adapter.get_position() == 4321
 
+    async def test_get_temperature_returns_indi_value(self):
+        indi_focuser = MagicMock()
+        indi_focuser.get_temperature.return_value = 12.3
+        adapter = FocuserAdapter(indi_focuser)
+
+        assert await adapter.get_temperature() == 12.3
+
     async def test_move_to_wraps_underlying_error(self):
         indi_focuser = MagicMock()
         indi_focuser.move_to.side_effect = RuntimeError("focuser boom")

@@ -57,7 +57,7 @@ hardware_connect_timeout_seconds: 5 # INIT_SESSION: max time to wait for each IN
 # MAX_EXPOSURE_TIME_SECONDS in config.py — used when EXPOSE has to compute
 # exposure_time from magnitude (see acquisition_helpers.py).
 exposure_time_mag0_seconds: 1.0
-max_exposure_time_seconds: 300
+max_exposure_time_seconds: 30
 
 # Number of DARK/BIAS frames per series, fixed for the whole session.
 # Exposed as DARK_COUNT / BIAS_COUNT in config.py.
