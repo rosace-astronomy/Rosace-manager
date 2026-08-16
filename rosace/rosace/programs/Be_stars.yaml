@@ -6,7 +6,7 @@ program: Be_stars
 description: "Suivi spectral d'étoiles Be — émission Hα et variations de profil"
 
 sequencer:
-  # - pointing_72ed                # Pointage télescope
+  - pointing_72ed                # Pointage télescope
   # - focus                      # Mise au point automatique
   - star_spectra_acquisition     # Acquisition des poses science (bascule le spectro en SKY)
   - dark_acquisition             # Darks (session/bibliothèque/caméra) -- avant le reset SKY ci-dessous
