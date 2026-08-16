@@ -1,14 +1,11 @@
 import csv
 import logging
 
-import astropy.units as u
-from astropy.coordinates import AltAz, EarthLocation, SkyCoord
-from astropy.time import Time
-from astropy.utils import iers as _iers
 from pydantic import ValidationError
 
+from ....astro_math import altitude_deg
 from ....config import (
-    OBSERVATION_LIST_PATH, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, SITE_ELEVATION_M,
+    OBSERVATION_LIST_PATH, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG,
     MIN_TARGET_ALTITUDE_DEG,
 )
 from ....database import db_count_observations_for_target
@@ -18,28 +15,12 @@ from .. import SchedulerFatalError
 
 log = logging.getLogger("spectro.plugin.scheduler")
 
-# No internet access assumed on the observing site — a fresh IERS bulletin
-# download would otherwise be attempted (and could stall/fail) the first time
-# an AltAz transform runs. `auto_download = False` alone still leaves Astropy's
-# default IERS_Auto table active (IERS-A, i.e. measured + *predicted* values) —
-# its predictions go stale after conf.auto_max_age (30 days) and, with
-# downloads disabled, raise instead of refreshing. Forcing IERS_B (measured
-# values only, no prediction, no staleness check) avoids that: precise to well
-# under 1 arcsecond, irrelevant next to MIN_TARGET_ALTITUDE_DEG.
-_iers.conf.auto_download = False
-_iers.earth_orientation_table.set(_iers.IERS_B.open())
-
-_SITE_LOCATION = EarthLocation.from_geodetic(
-    lon=SITE_LONGITUDE_DEG * u.deg, lat=SITE_LATITUDE_DEG * u.deg, height=SITE_ELEVATION_M * u.m
-)
-
 
 def _target_altitude_deg(ra_deg: float, dec_deg: float) -> float:
     """Current altitude (degrees) of an ICRS (RA, Dec) coordinate above the
-    site's horizon, right now."""
-    target = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="icrs")
-    altaz = target.transform_to(AltAz(obstime=Time.now(), location=_SITE_LOCATION))
-    return altaz.alt.deg
+    site's horizon, right now. See astro_math.py for why this is plain
+    trigonometry rather than an AstroPy/IERS-backed transform."""
+    return altitude_deg(ra_deg, dec_deg, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG)
 
 
 def _read_observation_list(path) -> list[dict]:
@@ -102,8 +83,8 @@ class SchedulerPlugin:
     (rosace.db, toutes sessions confondues — un arrêt/redémarrage de session
     ne remet pas le compteur à zéro) : si ce rang a déjà été honoré, la ligne
     est ignorée et on passe à la suivante. Sinon, sa hauteur actuelle
-    au-dessus de l'horizon (AstroPy, site défini par SITE_LATITUDE_DEG/
-    SITE_LONGITUDE_DEG/SITE_ELEVATION_M) est comparée à MIN_TARGET_ALTITUDE_DEG :
+    au-dessus de l'horizon (astro_math.py, site défini par SITE_LATITUDE_DEG/
+    SITE_LONGITUDE_DEG) est comparée à MIN_TARGET_ALTITUDE_DEG :
     si elle est trop basse, la ligne est ignorée et on passe à la suivante
     (pas d'observation "consommée" pour autant). Vérification de hauteur
     uniquement — pas de contrôle jour/nuit (soleil sous l'horizon) : reste un
