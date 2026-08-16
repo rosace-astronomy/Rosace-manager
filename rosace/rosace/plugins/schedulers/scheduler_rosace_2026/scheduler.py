@@ -4,7 +4,7 @@ import logging
 import astropy.units as u
 from astropy.coordinates import AltAz, EarthLocation, SkyCoord
 from astropy.time import Time
-from astropy.utils.iers import conf as _iers_conf
+from astropy.utils import iers as _iers
 from pydantic import ValidationError
 
 from ....config import (
@@ -20,9 +20,14 @@ log = logging.getLogger("spectro.plugin.scheduler")
 
 # No internet access assumed on the observing site — a fresh IERS bulletin
 # download would otherwise be attempted (and could stall/fail) the first time
-# an AltAz transform runs. The bundled, non-downloaded IERS-B table is precise
-# to well under 1 arcsecond, irrelevant next to MIN_TARGET_ALTITUDE_DEG.
-_iers_conf.auto_download = False
+# an AltAz transform runs. `auto_download = False` alone still leaves Astropy's
+# default IERS_Auto table active (IERS-A, i.e. measured + *predicted* values) —
+# its predictions go stale after conf.auto_max_age (30 days) and, with
+# downloads disabled, raise instead of refreshing. Forcing IERS_B (measured
+# values only, no prediction, no staleness check) avoids that: precise to well
+# under 1 arcsecond, irrelevant next to MIN_TARGET_ALTITUDE_DEG.
+_iers.conf.auto_download = False
+_iers.earth_orientation_table.set(_iers.IERS_B.open())
 
 _SITE_LOCATION = EarthLocation.from_geodetic(
     lon=SITE_LONGITUDE_DEG * u.deg, lat=SITE_LATITUDE_DEG * u.deg, height=SITE_ELEVATION_M * u.m
