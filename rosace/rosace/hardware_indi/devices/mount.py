@@ -4,6 +4,9 @@ import logging
 # Indi stuff
 from ..wrapper.indi_device import IndiDevice
 
+# Rosace stuff
+from ...astro_math import local_sidereal_time_deg
+
 # Astropy stuff
 from astropy import units as u
 from astropy.time import Time
@@ -248,6 +251,20 @@ class IndiMount(IndiDevice):
         status = self.get_switch('TELESCOPE_PARK')
         self.logger.debug(f'Got TELESCOPE_PARK status: {status}')
         return status['PARK']
+
+    def get_home_position_icrs(self, longitude_deg):
+        """
+        A German Equatorial Mount's home position has its RA axis parallel
+        to the polar axis, i.e. dec=+90 at hour angle=0 right now -- both
+        epoch-of-date (JNow) concepts, resolved here since this is the one
+        place JNow is allowed (see CLAUDE.md's J2000/ICRS-everywhere
+        convention). Returns an ICRS SkyCoord, ready to hand to
+        sync_to_coord() the same way any other J2000 target would be.
+        """
+        lst_deg = local_sidereal_time_deg(longitude_deg)
+        fk5_now = FK5(equinox=Time.now())
+        home_now = SkyCoord(ra=lst_deg * u.degree, dec=90.0 * u.degree, frame=fk5_now)
+        return home_now.transform_to(ICRS())
 
     def get_current_coordinates(self):
         """

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from rosace.astro_math import altitude_deg, julian_date
+from rosace.astro_math import altitude_deg, julian_date, local_sidereal_time_deg
 
 
 class TestJulianDate:
@@ -42,3 +42,23 @@ class TestAltitudeDeg:
         # Ne doit pas lever -- juste vérifier que l'appel sans `at` fonctionne.
         alt = altitude_deg(ra_deg=10.0, dec_deg=20.0, latitude_deg=45.0, longitude_deg=5.0)
         assert -90.0 <= alt <= 90.0
+
+
+class TestLocalSiderealTimeDeg:
+
+    def test_object_at_lst_and_site_latitude_is_at_zenith(self):
+        # Angle horaire nul (RA == LST) et Dec == latitude du site -> l'objet
+        # est exactement au zénith (altitude 90°), invariant indépendant de
+        # toute valeur de référence GMST externe.
+        at = datetime(2026, 8, 16, 21, 0, 0, tzinfo=timezone.utc)
+        longitude, latitude = 5.0, 45.0
+        lst_deg = local_sidereal_time_deg(longitude, at)
+        alt = altitude_deg(ra_deg=lst_deg, dec_deg=latitude, latitude_deg=latitude, longitude_deg=longitude, at=at)
+        assert alt == pytest.approx(90.0, abs=1e-9)
+
+    def test_result_is_within_360_degrees_range(self):
+        assert 0.0 <= local_sidereal_time_deg(5.0) < 360.0
+
+    def test_defaults_to_now_when_at_omitted(self):
+        lst_deg = local_sidereal_time_deg(5.0)
+        assert 0.0 <= lst_deg < 360.0

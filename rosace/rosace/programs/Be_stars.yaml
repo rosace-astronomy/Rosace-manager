@@ -6,13 +6,14 @@ program: Be_stars
 description: "Suivi spectral d'étoiles Be — émission Hα et variations de profil"
 
 sequencer:
+  - home_sync_am3                # Recalage monture AM3 (une seule fois par session)
   - pointing_72ed                # Pointage télescope
   # - focus                      # Mise au point automatique
   - star_spectra_acquisition     # Acquisition des poses science (bascule le spectro en SKY)
+  - stop_phd2_guiding            # Stoppe le guidage (PHD2) -- inutile/perdu pendant les darks/bias
   - dark_acquisition             # Darks (session/bibliothèque/caméra) -- avant le reset SKY ci-dessous
   - bias_acquisition             # Bias (session/caméra) -- avant le reset SKY ci-dessous
   - spectro_light_source_to_sky  # Remet le spectroscope en SKY (sécurité fin d'observation)
-  - stop_phd2_guiding            # Stoppe le guidage (PHD2)
 reduction:
   - bias        # Soustraction biais
   - dark        # Soustraction dark

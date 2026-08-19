@@ -38,3 +38,29 @@ class MountAdapter:
         except Exception as e:
             raise DeviceCommandError(f"get_position() failed: {e}") from e
         return float(coord.ra.deg), float(coord.dec.deg)
+
+    async def park(self) -> None:
+        try:
+            await asyncio.to_thread(self._indi_mount.park)
+        except Exception as e:
+            raise DeviceCommandError(f"park() failed: {e}") from e
+
+    async def unpark(self) -> None:
+        try:
+            await asyncio.to_thread(self._indi_mount.unpark)
+        except Exception as e:
+            raise DeviceCommandError(f"unpark() failed: {e}") from e
+
+    async def sync_to_coordinates(self, ra: float, dec: float) -> None:
+        coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="icrs")
+        try:
+            await asyncio.to_thread(self._indi_mount.sync_to_coord, coord)
+        except Exception as e:
+            raise DeviceCommandError(f"sync_to_coordinates({ra}, {dec}) failed: {e}") from e
+
+    async def get_home_position(self, longitude_deg: float) -> tuple[float, float]:
+        try:
+            coord = await asyncio.to_thread(self._indi_mount.get_home_position_icrs, longitude_deg)
+        except Exception as e:
+            raise DeviceCommandError(f"get_home_position({longitude_deg}) failed: {e}") from e
+        return float(coord.ra.deg), float(coord.dec.deg)

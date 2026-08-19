@@ -47,6 +47,15 @@ def _greenwich_mean_sidereal_time_deg(dt_utc: datetime) -> float:
     return gmst % 360.0
 
 
+def local_sidereal_time_deg(longitude_deg: float, at: datetime | None = None) -> float:
+    """Local (apparent, low-precision) sidereal time in degrees, at an
+    observing site's longitude (east-positive), for a given UTC datetime
+    (`at`, defaults to now). Same GMST formula/accuracy as altitude_deg --
+    see module docstring."""
+    at = at or datetime.now(timezone.utc)
+    return (_greenwich_mean_sidereal_time_deg(at) + longitude_deg) % 360.0
+
+
 def altitude_deg(
     ra_deg: float,
     dec_deg: float,
@@ -58,7 +67,7 @@ def altitude_deg(
     an observing site (latitude_deg north-positive, longitude_deg
     east-positive), at a given UTC datetime (`at`, defaults to now)."""
     at = at or datetime.now(timezone.utc)
-    lst_deg = (_greenwich_mean_sidereal_time_deg(at) + longitude_deg) % 360.0
+    lst_deg = local_sidereal_time_deg(longitude_deg, at)
     hour_angle_deg = (lst_deg - ra_deg + 180.0) % 360.0 - 180.0
 
     lat, dec, ha = math.radians(latitude_deg), math.radians(dec_deg), math.radians(hour_angle_deg)
