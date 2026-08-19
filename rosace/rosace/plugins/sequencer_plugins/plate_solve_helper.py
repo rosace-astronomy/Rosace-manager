@@ -65,7 +65,7 @@ async def solve_wcs(
     dec_hint: float | None = None,
     radius_deg: float = 5.0,
     sampling_arcsec: float | None = None,
-    timeout: float = 360,
+    timeout: float = 30,
     record_error: bool = False,
     observation_id: str | None = None,
 ) -> None:

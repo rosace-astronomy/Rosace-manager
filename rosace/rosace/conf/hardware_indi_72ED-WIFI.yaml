@@ -13,18 +13,19 @@ INDI_drivers:
         indi_client :
             indi_host : 10.250.250.1
             indi_port : 7624
-        cooling : true
-        cooling_capability : -20
+        cooling : FALSE
+        # cooling_capability : -20
         sampling_arcsec : 1.75
         # Exposure time (seconds) for a direct guiding-camera capture.
-        exposure_seconds : 3
+        exposure_seconds : 10
         # Spectrograph slit position in this camera's field, in pixels.
         # Zero-indexed (pixel (0,0) = center of the first pixel, matching
         # astropy's WCS.pixel_to_world()) -- if read off a FITS viewer such
         # as DS9 (one-indexed), subtract 1 from each axis first.
         # TODO placeholder values below, not yet calibrated for this instrument.
-        slit_x : 200
-        slit_y : 230
+        slit_x : 614
+        slit_y : 621
+
     science_camera:
         role: camera
         module: camera
@@ -73,19 +74,19 @@ INDI_drivers:
         module_dir: rosace.hardware_indi.devices
         indi_name: ZWO EAF
         class_name : IndiFocuser
-        # port: /dev/serial/by-id/usb-Optec__Inc._Optec_USB_Serial_Cable_OP5AORA9-if00-port0
+        port: /dev/serial/by-id/usb-Optec__Inc._Optec_USB_Serial_Cable_OP5AORA9-if00-port0
         indi_client:
             indi_host: 10.250.250.1
             indi_port: 7624
-        # focus_range:
-        #     min: 10200
-        #     max: 11400
-        # autofocus_step:
-        #     fine: 300
-        #     coarse: 300
-        # autofocus_range:
-        #     fine: 2000
-        #     coarse: 2000
+        focus_range:
+            min: 10200
+            max: 11400
+        autofocus_step:
+            fine: 300
+            coarse: 300
+        autofocus_range:
+            fine: 2000
+            coarse: 2000
 
     spectroscope:
         role: spectroscope
@@ -108,8 +109,8 @@ PHD2_config:
     do_calibration: False
     # profile_name: St-Pancrasse
     # profile_name: Simulators
-    profile_name: Simulator
-    # profile_name: 72ED Stellarmate
+    # profile_name: Simulator
+    profile_name: 72ED Stellarmate
     exposure_time_sec: 0.3
     settle:
         pixels: 7
