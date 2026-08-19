@@ -15,6 +15,18 @@ class CloseSessionPlugin:
 
         await deactivate_cooling_for_every_camera(ctx.hardware, ctx.hardware_config)
 
+        # Generic, mount-agnostic: any mount benefits from being parked at
+        # the end of the session -- unlike home_sync_am3 (AM3-specific
+        # recovery procedure), park() alone is a standard Mount Protocol
+        # primitive. Needs a live connection, hence before the disconnect
+        # loop below, same reasoning as cooling deactivation above.
+        if "mount" in ctx.hardware:
+            try:
+                await ctx.hardware["mount"].park()
+                log.info("[CLOSE_SESSION] Mount parked")
+            except Exception as e:
+                log.error(f"[CLOSE_SESSION] Failed to park mount: {e}")
+
         for device_name, adapter in ctx.hardware.items():
             try:
                 await adapter.disconnect()
@@ -22,6 +34,6 @@ class CloseSessionPlugin:
             except Exception as e:
                 log.error(f"[CLOSE_SESSION] Failed to disconnect '{device_name}': {e}")
 
-        await asyncio.sleep(7.0)  # TODO : stationner télescope, fermer coupole…
+        await asyncio.sleep(7.0)  # TODO : fermer coupole…
         log.info("[CLOSE_SESSION] Session clôturée")
         return ctx

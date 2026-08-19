@@ -37,7 +37,7 @@ INDI_drivers:
             indi_host : 10.250.250.1
             indi_port : 7624
         cooling : true
-        cooling_capability : -20
+        cooling_capability : -30
         # Acceptable gap (degrees) between commanded and measured temperature
         # for the cooldown wait in INIT_SESSION to consider the target reached.
         temperature_tolerance_deg_c : 2

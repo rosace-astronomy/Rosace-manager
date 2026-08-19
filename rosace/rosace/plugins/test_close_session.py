@@ -83,3 +83,40 @@ class TestCloseSessionPlugin:
         await CloseSessionPlugin().run(ctx)
 
         assert calls == ["cooling_off", "disconnect"]
+
+    async def test_parks_mount_when_present(self):
+        ctx = SessionContext(site_name="St-Pancrasse")
+        ctx.hardware = {"mount": AsyncMock(), "science_camera": AsyncMock()}
+
+        await CloseSessionPlugin().run(ctx)
+
+        ctx.hardware["mount"].park.assert_awaited_once()
+
+    async def test_no_park_call_when_no_mount_present(self):
+        ctx = SessionContext(site_name="St-Pancrasse")
+        ctx.hardware = {"science_camera": AsyncMock()}
+
+        await CloseSessionPlugin().run(ctx)  # ne doit pas lever
+
+    async def test_park_failure_does_not_block_disconnects(self):
+        mount = AsyncMock()
+        mount.park.side_effect = RuntimeError("boom")
+        ctx = SessionContext(site_name="St-Pancrasse")
+        ctx.hardware = {"mount": mount, "science_camera": AsyncMock()}
+
+        await CloseSessionPlugin().run(ctx)  # ne doit pas lever
+
+        mount.disconnect.assert_awaited_once()
+        ctx.hardware["science_camera"].disconnect.assert_awaited_once()
+
+    async def test_mount_parked_before_disconnect(self):
+        calls = []
+        mount = AsyncMock()
+        mount.park.side_effect = lambda: calls.append("park")
+        mount.disconnect.side_effect = lambda: calls.append("disconnect")
+        ctx = SessionContext(site_name="St-Pancrasse")
+        ctx.hardware = {"mount": mount}
+
+        await CloseSessionPlugin().run(ctx)
+
+        assert calls == ["park", "disconnect"]
