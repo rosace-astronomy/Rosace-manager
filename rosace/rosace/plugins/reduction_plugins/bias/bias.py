@@ -1,6 +1,6 @@
 """
-Sous-plugin REDUCTION — Soustraction du biais
-Soustrait le niveau de biais du capteur CCD à chaque image brute.
+REDUCTION sub-plugin — Bias subtraction
+Subtracts the CCD sensor's bias level from each raw image.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ log = logging.getLogger("spectro.subplugin.bias")
 
 
 class BiasPlugin(SubPlugin):
-    """Soustraction du biais (offset électronique du capteur) — simulation interne."""
+    """Bias (sensor electronic offset) subtraction — internal simulation."""
 
     async def execute(self, obs: Observation) -> Observation:
         if "star_spectra_images" not in obs.sequencer_data:

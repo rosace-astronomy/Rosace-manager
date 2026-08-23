@@ -1,8 +1,8 @@
 """
-Package des sous-plugins de REDUCTION.
+REDUCTION sub-plugin package.
 
-Un répertoire par sous-plugin (bias/, dark/, flat/, extract/), chacun avec
-sa classe et ses tests. Le pipeline est chargé dynamiquement par
-pipeline_loader.py, un import par étape déclarée dans le programme YAML
-actif — ce module n'importe donc rien lui-même.
+One directory per sub-plugin (bias/, dark/, flat/, extract/), each with its
+own class and tests. The pipeline is loaded dynamically by
+pipeline_loader.py, one import per step declared in the active program
+YAML — this module therefore doesn't import anything itself.
 """

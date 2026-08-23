@@ -1,11 +1,11 @@
 """
-Package des sous-plugins du SEQUENCER.
+SEQUENCER sub-plugin package.
 
-Un répertoire par sous-plugin (slew/, focus/, star_spectra_acquisition/), chacun avec sa
-classe et ses tests. Le nom nu (<name>/<name>.py) est la version canonique,
-utilisée quand SEQUENCER_BACKEND="indi" ; "internal" est une exception de
-démo (<name>/<name>_internal.py, uniquement là où c'est utile — pas un
-backend de plein droit). pipeline_loader.py résout dynamiquement, un import
-par étape déclarée dans le programme YAML actif — ce module n'importe donc
-rien lui-même.
+One directory per sub-plugin (slew/, focus/, star_spectra_acquisition/),
+each with its own class and tests. The bare name (<name>/<name>.py) is the
+canonical version, used when SEQUENCER_BACKEND="indi"; "internal" is a demo
+exception (<name>/<name>_internal.py, only where it's actually useful — not
+a full-fledged backend). pipeline_loader.py resolves dynamically, one
+import per step declared in the active program YAML — this module
+therefore doesn't import anything itself.
 """

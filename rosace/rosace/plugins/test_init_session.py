@@ -1,6 +1,6 @@
 """
-Tests du plugin INIT_SESSION (InitSessionPlugin).
-Lancement : pytest plugins/test_init_session.py -v
+Tests for the INIT_SESSION plugin (InitSessionPlugin).
+Run: pytest plugins/test_init_session.py -v
 """
 
 from datetime import datetime, timedelta, timezone
@@ -17,7 +17,7 @@ from rosace.time_helpers import astronomical_day_local_date
 
 @pytest.fixture(autouse=True)
 def fast_sleep(monkeypatch):
-    """Évite d'attendre le sleep(1.0) simulé à chaque test."""
+    """Avoids waiting out the simulated sleep(1.0) on every test."""
     monkeypatch.setattr(
         "rosace.plugins.init_session.asyncio.sleep", AsyncMock(return_value=None)
     )
@@ -25,9 +25,9 @@ def fast_sleep(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def mock_hardware_check(monkeypatch):
-    """Par défaut, la connexion matérielle réussit instantanément et renvoie un
-    device — les tests qui portent sur autre chose n'ont pas à parler à du vrai
-    matériel INDI."""
+    """By default, the hardware connection succeeds instantly and returns a
+    device — tests concerned with something else don't have to talk to real
+    INDI hardware."""
     mock = AsyncMock(return_value=ConnectedHardware(
         adapters={"mount": object()}, hardware_config={"mount": {"some_param": 42}},
     ))
@@ -41,10 +41,10 @@ class TestInitSessionPlugin:
         ctx = SessionContext(site_name="St-Pancrasse")
         result = await InitSessionPlugin().run(ctx)
 
-        assert result is ctx  # même objet, enrichi
+        assert result is ctx  # same object, enriched
         assert ctx.session_dir is not None
         assert Path(ctx.session_dir).is_dir()
-        # Isolation : on écrit bien sous le répertoire temporaire du test, jamais sous le vrai ~/.rosace.
+        # Isolation: written under the test's temporary directory, never under the real ~/.rosace.
         assert Path(ctx.session_dir).is_relative_to(tmp_data_dir)
 
     async def test_directory_name_contains_date_and_site(self):
@@ -55,7 +55,7 @@ class TestInitSessionPlugin:
         assert f"{date_str}_St-Pancrasse" in ctx.session_dir
 
     async def test_idempotent_if_called_twice(self):
-        """mkdir(exist_ok=True) : un second appel ne doit pas lever d'erreur."""
+        """mkdir(exist_ok=True): a second call must not raise."""
         ctx = SessionContext(site_name="St-Pancrasse")
         await InitSessionPlugin().run(ctx)
         first_dir = ctx.session_dir
@@ -63,7 +63,7 @@ class TestInitSessionPlugin:
         ctx2 = SessionContext(site_name="St-Pancrasse")
         await InitSessionPlugin().run(ctx2)
 
-        assert ctx2.session_dir == first_dir  # même nuit, même répertoire
+        assert ctx2.session_dir == first_dir  # same night, same directory
 
     async def test_preserves_session_id(self):
         ctx = SessionContext(site_name="St-Pancrasse")
@@ -97,7 +97,7 @@ class TestSessionDirectoryUsesAstronomicalDay:
 
 
 class TestHardwareConnectivityDispatch:
-    """Le check de connectivité matérielle n'est déclenché que si sequencer_backend=indi."""
+    """The hardware connectivity check only runs when sequencer_backend=indi."""
 
     async def test_calls_check_when_backend_is_indi(self, monkeypatch, mock_hardware_check):
         monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "indi")
@@ -159,8 +159,8 @@ class TestHardwareConnectivityDispatch:
 
 
 class TestCameraCooldownDispatch:
-    """La caméra science n'est refroidie que si backend=indi ET que son entrée
-    hardware déclare cooling: true (voir camera_cooldown.py)."""
+    """The science camera is only cooled if backend=indi AND its hardware
+    entry declares cooling: true (see camera_cooldown.py)."""
 
     @pytest.fixture(autouse=True)
     def mock_activate_cooling(self, monkeypatch):

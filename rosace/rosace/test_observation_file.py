@@ -1,6 +1,6 @@
 """
-Tests de observation_file.py — persistance YAML de l'observation.
-Lancement : pytest test_observation_file.py -v
+Tests for observation_file.py — YAML persistence of the observation.
+Run: pytest test_observation_file.py -v
 """
 
 from datetime import datetime, timezone
@@ -32,7 +32,7 @@ class TestCreateObservationFile:
         assert obs.yaml_file == filepath.name
 
     def test_does_not_write_to_disk(self, tmp_path):
-        """create_observation_file fixe juste le nom, n'écrit rien : c'est write_observation_file qui écrit."""
+        """create_observation_file only sets the name, writes nothing: write_observation_file does the writing."""
         obs = _make_obs(tmp_path)
         filepath = create_observation_file(obs, tmp_path)
         assert not filepath.exists()
@@ -41,8 +41,8 @@ class TestCreateObservationFile:
 class TestWriteObservationFile:
 
     def test_does_nothing_if_yaml_file_not_set(self, tmp_path):
-        obs = _make_obs(tmp_path)  # yaml_file toujours None
-        write_observation_file(obs)  # ne doit pas lever d'erreur
+        obs = _make_obs(tmp_path)  # yaml_file still None
+        write_observation_file(obs)  # must not raise
         assert list(tmp_path.iterdir()) == []
 
     def test_writes_full_observation_state(self, tmp_path):
@@ -60,7 +60,7 @@ class TestWriteObservationFile:
         assert content["scheduler_data"]["target"]["name"] == "Vega"
 
     def test_rewriting_reflects_new_data(self, tmp_path):
-        """Le fichier grandit à chaque réécriture — pas un simple ajout, un instantané complet."""
+        """The file grows with each rewrite — not a plain append, a full snapshot."""
         obs = _make_obs(tmp_path)
         create_observation_file(obs, tmp_path)
         write_observation_file(obs)

@@ -1,6 +1,6 @@
 """
-Tests du sous-plugin BIAS (BiasPlugin).
-Lancement : pytest plugins/reduction_plugins/bias/test_bias.py -v
+Tests for the BIAS sub-plugin (BiasPlugin).
+Run: pytest plugins/reduction_plugins/bias/test_bias.py -v
 """
 
 from datetime import datetime, timezone
@@ -32,7 +32,7 @@ def fast_sleep(monkeypatch):
 class TestBiasPlugin:
 
     async def test_raises_if_star_spectra_images_missing(self):
-        obs = _make_obs()  # sequencer_data == {}, aucun sous-plugin d'acquisition n'a tourné
+        obs = _make_obs()  # sequencer_data == {}, no acquisition sub-plugin has run
         with pytest.raises(RuntimeError, match="star_spectra_images"):
             await BiasPlugin().execute(obs)
 

@@ -1,8 +1,8 @@
 """
-Persistance de l'observation sur disque, au format YAML.
-Joue pour le fichier YAML le même rôle que database.py pour SQLite :
-un module dédié à la persistance, séparé de l'orchestrateur (main.py)
-et du modèle de données pur (models.py).
+Observation persistence to disk, in YAML format.
+Plays the same role for the YAML file that database.py plays for SQLite:
+a module dedicated to persistence, separate from the orchestrator (main.py)
+and from the pure data model (models.py).
 """
 
 from __future__ import annotations
@@ -19,12 +19,12 @@ log = logging.getLogger("spectro.observation_file")
 
 def create_observation_file(obs: Observation, target_dir: Path) -> Path:
     """
-    Détermine le nom de fichier YAML de l'observation (obs.suggested_filename)
-    et l'enregistre sur obs.yaml_file — juste le nom de fichier, pas le chemin
-    complet : le répertoire est déjà porté séparément par obs.obs_dir, et
-    obs.yaml_file finit lui-même à l'intérieur du fichier YAML qu'il nomme,
-    où un chemin absolu n'aurait été qu'une redite encombrante. Le contenu
-    est écrit par write_observation_file(), appelée juste après par l'appelant.
+    Determines the observation's YAML filename (obs.suggested_filename) and
+    stores it on obs.yaml_file — just the filename, not the full path: the
+    directory is already carried separately by obs.obs_dir, and obs.yaml_file
+    itself ends up inside the YAML file it names, where an absolute path
+    would only have been a cumbersome repeat. The content is written by
+    write_observation_file(), called right after by the caller.
     """
     filepath = target_dir / obs.suggested_filename
     obs.yaml_file = filepath.name
@@ -34,12 +34,11 @@ def create_observation_file(obs: Observation, target_dir: Path) -> Path:
 
 def write_observation_file(obs: Observation) -> None:
     """
-    Réécrit le fichier YAML de l'observation avec son état courant complet.
-    Appelée après chaque étape (SCHEDULER → ARCHIVE) : le fichier ne fait que
-    grandir/se compléter, jusqu'à devenir la mémoire exhaustive de
-    l'observation — utile en cas de plantage pour savoir où ça a coincé.
-    Ne fait rien tant que create_observation_file() n'a pas encore fixé
-    obs.yaml_file.
+    Rewrites the observation's YAML file with its full current state.
+    Called after every stage (SCHEDULER → ARCHIVE): the file only ever
+    grows/fills in, until it becomes the exhaustive record of the
+    observation — useful after a crash to know where it got stuck.
+    Does nothing until create_observation_file() has set obs.yaml_file.
     """
     if not obs.yaml_file:
         return

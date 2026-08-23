@@ -1,6 +1,6 @@
 """
-Tests du plugin ARCHIVE (ArchivePlugin).
-Lancement : pytest plugins/test_archive.py -v
+Tests for the ARCHIVE plugin (ArchivePlugin).
+Run: pytest plugins/test_archive.py -v
 """
 
 from datetime import datetime, timezone
@@ -21,7 +21,7 @@ def _make_obs(reduced_files=None) -> Observation:
 
 @pytest.fixture(autouse=True)
 def fast_sleep(monkeypatch):
-    """Évite d'attendre le sleep(0.3) simulé par fichier archivé."""
+    """Avoids waiting out the simulated sleep(0.3) per archived file."""
     mock = AsyncMock(return_value=None)
     monkeypatch.setattr("rosace.plugins.archive.asyncio.sleep", mock)
     return mock

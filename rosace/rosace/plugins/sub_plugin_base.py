@@ -1,6 +1,6 @@
 """
-Classe de base commune à tous les sous-plugins (sequencer et reduction).
-Chaque sous-plugin hérite de SubPlugin et implémente `execute()`.
+Base class shared by every sub-plugin (sequencer and reduction).
+Each sub-plugin inherits from SubPlugin and implements `execute()`.
 """
 
 from __future__ import annotations
@@ -12,21 +12,21 @@ from ..models import Observation
 
 class SubPlugin:
     """
-    Classe de base pour les sous-plugins de séquençage et de réduction.
+    Base class for the sequencer and reduction sub-plugins.
 
-    Chaque sous-plugin dispose :
-    - d'un nom (utilisé dans les logs)
-    - d'une méthode `execute(obs: Observation) -> Observation` à implémenter
+    Each sub-plugin has:
+    - a name (used in logs)
+    - an `execute(obs: Observation) -> Observation` method to implement
 
-    Le sous-plugin lit/écrit dans le casier de son plugin de stage parent
-    (obs.sequencer_data ou obs.reduction_data), et peut lire celui d'une
-    étape précédente si besoin (ex. bias lit obs.sequencer_data["star_spectra_images"]
-    — une clé partagée, écrite sous un nom fixe indépendant du sous-plugin
-    SEQUENCER qui l'a produite, pas obs.sequencer_data["<nom_du_sous_plugin>"]
-    : REDUCTION ne doit jamais avoir besoin de connaître ce nom).
+    The sub-plugin reads/writes its parent stage plugin's casier
+    (obs.sequencer_data or obs.reduction_data), and may read a previous
+    step's if needed (e.g. bias reads obs.sequencer_data["star_spectra_images"]
+    — a shared key, written under a fixed name independent of whichever
+    SEQUENCER sub-plugin produced it, not obs.sequencer_data["<sub_plugin_name>"]:
+    REDUCTION must never need to know that name).
 
-    Toute configuration vit dans conf/ (config.yaml, hardware_<variant>.yaml)
-    comme le reste de l'application — pas de config.yaml propre au sous-plugin.
+    All configuration lives in conf/ (config.yaml, hardware_<variant>.yaml)
+    like the rest of the application — no config.yaml of its own for a sub-plugin.
     """
 
     def __init__(self) -> None:
@@ -35,8 +35,8 @@ class SubPlugin:
 
     async def execute(self, obs: Observation) -> Observation:
         """
-        Logique du sous-plugin. Reçoit le dossier d'observation courant,
-        retourne le dossier enrichi.
-        Toute exception remonte à l'orchestrateur du plugin parent.
+        The sub-plugin's logic. Receives the current observation file,
+        returns the enriched file.
+        Any exception propagates to the parent plugin's orchestrator.
         """
         raise NotImplementedError(f"{self.name} doit implémenter execute()")

@@ -24,7 +24,7 @@ def _target_altitude_deg(ra_deg: float, dec_deg: float) -> float:
 
 
 def _read_observation_list(path) -> list[dict]:
-    """Lit le plan d'observation (CSV : Priority, Program, Star, commentaire)."""
+    """Reads the observation plan (CSV: Priority, Program, Star, comment)."""
     try:
         f = open(path, encoding="utf-8", newline="")
     except FileNotFoundError as e:
@@ -55,44 +55,43 @@ def _read_observation_list(path) -> list[dict]:
 
 class SchedulerPlugin:
     """
-    Sélectionne la prochaine cible à observer — c'est le seul plugin qui
-    écrit dans scheduler_data, et le seul à lire targets.db (targets.db
-    n'est peuplée que par les API REST de main.py, jamais par ce plugin).
+    Selects the next target to observe — the only plugin that writes to
+    scheduler_data, and the only one that reads targets.db (targets.db is
+    only ever populated by main.py's REST API, never by this plugin).
 
-    Doit toujours répondre rapidement (quelques secondes) : s'il n'y a rien à
-    observer dans l'immédiat, il pose target=None plutôt que d'attendre en
-    interne — c'est à l'orchestrateur de décider du délai avant de redemander
-    (voir SCHEDULER_RETRY_SECONDS dans config.py).
+    Must always answer quickly (a few seconds): if there's nothing to
+    observe right now, it sets target=None rather than waiting internally —
+    it's the orchestrator's job to decide the delay before asking again
+    (see SCHEDULER_RETRY_SECONDS in config.py).
 
-    Lit OBSERVATION_LIST_PATH (conf/config.yaml) à chaque appel — un fichier
-    texte en lecture seule, jamais modifié par ce plugin. Chaque ligne
-    (priorité, programme, étoile) est résolue dans targets.db ; les lignes
-    invalides (programme/étoile inconnus, ou étoile non liée au programme)
-    sont ignorées avec un log, sans faire échouer l'appel. Les lignes valides
-    sont triées par priorité croissante (1 = prioritaire ; à égalité, ordre
-    d'apparition dans le fichier — tri stable) et examinées dans cet ordre,
-    une par une — **pas** regroupées par une priorité unique par cible : une
-    même étoile peut apparaître sur plusieurs lignes à des priorités
-    différentes (ex. priorité 2 et priorité 4), et une autre cible de
-    priorité intermédiaire (3) doit alors être proposée entre les deux
-    occurrences, pas après. Pour chaque ligne, son "rang" parmi les
-    occurrences déjà rencontrées de la même (programme, étoile canonique) —
-    une même étoile peut être demandée sous plusieurs noms (alias) sur des
-    lignes différentes, ça compte comme la même cible — est comparé au nombre
-    de fois où cette cible a déjà été observée cette nuit astronomique
-    (rosace.db, toutes sessions confondues — un arrêt/redémarrage de session
-    ne remet pas le compteur à zéro) : si ce rang a déjà été honoré, la ligne
-    est ignorée et on passe à la suivante. Sinon, sa hauteur actuelle
-    au-dessus de l'horizon (astro_math.py, site défini par SITE_LATITUDE_DEG/
-    SITE_LONGITUDE_DEG) est comparée à MIN_TARGET_ALTITUDE_DEG :
-    si elle est trop basse, la ligne est ignorée et on passe à la suivante
-    (pas d'observation "consommée" pour autant). Vérification de hauteur
-    uniquement — pas de contrôle jour/nuit (soleil sous l'horizon) : reste un
-    chantier séparé.
+    Reads OBSERVATION_LIST_PATH (conf/config.yaml) on every call — a
+    read-only text file, never modified by this plugin. Each line (priority,
+    program, star) is resolved against targets.db; invalid lines (unknown
+    program/star, or a star not linked to the program) are skipped with a
+    log, without failing the call. Valid lines are sorted by priority
+    ascending (1 = highest priority; ties broken by file order — stable
+    sort) and walked in that order, one at a time — **not** collapsed into
+    one priority per target: the same star can appear on several lines at
+    different priorities (e.g. priority 2 and priority 4), and another
+    target at an intermediate priority (3) must then be offered between the
+    two occurrences, not after both. For each line, its "rank" among
+    occurrences of the same (program, canonical star) already seen — the
+    same star can be requested under several names (aliases) on different
+    lines, that counts as the same target — is compared against how many
+    times this target has already been observed this astronomical night
+    (rosace.db, across all sessions — stopping/restarting the session
+    doesn't reset the counter): if that rank has already been fulfilled, the
+    line is skipped and the next one is tried. Otherwise, its current
+    altitude above the horizon (astro_math.py, site defined by
+    SITE_LATITUDE_DEG/SITE_LONGITUDE_DEG) is compared against
+    MIN_TARGET_ALTITUDE_DEG: if it's too low, the line is skipped and the
+    next one is tried (no observation "consumed" either way). Altitude check
+    only — no day/night (sun below horizon) check: remains a separate future
+    chantier.
 
-    Un fichier de plan absent/mal formé, ou une donnée invalide dans
-    targets.db (ex. exposure_time non numérique), lève SchedulerFatalError
-    plutôt que de faire échouer silencieusement chaque tentative en boucle.
+    A missing/malformed plan file, or invalid data in targets.db (e.g. a
+    non-numeric exposure_time), raises SchedulerFatalError rather than
+    silently failing every attempt in a loop.
     """
 
     async def run(self, obs: Observation) -> Observation:
@@ -100,7 +99,7 @@ class SchedulerPlugin:
 
         rows = _read_observation_list(OBSERVATION_LIST_PATH)
 
-        # Résout chaque ligne, dans l'ordre de priorité (tri stable : égalité -> ordre du fichier).
+        # Resolves each line, in priority order (stable sort: ties -> file order).
         resolved: list[dict] = []
         for row in sorted(rows, key=lambda r: r["priority"]):
             program = await program_get_by_name(row["program"])
@@ -138,15 +137,15 @@ class SchedulerPlugin:
                 "exposure_time": matching.exposure_time,
             })
 
-        # Chaque ligne valide est examinée dans l'ordre de priorité. offered_count
-        # compte, pour chaque (programme, étoile canonique), combien de lignes ont
-        # déjà été rencontrées dans CE parcours — comparé au nombre d'observations
-        # réellement faites cette nuit (rosace.db), ça détermine si CETTE occurrence
-        # précise a déjà été honorée. C'est ce qui permet à une cible demandée à
-        # plusieurs priorités de laisser passer une cible de priorité intermédiaire
-        # entre deux occurrences, plutôt que de toutes les regrouper sur une seule
-        # priorité (bug corrigé : la priorité la plus tardive d'une cible répétée
-        # ne doit pas "emprunter" la priorité la plus précoce du même groupe).
+        # Each valid line is walked in priority order. offered_count counts, for
+        # each (program, canonical star), how many lines have already been seen
+        # in THIS pass — compared against how many observations were actually
+        # made tonight (rosace.db), that determines whether THIS precise
+        # occurrence has already been fulfilled. This is what lets a target
+        # requested at several priorities let an intermediate-priority target
+        # through between two occurrences, instead of collapsing them all onto
+        # a single priority (bug fixed: the latest priority of a repeated target
+        # must not "borrow" the earliest priority of the same group).
         offered_count: dict[tuple[str, int], int] = {}
         for item in resolved:
             key = (item["program"].name, item["star"].id)
@@ -154,7 +153,7 @@ class SchedulerPlugin:
 
             observed = await db_count_observations_for_target(item["program"].name, item["star"].name)
             if observed >= offered_count[key]:
-                continue  # cette occurrence précise a déjà été honorée cette nuit
+                continue  # this precise occurrence has already been fulfilled tonight
 
             star = item["star"]
             altitude = _target_altitude_deg(star.ra, star.dec)

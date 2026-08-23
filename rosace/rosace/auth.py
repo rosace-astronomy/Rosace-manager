@@ -1,10 +1,10 @@
 """
-Authentification par session (cookie) — comptes utilisateurs, hachage des
-mots de passe, sessions serveur, dépendances FastAPI pour protéger les routes.
+Session (cookie) authentication — user accounts, password hashing, server
+sessions, FastAPI dependencies for protecting routes.
 
-Utilise le même fichier que database.py (rosace.db), mais dans son propre
-module : le code sensible à la sécurité (hachage, validation de session,
-contrôle d'accès) reste isolé et facile à auditer d'un seul coup d'œil.
+Uses the same file as database.py (rosace.db), but in its own module:
+security-sensitive code (hashing, session validation, access control) stays
+isolated and easy to audit at a glance.
 """
 
 import logging
@@ -25,18 +25,18 @@ SESSION_COOKIE_NAME = "rosace_session"
 
 
 # ─────────────────────────────────────────────────────────────
-# Modèles
+# Models
 # ─────────────────────────────────────────────────────────────
 
 class UserCreate(BaseModel):
-    """Champs fournis pour créer un compte."""
+    """Fields provided to create an account."""
     username: str
     password: str
     is_admin: bool = False
 
 
 class UserOut(BaseModel):
-    """Utilisateur tel que retourné par l'API — jamais le hash du mot de passe."""
+    """User as returned by the API — never the password hash."""
     username: str
     is_admin: bool
     created_at: str
@@ -48,17 +48,17 @@ class LoginRequest(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────
-# Initialisation
+# Initialization
 # ─────────────────────────────────────────────────────────────
 
 async def auth_db_init() -> None:
-    """Crée les tables d'authentification si elles n'existent pas — même
-    fichier que database.py (rosace.db). Crée aussi DATABASES_DIR et
-    positionne le mode WAL lui-même plutôt que de compter sur db_init() pour
-    l'avoir déjà fait : contrairement à database.py::db_init(), qui tourne
-    toujours en premier dans lifespan(), auth_db_init() peut aussi être
-    appelée seule (CLI --create-admin, sur une installation flambant neuve,
-    donc potentiellement avant que db_init() n'ait jamais tourné sur ce fichier)."""
+    """Creates the authentication tables if they don't already exist — same
+    file as database.py (rosace.db). Also creates DATABASES_DIR and sets
+    WAL mode itself, rather than relying on db_init() having already done
+    so: unlike database.py::db_init(), which always runs first in
+    lifespan(), auth_db_init() can also be called on its own (CLI
+    --create-admin, on a brand-new installation, so potentially before
+    db_init() has ever run against this file)."""
     DATABASES_DIR.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         await db.execute("PRAGMA journal_mode=WAL")
@@ -88,7 +88,7 @@ async def auth_db_init() -> None:
 
 
 # ─────────────────────────────────────────────────────────────
-# Mots de passe
+# Passwords
 # ─────────────────────────────────────────────────────────────
 
 def _hash_password(password: str) -> str:
@@ -100,11 +100,11 @@ def _verify_password(password: str, password_hash: str) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────
-# Utilisateurs
+# Users
 # ─────────────────────────────────────────────────────────────
 
 async def user_create(user: UserCreate) -> UserOut:
-    """Crée un compte. Lève ValueError si le username existe déjà."""
+    """Creates an account. Raises ValueError if the username already exists."""
     created_at = datetime.now(timezone.utc).isoformat()
     password_hash = _hash_password(user.password)
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
@@ -143,7 +143,7 @@ async def user_delete(username: str) -> None:
 
 
 async def _user_row_by_username(username: str) -> Optional[aiosqlite.Row]:
-    """Interne — inclut le hash, contrairement à UserOut. Utilisé pour la vérification du login."""
+    """Internal — includes the hash, unlike UserOut. Used for login verification."""
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -177,7 +177,7 @@ async def session_delete(token: str) -> None:
 
 
 async def session_get_user(token: str) -> Optional[UserOut]:
-    """Retourne l'utilisateur pour un token de session valide (non expiré), sinon None."""
+    """Returns the user for a valid (non-expired) session token, otherwise None."""
     now = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         db.row_factory = aiosqlite.Row
@@ -194,7 +194,7 @@ async def session_get_user(token: str) -> Optional[UserOut]:
 
 
 # ─────────────────────────────────────────────────────────────
-# Dépendances FastAPI
+# FastAPI dependencies
 # ─────────────────────────────────────────────────────────────
 
 async def get_current_user(request: Request) -> UserOut:
@@ -212,13 +212,13 @@ async def require_admin(user: UserOut = Depends(get_current_user)) -> UserOut:
 
 
 # ─────────────────────────────────────────────────────────────
-# Amorçage (CLI --create-admin)
+# Bootstrapping (CLI --create-admin)
 # ─────────────────────────────────────────────────────────────
 
 async def ensure_first_admin(username: str, password: str) -> None:
-    """Crée le tout premier compte admin. Refuse si un compte existe déjà —
-    au-delà de ce premier amorçage, la création de comptes passe par l'API
-    (réservée aux admins), pas par un accès shell à la machine."""
+    """Creates the very first admin account. Refuses if an account already
+    exists — past this first bootstrap, account creation goes through the
+    API (admin-only), not shell access to the machine."""
     if await user_count() > 0:
         raise RuntimeError("un compte existe déjà — --create-admin ne peut amorcer qu'un premier compte")
     await user_create(UserCreate(username=username, password=password, is_admin=True))

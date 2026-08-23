@@ -1,8 +1,8 @@
 """
-Tests du sous-plugin SLEW (SlewPlugin), backend indi.
-Vérifie que SlewPlugin appelle bien obs.hardware["mount"].slew_to() avec les
-bonnes coordonnées — le mount lui-même est un mock, pas de matériel réel.
-Lancement : pytest plugins/sequencer_plugins/slew/test_slew.py -v
+Tests for the SLEW sub-plugin (SlewPlugin), indi backend.
+Checks that SlewPlugin correctly calls obs.hardware["mount"].slew_to() with
+the right coordinates — the mount itself is a mock, no real hardware.
+Run: pytest plugins/sequencer_plugins/slew/test_slew.py -v
 """
 
 from datetime import datetime, timezone

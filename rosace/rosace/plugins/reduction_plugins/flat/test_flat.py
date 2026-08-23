@@ -1,6 +1,6 @@
 """
-Tests du sous-plugin FLAT (FlatPlugin).
-Lancement : pytest plugins/reduction_plugins/flat/test_flat.py -v
+Tests for the FLAT sub-plugin (FlatPlugin).
+Run: pytest plugins/reduction_plugins/flat/test_flat.py -v
 """
 
 from datetime import datetime, timezone
@@ -32,7 +32,7 @@ def fast_sleep(monkeypatch):
 class TestFlatPlugin:
 
     async def test_raises_if_dark_missing(self):
-        obs = _make_obs()  # reduction_data == {}, dark n'a jamais tourné
+        obs = _make_obs()  # reduction_data == {}, dark has never run
         with pytest.raises(RuntimeError, match="dark"):
             await FlatPlugin().execute(obs)
 

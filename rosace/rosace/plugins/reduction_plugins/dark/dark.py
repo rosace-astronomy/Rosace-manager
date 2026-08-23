@@ -1,6 +1,6 @@
 """
-Sous-plugin REDUCTION — Soustraction du courant d'obscurité (dark)
-Soustrait le courant thermique du capteur CCD, mis à l'échelle du temps d'exposition.
+REDUCTION sub-plugin — Dark current subtraction
+Subtracts the CCD sensor's thermal current, scaled to the exposure time.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ log = logging.getLogger("spectro.subplugin.dark")
 
 
 class DarkPlugin(SubPlugin):
-    """Soustraction du dark (courant d'obscurité du capteur) — simulation interne."""
+    """Dark (sensor dark current) subtraction — internal simulation."""
 
     async def execute(self, obs: Observation) -> Observation:
         if "bias" not in obs.reduction_data:

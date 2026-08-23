@@ -11,7 +11,7 @@ log = logging.getLogger("spectro.plugin.init_session")
 
 
 class InitSessionPlugin:
-    """Initialise la session : répertoire de session, connexion instruments, vérifications pré-nuit."""
+    """Initializes the session: session directory, instrument connections, pre-night checks."""
 
     async def run(self, ctx: SessionContext) -> SessionContext:
         log.info(f"[INIT_SESSION] Démarrage session {ctx.session_id}")
@@ -47,7 +47,6 @@ class InitSessionPlugin:
         else:
             log.info("[INIT_SESSION] Running in DEMO mode (sequencer_backend=internal) — no hardware involved")
 
-        # TODO : vérification météo
         await asyncio.sleep(1.0)
         log.info("[INIT_SESSION] Session initialisée")
         return ctx

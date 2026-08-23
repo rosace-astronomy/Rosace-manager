@@ -8,7 +8,7 @@ log = logging.getLogger("spectro.plugin.close_session")
 
 
 class CloseSessionPlugin:
-    """Clôture la session : stationnement télescope, déconnexion instruments."""
+    """Closes the session: telescope parking, instrument disconnection."""
 
     async def run(self, ctx: SessionContext) -> SessionContext:
         log.info(f"[CLOSE_SESSION] Clôture session {ctx.session_id}")
@@ -34,6 +34,6 @@ class CloseSessionPlugin:
             except Exception as e:
                 log.error(f"[CLOSE_SESSION] Failed to disconnect '{device_name}': {e}")
 
-        await asyncio.sleep(7.0)  # TODO : fermer coupole…
+        await asyncio.sleep(7.0)
         log.info("[CLOSE_SESSION] Session clôturée")
         return ctx

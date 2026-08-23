@@ -1,6 +1,6 @@
 """
-Configuration centralisée du logging applicatif (console + fichier tournant).
-Point d'entrée unique : configure_logging(), appelé au tout début de main.py.
+Centralized application logging configuration (console + rotating file).
+Single entry point: configure_logging(), called at the very start of main.py.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """
-Tests du sous-plugin REDUCTION "blank_red" (BlankRedPlugin) — gabarit minimal.
-Lancement : pytest plugins/reduction_plugins/blank_red/test_blank_red.py -v
+Tests for the REDUCTION "blank_red" sub-plugin (BlankRedPlugin) — minimal template.
+Run: pytest plugins/reduction_plugins/blank_red/test_blank_red.py -v
 """
 
 from datetime import datetime, timezone
@@ -21,7 +21,7 @@ def _make_obs(raw_files=None) -> Observation:
 class TestBlankRedPlugin:
 
     async def test_raises_if_star_spectra_images_missing(self):
-        obs = _make_obs()  # sequencer_data == {}, aucun sous-plugin d'acquisition n'a tourné
+        obs = _make_obs()  # sequencer_data == {}, no acquisition sub-plugin has run
         with pytest.raises(RuntimeError, match="star_spectra_images"):
             await BlankRedPlugin().execute(obs)
 

@@ -1,6 +1,6 @@
 """
-Tests du sous-plugin SHARING "blank_share" (BlankSharePlugin).
-Lancement : pytest plugins/sharing_plugins/blank_share/test_blank_share.py -v
+Tests for the SHARING "blank_share" sub-plugin (BlankSharePlugin).
+Run: pytest plugins/sharing_plugins/blank_share/test_blank_share.py -v
 """
 
 from datetime import datetime, timezone
@@ -21,7 +21,7 @@ def _make_obs(reduced_files=None) -> Observation:
 
 @pytest.fixture(autouse=True)
 def fast_sleep(monkeypatch):
-    """Évite d'attendre le sleep(0.3) simulé par fichier diffusé."""
+    """Avoids waiting out the simulated sleep(0.3) per shared file."""
     mock = AsyncMock(return_value=None)
     monkeypatch.setattr("rosace.plugins.sharing_plugins.blank_share.blank_share.asyncio.sleep", mock)
     return mock
@@ -30,7 +30,7 @@ def fast_sleep(monkeypatch):
 class TestBlankSharePlugin:
 
     async def test_raises_if_extract_missing(self):
-        obs = _make_obs()  # reduction_data == {}, extract n'a jamais tourné
+        obs = _make_obs()  # reduction_data == {}, extract has never run
         with pytest.raises(RuntimeError, match="reduced_files"):
             await BlankSharePlugin().execute(obs)
 

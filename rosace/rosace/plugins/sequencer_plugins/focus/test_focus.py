@@ -1,7 +1,7 @@
 """
-Tests du sous-plugin FOCUS (FocusPlugin), backend indi — placeholder.
-Vérifie uniquement la structure (clés posées), pas de comportement matériel réel.
-Lancement : pytest plugins/sequencer_plugins/focus/test_focus.py -v
+Tests for the FOCUS sub-plugin (FocusPlugin), indi backend — placeholder.
+Only checks the structure (keys set), no real hardware behavior.
+Run: pytest plugins/sequencer_plugins/focus/test_focus.py -v
 """
 
 from datetime import datetime, timezone

@@ -1,12 +1,12 @@
 """
-Plugin SEQUENCER — Orchestrateur d'acquisition.
-Le pipeline (liste de sous-plugins) est chargé dynamiquement depuis le YAML
-du programme scientifique de l'observation (obs.scheduler_data["program"]),
-posé par SCHEDULER — donc rechargé à chaque observation, pas une fois pour
-toutes au démarrage.
+SEQUENCER plugin — Acquisition orchestrator.
+The pipeline (list of sub-plugins) is loaded dynamically from the
+observation's scientific program YAML (obs.scheduler_data["program"]), set
+by SCHEDULER — so it's reloaded for every observation, not once and for
+all at startup.
 
-Structure :
-    programs/<program>.yaml  →  pipeline_loader  →  [sous-plugin, sous-plugin, …]
+Structure:
+    programs/<program>.yaml  →  pipeline_loader  →  [sub-plugin, sub-plugin, …]
 """
 
 import logging
@@ -19,8 +19,8 @@ log = logging.getLogger("spectro.plugin.sequencer")
 
 class SequencerPlugin:
     """
-    Orchestre la séquence d'acquisition en enchaînant les sous-plugins
-    déclarés dans le YAML du programme de l'observation en cours.
+    Orchestrates the acquisition sequence by running, in order, the
+    sub-plugins declared in the current observation's program YAML.
     """
 
     async def run(self, obs: Observation) -> Observation:
@@ -30,8 +30,8 @@ class SequencerPlugin:
         if not obs.obs_dir:
             raise RuntimeError("SEQUENCER : répertoire d'observation (obs_dir) non défini")
 
-        # Manifeste posé en tout premier, avant tout sous-plugin — survit à un
-        # plantage n'importe où dans SEQUENCER, REDUCTION ou SHARING (voir models.py).
+        # Manifest set as the very first action, before any sub-plugin -- survives a
+        # crash anywhere in SEQUENCER, REDUCTION or SHARING (see models.py).
         program_data = load_program_yaml(program)
         obs.program_file = f"{program}.yaml"
         obs.program_steps = {
@@ -45,7 +45,7 @@ class SequencerPlugin:
             f"[SEQUENCER] Début séquence '{program}' pour {obs.scheduler_data.get('queried_name')}"
         )
 
-        # Chaque sous-plugin lit/écrit directement dans obs.sequencer_data
+        # Each sub-plugin reads/writes obs.sequencer_data directly
         for sub in seq_pipeline:
             step = sub.__class__.__name__
             log.info(f"[SEQUENCER] → {step}")

@@ -1,6 +1,6 @@
 """
-Sous-plugin REDUCTION — Extraction spectrale
-Extrait le spectre 1D depuis l'image 2D calibrée et produit le fichier final.
+REDUCTION sub-plugin — Spectral extraction
+Extracts the 1D spectrum from the calibrated 2D image and produces the final file.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ log = logging.getLogger("spectro.subplugin.extract")
 
 
 class ExtractPlugin(SubPlugin):
-    """Extraction du spectre 1D depuis l'image spectrale 2D calibrée — simulation interne."""
+    """Extracts the 1D spectrum from the calibrated 2D spectral image — internal simulation."""
 
     async def execute(self, obs: Observation) -> Observation:
         if "flat" not in obs.reduction_data:

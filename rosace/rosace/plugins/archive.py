@@ -7,7 +7,7 @@ log = logging.getLogger("spectro.plugin.archive")
 
 
 class ArchivePlugin:
-    """Archive les fichiers réduits dans le stockage long terme."""
+    """Archives the reduced files to long-term storage."""
 
     async def run(self, obs: Observation) -> Observation:
         reduced_files = obs.reduction_data.get("extract", {}).get("reduced_files", [])
@@ -16,7 +16,7 @@ class ArchivePlugin:
 
         log.info(f"[ARCHIVE] Archivage de {len(reduced_files)} fichier(s)")
         for f in reduced_files:
-            await asyncio.sleep(0.3)  # TODO : transfert vers archive
+            await asyncio.sleep(0.3)  # TODO: transfer to archive
             log.info(f"[ARCHIVE] Archivé : {f}")
 
         return obs

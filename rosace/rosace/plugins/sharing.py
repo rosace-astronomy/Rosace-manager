@@ -1,12 +1,12 @@
 """
-Plugin SHARING — Orchestrateur de diffusion.
-Le sous-plugin de diffusion (un seul, pas une liste) est chargé dynamiquement
-depuis le YAML du programme scientifique de l'observation
-(obs.scheduler_data["program"]), posé par SCHEDULER — donc rechargé à
-chaque observation, pas une fois pour toutes au démarrage.
+SHARING plugin — Sharing orchestrator.
+The sharing sub-plugin (a single one, not a list) is loaded dynamically
+from the observation's scientific program YAML
+(obs.scheduler_data["program"]), set by SCHEDULER — so it's reloaded for
+every observation, not once and for all at startup.
 
-Structure :
-    programs/<program>.yaml  →  pipeline_loader  →  <UnSeulSousPlugin>
+Structure:
+    programs/<program>.yaml  →  pipeline_loader  →  <SingleSubPlugin>
 """
 
 import logging
@@ -19,8 +19,8 @@ log = logging.getLogger("spectro.plugin.sharing")
 
 class SharingPlugin:
     """
-    Orchestre la diffusion des résultats en délégant au sous-plugin déclaré
-    dans le YAML du programme de l'observation en cours.
+    Orchestrates result sharing by delegating to the sub-plugin declared in
+    the current observation's program YAML.
     """
 
     async def run(self, obs: Observation) -> Observation:

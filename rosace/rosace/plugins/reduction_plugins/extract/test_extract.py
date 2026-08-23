@@ -1,6 +1,6 @@
 """
-Tests du sous-plugin EXTRACT (ExtractPlugin).
-Lancement : pytest plugins/reduction_plugins/extract/test_extract.py -v
+Tests for the EXTRACT sub-plugin (ExtractPlugin).
+Run: pytest plugins/reduction_plugins/extract/test_extract.py -v
 """
 
 from datetime import datetime, timezone
@@ -32,7 +32,7 @@ def fast_sleep(monkeypatch):
 class TestExtractPlugin:
 
     async def test_raises_if_flat_missing(self):
-        obs = _make_obs()  # reduction_data == {}, flat n'a jamais tourné
+        obs = _make_obs()  # reduction_data == {}, flat has never run
         with pytest.raises(RuntimeError, match="flat"):
             await ExtractPlugin().execute(obs)
 

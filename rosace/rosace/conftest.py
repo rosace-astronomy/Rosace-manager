@@ -1,5 +1,5 @@
 """
-Fixtures pytest partagées par tous les fichiers de tests du paquet
+Pytest fixtures shared by every test file in the package
 (test_rosace_core.py, plugins/test_*.py, plugins/*_plugins/test_*.py).
 """
 
@@ -11,11 +11,11 @@ from rosace.models import Observation, Target, ExposureConfig
 @pytest.fixture(scope="session", autouse=True)
 def tmp_data_dir(tmp_path_factory):
     """
-    Remplace BASE_DATA_DIR par un répertoire temporaire pour toute la session.
-    Évite de polluer ~/.rosace ou les bases de données de production.
+    Replaces BASE_DATA_DIR with a temporary directory for the whole session.
+    Avoids polluting ~/.rosace or production databases.
     """
     tmp = tmp_path_factory.mktemp("rosace_test_data")
-    # Patch avant le premier import du package rosace
+    # Patched before the rosace package's first import
     import rosace.config as cfg
     cfg.BASE_DATA_DIR      = tmp
     cfg.DATABASES_DIR      = tmp

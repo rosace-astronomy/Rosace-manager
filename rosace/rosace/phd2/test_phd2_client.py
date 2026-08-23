@@ -1,10 +1,10 @@
 """
-Tests de Phd2Client contre un faux serveur PHD2 (asyncio.start_server local,
-port éphémère) qui répond à des requêtes JSON-RPC scriptées et peut pousser
-des events à la demande — plus fidèle qu'un mock profond de StreamReader/
-StreamWriter, et events/réponses s'entrelacent réellement sur le fil, donc un
-faux serveur scripté exerce vraiment ce comportement.
-Lancement : pytest rosace/phd2/test_phd2_client.py -v
+Tests for Phd2Client against a fake PHD2 server (local asyncio.start_server,
+ephemeral port) that answers scripted JSON-RPC requests and can push events
+on demand — more faithful than a deep mock of StreamReader/StreamWriter,
+and events/responses genuinely interleave on the wire, so a scripted fake
+server actually exercises that behavior.
+Run: pytest rosace/phd2/test_phd2_client.py -v
 """
 
 import asyncio
@@ -16,16 +16,16 @@ from rosace.hardware.errors import DeviceCommandError, DeviceConnectionError, De
 from rosace.phd2 import phd2_client as phd2_client_module
 from rosace.phd2.phd2_client import Phd2Client
 
-SETTLE = {"pixels": 1.5, "time": 3, "timeout": 2}  # timeout court pour ne pas ralentir les tests
+SETTLE = {"pixels": 1.5, "time": 3, "timeout": 2}  # short timeout so tests aren't slowed down
 
 
 class FakePhd2Server:
-    """Sert une unique connexion. self.handlers: method -> valeur de résultat,
-    "NO_RESPONSE" (ne répond jamais, pour tester les timeouts), ou une
-    coroutine `async def handler(msg) -> result`. Un résultat de la forme
-    ("error", message) est envoyé comme réponse JSON-RPC d'erreur. Toute
-    méthode non déclarée répond 0 par défaut (comme la plupart des méthodes
-    PHD2 réelles : set_connected, stop_capture, guide...)."""
+    """Serves a single connection. self.handlers: method -> result value,
+    "NO_RESPONSE" (never answers, to test timeouts), or a coroutine
+    `async def handler(msg) -> result`. A result of the form ("error",
+    message) is sent as a JSON-RPC error response. Any undeclared method
+    answers 0 by default (like most real PHD2 methods: set_connected,
+    stop_capture, guide...)."""
 
     def __init__(self):
         self.received: list[dict] = []
@@ -72,7 +72,7 @@ class FakePhd2Server:
         await self._send(event)
 
     async def close_connection(self) -> None:
-        """Simule une perte de connexion côté serveur."""
+        """Simulates a connection loss on the server side."""
         await self._connected.wait()
         self._writer.close()
         await self._writer.wait_closed()
@@ -157,7 +157,7 @@ class TestStartGuiding:
         server.handlers["guide"] = on_guide
         await client.connect()
 
-        await client.start_guiding()  # ne doit pas lever
+        await client.start_guiding()  # must not raise
 
         assert server.received[-1]["method"] == "guide"
         assert server.received[-1]["params"]["settle"] == SETTLE
@@ -221,7 +221,7 @@ class TestStopCapture:
         server.handlers["stop_capture"] = on_stop
         await client.connect()
 
-        await client.stop_capture()  # ne doit pas lever
+        await client.stop_capture()  # must not raise
 
     async def test_ignores_intermediate_app_states_before_stopped(self, server, client):
         async def on_stop(msg):
@@ -232,7 +232,7 @@ class TestStopCapture:
         server.handlers["stop_capture"] = on_stop
         await client.connect()
 
-        await client.stop_capture()  # ne doit pas lever, malgré l'état intermédiaire
+        await client.stop_capture()  # must not raise, despite the intermediate state
 
     async def test_reacts_to_guiding_stopped_event(self, server, client):
         """GuidingStopped is a real, distinct top-level PHD2 event (per the
@@ -246,7 +246,7 @@ class TestStopCapture:
         server.handlers["stop_capture"] = on_stop
         await client.connect()
 
-        await client.stop_capture()  # ne doit pas lever, sans jamais recevoir AppState="Stopped"
+        await client.stop_capture()  # must not raise, without ever receiving AppState="Stopped"
 
     async def test_reacts_to_looping_exposures_stopped_event(self, server, client):
         """LoopingExposuresStopped is the documented counterpart of
@@ -259,10 +259,10 @@ class TestStopCapture:
         server.handlers["stop_capture"] = on_stop
         await client.connect()
 
-        await client.stop_capture()  # ne doit pas lever
+        await client.stop_capture()  # must not raise
 
     async def test_raises_on_timeout_when_stopped_never_reported(self, server, client):
-        server.handlers["stop_capture"] = 0  # ack, mais aucun événement de fin n'arrive
+        server.handlers["stop_capture"] = 0  # ack, but no completion event ever arrives
         await client.connect()
 
         with pytest.raises(DeviceTimeoutError):
@@ -411,7 +411,7 @@ class TestDisconnectAndConnectionLoss:
         await client.connect()
 
         call_task = asyncio.ensure_future(client.get_app_state())
-        await asyncio.sleep(0.05)  # laisse la requête partir et arriver au faux serveur
+        await asyncio.sleep(0.05)  # lets the request leave and reach the fake server
         await server.close_connection()
 
         with pytest.raises(DeviceConnectionError):
@@ -421,7 +421,7 @@ class TestDisconnectAndConnectionLoss:
         await client.connect()
 
         await server.close_connection()
-        await asyncio.sleep(0.05)  # laisse _read_loop détecter la fermeture
+        await asyncio.sleep(0.05)  # lets _read_loop detect the closure
 
         with pytest.raises(DeviceConnectionError):
             await client.get_app_state()

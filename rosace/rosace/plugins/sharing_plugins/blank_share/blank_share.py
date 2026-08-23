@@ -68,7 +68,7 @@ class BlankSharePlugin(SubPlugin):
 
         log.info(f"[SHARING] Diffusion de {len(reduced_files)} fichier(s)")
         for f in reduced_files:
-            await asyncio.sleep(0.3)  # TODO : envoi email / API réel
+            await asyncio.sleep(0.3)  # TODO: real email/API sending
             log.info(f"[SHARING] Diffusé : {f}")
 
         obs.sharing_data["blank_share"] = {"shared_files": reduced_files}

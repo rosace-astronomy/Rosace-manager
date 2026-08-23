@@ -1,9 +1,9 @@
 """
-Tests du plugin SEQUENCER (SequencerPlugin).
-Le chargement du pipeline (pipeline_loader.load_pipelines) est mocké : ces
-tests couvrent l'orchestration, pas le comportement des vrais sous-plugins
-(couvert par sequencer_plugins/test_*.py).
-Lancement : pytest plugins/test_sequencer.py -v
+Tests for the SEQUENCER plugin (SequencerPlugin).
+Pipeline loading (pipeline_loader.load_pipelines) is mocked: these tests
+cover orchestration, not the real sub-plugins' behavior (covered by
+sequencer_plugins/test_*.py).
+Run: pytest plugins/test_sequencer.py -v
 """
 
 from datetime import datetime, timezone
@@ -68,9 +68,9 @@ class TestSequencerPlugin:
         assert result.sequencer_data["order"] == ["slew", "focus", "star_spectra_acquisition"]
 
     async def test_sets_program_file_and_steps_including_sharing(self, monkeypatch):
-        """obs.program_steps doit lister sequencer, reduction ET sharing — sinon
-        un lecteur du YAML de l'observation ne peut pas savoir quel sous-plugin
-        SHARING était prévu si l'observation plante avant qu'il ne tourne."""
+        """obs.program_steps must list sequencer, reduction AND sharing —
+        otherwise a reader of the observation's YAML can't know which SHARING
+        sub-plugin was planned if the observation crashes before it runs."""
         monkeypatch.setattr(
             "rosace.plugins.sequencer.load_pipelines",
             lambda program: ([], []),
@@ -117,4 +117,4 @@ class TestSequencerPlugin:
         with pytest.raises(RuntimeError, match="focus failed"):
             await SequencerPlugin().run(obs)
 
-        assert calls == ["slew", "focus"]  # star_spectra_acquisition jamais atteint
+        assert calls == ["slew", "focus"]  # star_spectra_acquisition never reached

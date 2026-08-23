@@ -1,5 +1,5 @@
 """
-Modèles de données et interface plugin.
+Data models and plugin interface.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 # ─────────────────────────────────────────────────────────────
-# Machine à états
+# State machine
 # ─────────────────────────────────────────────────────────────
 
 class OrchestratorStage(str, Enum):
@@ -29,59 +29,58 @@ class OrchestratorStage(str, Enum):
 
 
 # ─────────────────────────────────────────────────────────────
-# Modèles d'observation
+# Observation models
 # ─────────────────────────────────────────────────────────────
 
 class Target(BaseModel):
     name: str
-    ra: float = Field(..., ge=0, lt=360, description="Ascension droite en degrés")
-    dec: float = Field(..., ge=-90, le=90, description="Déclinaison en degrés")
+    ra: float = Field(..., ge=0, lt=360, description="Right ascension in degrees")
+    dec: float = Field(..., ge=-90, le=90, description="Declination in degrees")
     magnitude_v: Optional[float] = None
 
 
 class ExposureConfig(BaseModel):
-    exposure_time: Optional[float] = Field(default=None, gt=0, description="Temps d'exposition en secondes — absent si à calculer depuis la magnitude (sous-plugin star_spectra_acquisition)")
+    exposure_time: Optional[float] = Field(default=None, gt=0, description="Exposure time in seconds — absent if it must be computed from magnitude (star_spectra_acquisition sub-plugin)")
     num_exposures: int = Field(default=1, ge=1)
     binning: int = Field(default=1, ge=1, le=4)
     grating: str = Field(default="R1200")
-    central_wavelength: float = Field(default=6563.0, description="Longueur d'onde centrale en Å")
+    central_wavelength: float = Field(default=6563.0, description="Central wavelength in Å")
 
 
 # ─────────────────────────────────────────────────────────────
-# Dossier d'observation
-# Créé vide par l'orchestrateur (id, created_at, session_id), puis
-# rempli progressivement par les plugins de stage (SCHEDULER → ARCHIVE),
-# chacun dans son propre casier. C'est CET objet qui circule de plugin
-# en plugin, et qui est sérialisé tel quel dans le fichier YAML sur
-# disque après chaque étape — le fichier est la mémoire exhaustive de
-# l'observation.
+# Observation file
+# Created empty by the orchestrator (id, created_at, session_id), then
+# progressively filled in by the stage plugins (SCHEDULER → ARCHIVE), each
+# in its own casier. This is THE object that flows from plugin to plugin,
+# and that gets serialized as-is to the YAML file on disk after each
+# stage — the file is the exhaustive record of the observation.
 #
-# L'orchestrateur ne connaît que les champs ci-dessous ; le contenu de
-# chaque casier <stage>_data est une affaire interne au plugin (et à
-# ses sous-plugins) qui le possède — l'orchestrateur ne le lit jamais.
+# The orchestrator only knows the fields below; the content of each
+# <stage>_data casier is an internal matter for the plugin (and its
+# sub-plugins) that owns it — the orchestrator never reads it.
 # ─────────────────────────────────────────────────────────────
 
 class Observation(BaseModel):
     id: str
     created_at: datetime
-    session_id: str  # traçabilité : dans quelle session cette observation a été réalisée
+    session_id: str  # traceability: which session this observation was made in
     obs_dir: Optional[str] = None
     yaml_file: Optional[str] = None
 
-    # Nom du fichier YAML (dans programs/) qui décrit le programme scientifique
-    # de cette observation — ex. "demo.yaml". Posé par SequencerPlugin en même
-    # temps que program_steps ci-dessous.
+    # Name of the YAML file (in programs/) describing this observation's
+    # scientific program -- e.g. "demo.yaml". Set by SequencerPlugin at the
+    # same time as program_steps below.
     program_file: Optional[str] = None
 
-    # Étapes attendues, déclarées dans le programme (sequencer et reduction —
-    # des listes —, sharing — une seule valeur, voir plugins/sharing.py), posé
-    # par SequencerPlugin en tout premier, avant d'exécuter le moindre
-    # sous-plugin — permet de savoir ce qui était prévu même si l'observation
-    # plante en cours de route (les casiers ci-dessous ne prouvent que ce qui
-    # a réussi, pas ce qui était prévu). Volontairement appelé "program_steps"
-    # et non "pipeline" ici : "pipeline" est un détail d'implémentation interne
-    # (voir pipeline_loader.py), le fichier d'observation ne parle que du
-    # programme scientifique demandé par l'observateur.
+    # Expected steps, declared in the program (sequencer and reduction --
+    # lists --, sharing -- a single value, see plugins/sharing.py), set by
+    # SequencerPlugin as its very first action, before running any
+    # sub-plugin -- lets us know what was planned even if the observation
+    # crashes partway through (the casiers below only prove what succeeded,
+    # not what was planned). Deliberately called "program_steps" and not
+    # "pipeline" here: "pipeline" is an internal implementation detail
+    # (see pipeline_loader.py), the observation file only ever talks about
+    # the scientific program the observer asked for.
     program_steps: dict[str, Any] = {}
 
     # Session-wide temperature reference, copied from SessionContext by
@@ -92,11 +91,11 @@ class Observation(BaseModel):
     ambient_temperature_deg_c: Optional[float] = None
     camera_target_temperature_deg_c: Optional[float] = None
 
-    # Un casier par plugin de stage connu — contenu libre, géré par le plugin
-    # et ses sous-plugins (ex. reduction_data["bias"]["corrected_files"]). Un
-    # sous-plugin n'écrit sa propre clé que s'il a quelque chose de descriptif
-    # à y ajouter — le suivi du déroulement (qui a tourné, dans quel ordre)
-    # reste le rôle du fichier de log, pas de ce dossier (voir CLAUDE.md).
+    # One casier per known stage plugin -- free-form content, managed by the
+    # plugin and its sub-plugins (e.g. reduction_data["bias"]["corrected_files"]).
+    # A sub-plugin only writes its own key when it has something descriptive
+    # to add to it -- tracking execution flow (what ran, in what order) stays
+    # the log file's job, not this file's (see CLAUDE.md).
     scheduler_data: dict[str, Any] = {}
     sequencer_data: dict[str, Any] = {}
     reduction_data: dict[str, Any] = {}
@@ -149,15 +148,14 @@ class Observation(BaseModel):
     @property
     def suggested_filename(self) -> str:
         """
-        Nom de fichier suggéré pour le YAML de cette observation :
-        <datetime_iso>_<name>.yaml (repli sur "target" si la cible n'est pas
-        encore connue, ex. avant que SCHEDULER n'ait tourné). Utilise le nom
-        interrogé (queried_name) plutôt que le nom canonique Simbad, cohérent
-        avec le reste de l'app — repli sur le nom canonique si queried_name
-        n'est pas posé (ne devrait pas arriver une fois SCHEDULER passé, les
-        deux sont toujours posés ensemble).
-        Seule concession business du modèle : lire son propre
-        scheduler_data pour se donner un nom lisible.
+        Suggested filename for this observation's YAML: <datetime_iso>_<name>.yaml
+        (falls back to "target" if the target isn't known yet, e.g. before
+        SCHEDULER has run). Uses the queried name (queried_name) rather than
+        the canonical Simbad name, consistent with the rest of the app —
+        falls back to the canonical name if queried_name isn't set (shouldn't
+        happen once SCHEDULER has run, both are always set together).
+        The model's only business-logic concession: reading its own
+        scheduler_data to give itself a readable name.
         """
         target = self.scheduler_data.get("target")
         name = self.scheduler_data.get("queried_name") or (target.name if target else None) or "target"
@@ -167,10 +165,10 @@ class Observation(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────
-# Contexte de session
-# Transmis uniquement à INIT_SESSION et CLOSE_SESSION.
-# Rôle réduit : nommer/organiser la session, jamais modifié par les
-# plugins liés aux observations (SCHEDULER → ARCHIVE).
+# Session context
+# Passed only to INIT_SESSION and CLOSE_SESSION.
+# Narrow role: name/organize the session, never modified by the
+# observation-related plugins (SCHEDULER → ARCHIVE).
 # ─────────────────────────────────────────────────────────────
 
 class SessionContext(BaseModel):
@@ -211,31 +209,31 @@ class SessionContext(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────
-# Interface plugin
+# Plugin interface
 # ─────────────────────────────────────────────────────────────
 
 @runtime_checkable
 class SessionStagePlugin(Protocol):
-    """Interface des plugins rattachés à la session (INIT_SESSION, CLOSE_SESSION)."""
+    """Interface for session-level plugins (INIT_SESSION, CLOSE_SESSION)."""
 
     async def run(self, ctx: SessionContext) -> SessionContext:
         """
-        Exécute la logique du stage.
-        Reçoit le contexte de session courant, retourne le contexte enrichi.
-        Toute exception remonte à l'orchestrateur qui gère le fallback.
+        Executes the stage's logic.
+        Receives the current session context, returns the enriched context.
+        Any exception propagates to the orchestrator, which handles the fallback.
         """
         ...
 
 
 @runtime_checkable
 class ObservationStagePlugin(Protocol):
-    """Interface des plugins rattachés à une observation (SCHEDULER → ARCHIVE)."""
+    """Interface for observation-level plugins (SCHEDULER → ARCHIVE)."""
 
     async def run(self, obs: Observation) -> Observation:
         """
-        Exécute la logique du stage.
-        Reçoit le dossier d'observation courant, retourne le dossier enrichi
-        (le plugin n'écrit que dans son propre casier <stage>_data).
-        Toute exception remonte à l'orchestrateur qui gère le fallback.
+        Executes the stage's logic.
+        Receives the current observation file, returns the enriched file
+        (the plugin only writes to its own <stage>_data casier).
+        Any exception propagates to the orchestrator, which handles the fallback.
         """
         ...

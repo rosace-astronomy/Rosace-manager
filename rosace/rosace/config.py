@@ -1,5 +1,5 @@
 """
-Configuration globale : charge conf/config.yaml et expose les constantes de l'application.
+Global configuration: loads conf/config.yaml and exposes the application's constants.
 """
 
 import logging
@@ -46,7 +46,7 @@ def _resolve_config_path() -> Path:
 _CONFIG_PATH = _resolve_config_path()
 _cfg = _load_config(_CONFIG_PATH)
 
-# ── Répertoires ───────────────────────────────────────────────
+# ── Directories ───────────────────────────────────────────────
 BASE_DATA_DIR = Path(_cfg["base_data_dir"]).expanduser()
 DATABASES_DIR = BASE_DATA_DIR / _cfg["databases_dir"]
 DB_PATH       = DATABASES_DIR / "rosace.db"
@@ -57,60 +57,60 @@ OBSERVATIONS_DIR = BASE_DATA_DIR / _cfg["observations_dir"]
 # outside OBSERVATIONS_DIR. See image_broadcast.py / acquisition_helpers.py.
 GUI_PREVIEW_DIR = BASE_DATA_DIR / "gui_preview"
 
-# ── Site d'observation ─────────────────────────────────────────
-# Nom générique utilisé pour nommer les répertoires de session.
+# ── Observing site ─────────────────────────────────────────
+# Generic name used to name session directories.
 SITE_NAME = _cfg["site_name"]
 
-# Position géographique du site (longitude signée, Est positif) et hauteur
-# minimale (degrés) pour qu'une cible soit considérée observable — utilisées
-# par scheduler_rosace_2026 pour son calcul de visibilité (AltAz, AstroPy).
+# The site's geographic position (longitude signed, East positive) and the
+# minimum altitude (degrees) for a target to be considered observable — used
+# by scheduler_rosace_2026 for its visibility calculation (AltAz, AstroPy).
 SITE_LATITUDE_DEG = _cfg["site_latitude_deg"]
 SITE_LONGITUDE_DEG = _cfg["site_longitude_deg"]
 SITE_ELEVATION_M = _cfg["site_elevation_m"]
 MIN_TARGET_ALTITUDE_DEG = _cfg["min_target_altitude_deg"]
 
-# ── Configuration matérielle active ────────────────────────────
-# Nom du fichier YAML dans conf/ (sans extension) décrivant le hardware à utiliser.
-# Permet de basculer entre plusieurs configurations (simulateur, observatoire réel…)
-# en changeant uniquement cette valeur.
+# ── Active hardware configuration ────────────────────────────
+# Name of the YAML file in conf/ (without extension) describing the hardware
+# to use. Lets you switch between several configurations (simulator, real
+# observatory…) by changing only this value.
 ACTIVE_HARDWARE = _cfg["active_hardware"]
 HARDWARE_CONFIG_PATH = Path(__file__).parent / "conf" / f"{ACTIVE_HARDWARE}.yaml"
 
-# ── Ordonnancement ──────────────────────────────────────────────
-# Délai avant de redemander une cible à SCHEDULER quand il n'y a rien à
-# observer dans l'immédiat (SCHEDULER répond toujours vite, il ne bloque
-# jamais en interne — c'est l'orchestrateur qui gère l'attente).
+# ── Scheduling ──────────────────────────────────────────────
+# Delay before asking SCHEDULER again when there's nothing to observe right
+# now (SCHEDULER always answers quickly, it never blocks internally — it's
+# the orchestrator that manages the wait).
 SCHEDULER_RETRY_SECONDS = _cfg["scheduler_retry_seconds"]
 
-# ── Connectivité matérielle (INIT_SESSION, sequencer_backend=indi) ──────
-# Délai maximum accordé à chaque device INDI / à PHD2 pour répondre, lors de
-# la vérification de connectivité en début de session (voir hardware_connectivity.py).
+# ── Hardware connectivity (INIT_SESSION, sequencer_backend=indi) ──────
+# Maximum time given to each INDI device / to PHD2 to respond, during the
+# connectivity check at session start (see hardware_connectivity.py).
 HARDWARE_CONNECT_TIMEOUT_SECONDS = _cfg["hardware_connect_timeout_seconds"]
 
-# ── Exposition scientifique ─────────────────────────────────────
-# Temps de pose (mag 0) et durée max d'une sous-pose — voir
+# ── Science exposure ─────────────────────────────────────
+# Exposure time (mag 0) and max duration of a sub-exposure — see
 # acquisition_helpers.py::compute_exposure_time_and_count().
 EXPOSURE_TIME_MAG0_SECONDS = _cfg["exposure_time_mag0_seconds"]
 MAX_EXPOSURE_TIME_SECONDS = _cfg["max_exposure_time_seconds"]
 
 # ── Darks / bias ──────────────────────────────────────────────
-# Nombre d'images par série, fixé pour toute la session. Voir
+# Number of images per series, fixed for the whole session. See
 # plugins/sequencer_plugins/dark_acquisition/.
 DARK_COUNT = _cfg["dark_count"]
 BIAS_COUNT = _cfg["bias_count"]
 BIAS_EXPOSURE_TIME_SECONDS = _cfg["bias_exposure_time_seconds"]
 DARK_LIBRARY_DIR = BASE_DATA_DIR / _cfg["dark_library_dir"]
 
-# ── Refroidissement caméra (INIT_SESSION, sequencer_backend=indi) ──────
-# Délai maximum accordé à la caméra science pour atteindre sa température
-# cible calculée. Voir plugins/camera_cooldown.py.
+# ── Camera cooldown (INIT_SESSION, sequencer_backend=indi) ──────
+# Maximum time given to the science camera to reach its computed target
+# temperature. See plugins/camera_cooldown.py.
 CAMERA_COOLDOWN_TIMEOUT_SECONDS = _cfg["camera_cooldown_timeout_seconds"]
 
-# ── Backend d'exécution SEQUENCER ────────────────────────────────
-# "internal" : simulation interne, sans dépendance externe (démonstrateur niveau 1).
-# "indi"     : protocole INDI/PHD2 réel, piloté par ACTIVE_HARDWARE/HARDWARE_CONFIG_PATH
-#              (démonstrateur niveaux 2/3). Ne concerne que les sous-plugins SEQUENCER
-#              — REDUCTION n'a pas de dépendance matérielle.
+# ── SEQUENCER execution backend ────────────────────────────────
+# "internal": internal simulation, no external dependency (level-1 demo).
+# "indi"    : real INDI/PHD2 protocol, driven by ACTIVE_HARDWARE/HARDWARE_CONFIG_PATH
+#             (level-2/3 demo). Only concerns SEQUENCER sub-plugins — REDUCTION
+#             has no hardware dependency.
 _VALID_SEQUENCER_BACKENDS = ("internal", "indi")
 
 _LOGGING_CFG_PATH = Path(__file__).parent / "conf" / "logging.cfg"
@@ -127,12 +127,12 @@ def _validate_sequencer_backend(value: str) -> str:
 
 def _log_fatal_startup_error(message: str) -> None:
     """
-    Filet de secours : configure le vrai système de logging (même conf/logging.cfg
-    qu'en fonctionnement normal) pour qu'une erreur de config levée ici — avant que
-    configure_logging() (log_config.py) n'ait pu tourner, puisqu'elle a elle-même
-    besoin de BASE_DATA_DIR — atterrisse quand même dans rosace.log, pas seulement
-    sur stderr. Ne fait pas appel à log_config.py directement pour éviter un import
-    circulaire (log_config.py fait `from .config import BASE_DATA_DIR`).
+    Safety net: configures the real logging system (the same conf/logging.cfg
+    as in normal operation) so that a config error raised here — before
+    configure_logging() (log_config.py) has had a chance to run, since it
+    itself needs BASE_DATA_DIR — still lands in rosace.log, not just on
+    stderr. Doesn't call log_config.py directly, to avoid a circular import
+    (log_config.py does `from .config import BASE_DATA_DIR`).
     """
     try:
         # Recomputed from BASE_DATA_DIR (not the frozen LOG_DIR constant above) so that
@@ -146,7 +146,7 @@ def _log_fatal_startup_error(message: str) -> None:
         )
         logging.getLogger("spectro.config").error(f"[CONFIG] {message}")
     except Exception:
-        pass  # best effort — ne jamais masquer l'erreur d'origine
+        pass  # best effort — never mask the original error
 
 
 try:
@@ -155,10 +155,10 @@ except ValueError as e:
     _log_fatal_startup_error(str(e))
     raise
 
-# ── Plugin SCHEDULER actif ────────────────────────────────────────
-# Nom (registre plugins/schedulers/__init__.py) du plugin SCHEDULER à
-# utiliser — chacun est un algorithme de sélection de cible interchangeable,
-# voir plugins/schedulers/blank/scheduler.py pour le contrat à respecter.
+# ── Active SCHEDULER plugin ────────────────────────────────────────
+# Name (registry in plugins/schedulers/__init__.py) of the SCHEDULER plugin
+# to use — each is an interchangeable target-selection algorithm, see
+# plugins/schedulers/blank/scheduler.py for the contract to honor.
 _VALID_SCHEDULERS = ("scheduler_rosace_2026", "blank")
 
 
@@ -177,13 +177,13 @@ except ValueError as e:
     _log_fatal_startup_error(str(e))
     raise
 
-# ── Plan d'observation (SCHEDULER) ───────────────────────────────
-# Fichier texte (n'importe où sur le disque, pas nécessairement sous
-# BASE_DATA_DIR) que SCHEDULER lit pour choisir la prochaine cible.
+# ── Observation plan (SCHEDULER) ───────────────────────────────
+# Text file (anywhere on disk, not necessarily under BASE_DATA_DIR) that
+# SCHEDULER reads to pick the next target.
 OBSERVATION_LIST_PATH = Path(_cfg["observation_list_path"]).expanduser()
 
-# ── Authentification ──────────────────────────────────────────────
-# Durée de vie d'une session (cookie) avant de redemander une connexion.
+# ── Authentication ──────────────────────────────────────────────
+# How long a session (cookie) stays valid before requiring a fresh login.
 SESSION_TTL_HOURS = _cfg["session_ttl_hours"]
-# Attribut 'Secure' du cookie de session — voir le commentaire dans config.yaml.
+# The session cookie's 'Secure' attribute — see the comment in config.yaml.
 SESSION_COOKIE_SECURE = _cfg["session_cookie_secure"]

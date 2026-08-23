@@ -1,7 +1,7 @@
 """
-Sous-plugin SEQUENCER — Mise au point (Focus)
-Effectue la mise au point automatique avant l'exposition.
-Backend "internal" — simulation interne, sans dépendance externe.
+SEQUENCER sub-plugin — Focus
+Performs autofocus before exposure.
+Backend "internal" — internal simulation, no external dependency.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ log = logging.getLogger("spectro.subplugin.focus")
 
 
 class FocusPlugin(SubPlugin):
-    """Mise au point automatique du spectro/télescope — simulation interne."""
+    """Autofocus for the spectroscope/telescope — internal simulation."""
 
     async def execute(self, obs: Observation) -> Observation:
         # No precondition check on a previous step's casier: if pointing had failed,
@@ -28,10 +28,10 @@ class FocusPlugin(SubPlugin):
 
         log.info(f"[FOCUS] Méthode={method}, pas={step_size}µm, n={n_steps}")
 
-        duration = n_steps * 0.05  # simulation très rapide
+        duration = n_steps * 0.05  # very fast simulation
         await asyncio.sleep(duration)
-        best_position = 12450  # µm, valeur simulée
-        fwhm = 2.3  # pixels, valeur simulée
+        best_position = 12450  # µm, simulated value
+        fwhm = 2.3  # pixels, simulated value
         log.info(f"[FOCUS] Simulation — position optimale={best_position}µm, FWHM={fwhm}px")
 
         obs.sequencer_data["focus"] = {"position_um": best_position, "fwhm_px": fwhm}

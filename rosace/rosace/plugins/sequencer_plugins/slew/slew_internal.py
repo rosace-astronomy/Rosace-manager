@@ -1,7 +1,7 @@
 """
-Sous-plugin SEQUENCER — Pointage (Slew)
-Pointe le télescope vers les coordonnées RA/Dec de la cible.
-Backend "internal" — simulation interne, sans dépendance externe.
+SEQUENCER sub-plugin — Pointing (Slew)
+Points the telescope at the target's RA/Dec coordinates.
+Backend "internal" — internal simulation, no external dependency.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ log = logging.getLogger("spectro.subplugin.slew")
 
 
 class SlewPlugin(SubPlugin):
-    """Pointe le télescope vers la cible (RA/Dec) — simulation interne."""
+    """Points the telescope at the target (RA/Dec) — internal simulation."""
 
     async def execute(self, obs: Observation) -> Observation:
         target = obs.scheduler_data.get("target")
@@ -30,7 +30,7 @@ class SlewPlugin(SubPlugin):
         log.info(f"[SLEW] Pointage vers {queried_name} RA={ra:.4f}° Dec={dec:.4f}°")
 
         slew_duration = min(settle_time, 30.0 / slew_speed)
-        await asyncio.sleep(slew_duration * 0.1)  # accéléré en simulation
+        await asyncio.sleep(slew_duration * 0.1)  # sped up for simulation
         log.info(f"[SLEW] Simulation — pointage terminé en {slew_duration:.1f}s (accéléré)")
 
         # No sequencer_data casier: the target is already in scheduler_data, and

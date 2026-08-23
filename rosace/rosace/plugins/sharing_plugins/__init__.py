@@ -1,11 +1,11 @@
 """
-Package des sous-plugins de SHARING.
+SHARING sub-plugin package.
 
-Un répertoire par sous-plugin, comme reduction_plugins/ — pas d'axe backend
-(aucune dépendance matérielle). Contrairement à SEQUENCER/REDUCTION, un
-programme n'en déclare qu'un seul (clé "sharing" singulière dans le YAML,
-pas une liste) : un programme qui doit diffuser vers plusieurs destinations
-gère ça dans son propre sous-plugin, ce n'est pas au mécanisme de le permettre.
-Résolu dynamiquement par pipeline_loader.py::load_sharing_plugin() — ce
-module n'importe rien lui-même.
+One directory per sub-plugin, like reduction_plugins/ — no backend axis (no
+hardware dependency). Unlike SEQUENCER/REDUCTION, a program declares only
+one (singular "sharing" key in the YAML, not a list): a program that needs
+to share to several destinations handles that inside its own sub-plugin,
+the mechanism itself isn't meant to support it. Resolved dynamically by
+pipeline_loader.py::load_sharing_plugin() — this module doesn't import
+anything itself.
 """

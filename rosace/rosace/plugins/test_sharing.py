@@ -1,9 +1,9 @@
 """
-Tests du plugin SHARING (SharingPlugin).
-Le chargement du sous-plugin (pipeline_loader.load_sharing_plugin) est
-mocké : ces tests couvrent l'orchestration, pas le comportement du vrai
-sous-plugin (couvert par sharing_plugins/<name>/test_<name>.py).
-Lancement : pytest plugins/test_sharing.py -v
+Tests for the SHARING plugin (SharingPlugin).
+Sub-plugin loading (pipeline_loader.load_sharing_plugin) is mocked: these
+tests cover orchestration, not the real sub-plugin's behavior (covered by
+sharing_plugins/<name>/test_<name>.py).
+Run: pytest plugins/test_sharing.py -v
 """
 
 from datetime import datetime, timezone

@@ -1,6 +1,6 @@
 """
-Tests du sous-plugin DARK (DarkPlugin).
-Lancement : pytest plugins/reduction_plugins/dark/test_dark.py -v
+Tests for the DARK sub-plugin (DarkPlugin).
+Run: pytest plugins/reduction_plugins/dark/test_dark.py -v
 """
 
 from datetime import datetime, timezone
@@ -32,7 +32,7 @@ def fast_sleep(monkeypatch):
 class TestDarkPlugin:
 
     async def test_raises_if_bias_missing(self):
-        obs = _make_obs()  # reduction_data == {}, bias n'a jamais tourné
+        obs = _make_obs()  # reduction_data == {}, bias has never run
         with pytest.raises(RuntimeError, match="bias"):
             await DarkPlugin().execute(obs)
 

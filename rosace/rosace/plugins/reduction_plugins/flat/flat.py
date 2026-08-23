@@ -1,6 +1,6 @@
 """
-Sous-plugin REDUCTION — Division par le flat-field
-Corrige les variations de sensibilité pixel-à-pixel et le vignettage.
+REDUCTION sub-plugin — Flat-field division
+Corrects pixel-to-pixel sensitivity variations and vignetting.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ log = logging.getLogger("spectro.subplugin.flat")
 
 
 class FlatPlugin(SubPlugin):
-    """Division par le flat-field (correction de réponse spectrale) — simulation interne."""
+    """Flat-field division (spectral response correction) — internal simulation."""
 
     async def execute(self, obs: Observation) -> Observation:
         if "dark" not in obs.reduction_data:

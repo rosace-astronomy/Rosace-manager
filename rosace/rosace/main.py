@@ -1,18 +1,7 @@
 """
-Orchestrateur spectroscopique — point d'entrée principal.
-Machine d'état : INIT_SESSION → SCHEDULER → SEQUENCER → REDUCTION → SHARING → ARCHIVE → CLOSE_SESSION
+Spectroscopic orchestrator — main entry point.
+State machine: INIT_SESSION → SCHEDULER → SEQUENCER → REDUCTION → SHARING → ARCHIVE → CLOSE_SESSION
 """
-
-#─────────────────────────────────────────────────────────────
-# Quelques TODO...
-# Mettre en contener (docker) ?
-# Mettre en place les plugins pour chaque étape d'observation et de
-# réduction de données
-# Faire une version 0.0.1, qui permette de faire une démonstration 
-# Faire un chargement dynamique des plugis (sequencer et réduction)
-# Créer un fichier YAML pour une démo
-# Faire une séquence d'observations à partir d'une liste d'étoiles en fichier texte
-#─────────────────────────────────────────────────────────────
 
 # Config-selection CLI handling — must run before `from .config import ...`
 # below, since that import triggers config.py's own module-level loading.
@@ -191,18 +180,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Toute route posée sur "protected" exige une session valide ; "admin_router" exige
-# en plus is_admin. Par défaut fermé : seule /auth/login et le GUI statique (montés
-# directement sur "app" plus bas) restent publics — une nouvelle route doit choisir
-# consciemment de l'être, plutôt que l'inverse (liste blanche qu'on peut oublier
-# de mettre à jour). /ws (WebSocket) n'est délibérément pas de ce lot : une
-# HTTPException levée par Depends() ne ferme pas proprement un handshake WebSocket
-# — sa vérification est faite à la main, dans ws_logs() lui-même.
+# Any route on "protected" requires a valid session; "admin_router" additionally
+# requires is_admin. Default-closed: only /auth/login and the static GUI (mounted
+# directly on "app" further below) stay public — a new route must consciously
+# choose to be public, rather than the reverse (an allowlist someone could forget
+# to update). /ws (WebSocket) is deliberately not part of this: an HTTPException
+# raised by Depends() doesn't close a WebSocket handshake cleanly — it's checked
+# by hand, inside ws_logs() itself.
 protected = APIRouter(dependencies=[Depends(get_current_user)])
 admin_router = APIRouter(prefix="/auth/users", dependencies=[Depends(require_admin)])
 
 # ─────────────────────────────────────────────────────────────
-# État global du système
+# Global system state
 # ─────────────────────────────────────────────────────────────
 
 class SystemState:
@@ -223,7 +212,7 @@ class SystemState:
 state = SystemState()
 
 # ─────────────────────────────────────────────────────────────
-# Machine à états
+# State machine
 # ─────────────────────────────────────────────────────────────
 
 OBS_STAGES: list[OrchestratorStage] = [
@@ -319,7 +308,7 @@ async def _session_runner_body():
                 break
             try:
                 if stage == OrchestratorStage.SCHEDULER:
-                    # L'orchestrateur crée le dossier vide ; SCHEDULER le remplit.
+                    # The orchestrator creates the empty dossier; SCHEDULER fills it in.
                     obs = Observation(
                         id=str(uuid.uuid4())[:8],
                         created_at=datetime.now(timezone.utc),
@@ -440,7 +429,7 @@ async def list_recent_observations(limit: int | None = None):
 
 @protected.get("/observations/{obs_id}")
 async def get_observation(obs_id: str):
-    """Récupère une observation complétée par son identifiant."""
+    """Retrieves a completed observation by its id."""
     for obs in state.completed:
         if obs.id == obs_id:
             return obs
@@ -448,10 +437,10 @@ async def get_observation(obs_id: str):
 
 @protected.post("/control/start")
 async def start_session(background_tasks: BackgroundTasks):
-    """Démarre une nouvelle session d'observation. Refuse tant qu'une session
-    précédente n'a pas complètement terminé son arrêt (session_active), pas
-    seulement tant qu'un arrêt a été demandé (is_running) — sinon une seconde
-    session pourrait démarrer pendant que la première finit son nettoyage."""
+    """Starts a new observation session. Refuses as long as a previous session
+    hasn't fully finished stopping (session_active), not just while a stop has
+    been requested (is_running) — otherwise a second session could start while
+    the first one is still finishing its cleanup."""
     if state.session_active:
         return {"message": "Session déjà en cours"}
     state.is_running = True
@@ -460,7 +449,7 @@ async def start_session(background_tasks: BackgroundTasks):
 
 @protected.post("/control/stop")
 async def stop_session():
-    """Demande l'arrêt propre de la session (après l'observation en cours)."""
+    """Requests a clean session stop (after the current observation)."""
     state.is_running = False
     log.info("[ORCHESTRATOR] Arrêt demandé — CLOSE_SESSION sera exécuté en fin de cycle")
     return {"message": "Arrêt demandé — CLOSE_SESSION sera exécuté en fin de cycle"}
@@ -513,14 +502,14 @@ async def get_gui_image(panel: str):
 
 
 # ─────────────────────────────────────────────────────────────
-# Endpoints — Recherche Simbad
+# Endpoints — Simbad search
 # ─────────────────────────────────────────────────────────────
 
 @protected.get("/simbad/search", response_model=StarCreate)
 async def simbad_search_endpoint(name: str):
     """
-    Interroge Simbad et retourne les informations de l'étoile,
-    sans l'insérer en base. Utile pour prévisualiser avant insertion.
+    Queries Simbad and returns the star's information, without inserting it
+    into the database. Useful for previewing before insertion.
     """
     try:
         return await simbad_search(name)
@@ -531,8 +520,8 @@ async def simbad_search_endpoint(name: str):
 
 
 async def _ensure_alias(star: Star, name: str) -> bool:
-    """Enregistre `name` comme alias de `star` s'il n'est ni son nom canonique
-    ni un alias déjà connu. Retourne True si un nouvel alias a été ajouté."""
+    """Registers `name` as an alias of `star` unless it's already its canonical
+    name or a known alias. Returns True if a new alias was added."""
     known_names = {star.name.lower()} | {a.lower() for a in await star_list_aliases(star.id)}
     if name.lower() not in known_names:
         await star_add_alias(star.id, name)
@@ -542,24 +531,24 @@ async def _ensure_alias(star: Star, name: str) -> bool:
 
 async def _import_star_from_simbad(name: str) -> tuple[Star, bool, bool]:
     """
-    Ajoute une étoile à la base, identifiée par un nom quelconque — pas besoin
-    de connaître son nom canonique Simbad. Recherche d'abord si une étoile
-    correspondant à `name` (nom canonique ou alias) existe déjà :
-    - si oui, enregistre `name` comme alias si nouveau, renvoie l'étoile
-      existante (created=False) plutôt que d'en créer un doublon ;
-    - sinon, interroge Simbad pour les données astrométriques. Simbad peut
-      résoudre `name` vers une identité canonique déjà présente en base sous
-      un tout autre terme de recherche (ex. "Sheliak" et "bet Lyr" sont la
-      même étoile) — on revérifie donc par ce nom canonique avant d'insérer :
-      si une étoile correspond déjà, même traitement que le cas "existant"
-      ci-dessus ; sinon seulement, insère la nouvelle étoile (nom canonique =
-      celui retourné par Simbad), enregistre `name` comme alias si différent
-      du nom canonique, renvoie la nouvelle étoile (created=True).
-    Retourne (star, created, alias_added) — alias_added indique si CET appel
-    a enregistré un nouvel alias (utile pour que l'appelant sache, sans avoir
-    à aller vérifier la base, si `name` a bien été retenu comme alias).
-    Lève SimbadNotFoundError / SimbadQueryError si l'étoile est réellement
-    nouvelle et que Simbad ne la reconnaît pas / ne répond pas.
+    Adds a star to the database, identified by any name — no need to know its
+    canonical Simbad name. First looks up whether a star matching `name`
+    (canonical name or alias) already exists:
+    - if so, registers `name` as an alias if it's new, returns the existing
+      star (created=False) rather than creating a duplicate;
+    - otherwise, queries Simbad for the astrometric data. Simbad can resolve
+      `name` to a canonical identity already present in the database under a
+      completely different search term (e.g. "Sheliak" and "bet Lyr" are the
+      same star) — so we re-check by that canonical name before inserting:
+      if a star already matches, same handling as the "existing" case above;
+      only otherwise does it insert the new star (canonical name = the one
+      returned by Simbad), registering `name` as an alias if different from
+      the canonical name, and returns the new star (created=True).
+    Returns (star, created, alias_added) — alias_added indicates whether THIS
+    call registered a new alias (useful so the caller knows, without having
+    to go check the database, whether `name` was indeed kept as an alias).
+    Raises SimbadNotFoundError / SimbadQueryError if the star is genuinely
+    new and Simbad doesn't recognize it / doesn't respond.
     """
     existing = await star_get_by_name(name)
     if existing:
@@ -583,12 +572,12 @@ async def _import_star_from_simbad(name: str) -> tuple[Star, bool, bool]:
 
 
 class StarImportResponse(Star):
-    alias_added: bool  # True si `name` (le terme recherché) a été enregistré comme alias
+    alias_added: bool  # True if `name` (the searched term) was registered as an alias
 
 
 @protected.post("/simbad/import", response_model=StarImportResponse)
 async def simbad_import_endpoint(name: str, response: Response):
-    """Ajoute une étoile à la base via Simbad — voir _import_star_from_simbad()."""
+    """Adds a star to the database via Simbad — see _import_star_from_simbad()."""
     try:
         star, created, alias_added = await _import_star_from_simbad(name)
     except SimbadNotFoundError as e:
@@ -612,9 +601,9 @@ class StarImportResult(BaseModel):
 @protected.post("/stars/import-list", response_model=list[StarImportResult])
 async def import_stars_from_file(file: UploadFile):
     """
-    Importe une liste d'étoiles (un nom par ligne, fichier texte uploadé) —
-    chaque ligne suit exactement le même chemin que /simbad/import. Rapport
-    ligne par ligne : une erreur sur une ligne n'interrompt pas les suivantes.
+    Imports a list of stars (one name per line, uploaded text file) — each
+    line follows exactly the same path as /simbad/import. Per-line report: an
+    error on one line doesn't interrupt the following ones.
     """
     content = (await file.read()).decode("utf-8")
     results: list[StarImportResult] = []
@@ -645,10 +634,10 @@ class ProgramStarImportResult(BaseModel):
 @protected.post("/programs/import-list", response_model=list[ProgramStarImportResult])
 async def import_program_stars_from_file(file: UploadFile):
     """
-    Importe des liens programme <-> étoiles depuis un fichier YAML uploadé
-    (format : {nom_programme: [nom_etoile, ...], ...}). Les étoiles doivent
-    déjà exister en base (nom canonique ou alias) — pas d'appel Simbad ici,
-    contrairement à /stars/import-list. Rapport ligne par ligne.
+    Imports program <-> star links from an uploaded YAML file (format:
+    {program_name: [star_name, ...], ...}). Stars must already exist in the
+    database (canonical name or alias) — no Simbad call here, unlike
+    /stars/import-list. Per-line report.
     """
     content = (await file.read()).decode("utf-8")
     data = yaml.safe_load(content) or {}
@@ -680,7 +669,7 @@ async def import_program_stars_from_file(file: UploadFile):
     return results
 
 # ─────────────────────────────────────────────────────────────
-# Point d'entrée
+# Entry point
 # ─────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -688,20 +677,20 @@ if __name__ == "__main__":
     uvicorn.run("rosace.main:app", host="0.0.0.0", port=8000)
 
 # ─────────────────────────────────────────────────────────────
-# Endpoints — Étoiles
+# Endpoints — Stars
 # ─────────────────────────────────────────────────────────────
-# Adressées par nom, jamais par id : l'id SQLite est un détail d'implémentation
-# qui ne concerne pas l'utilisateur (voir star_get_by_name : nom canonique
-# puis, en repli, table d'alias).
+# Addressed by name, never by id: the SQLite id is an implementation detail
+# that doesn't concern the user (see star_get_by_name: canonical name, then
+# falling back to the alias table).
 
 @protected.get("/stars", response_model=list[Star])
 async def list_stars():
-    """Liste toutes les étoiles."""
+    """Lists all stars."""
     return await star_list()
 
 @protected.get("/stars/{name}", response_model=StarLookup)
 async def get_star(name: str):
-    """Recherche une étoile par son nom (canonique ou alias)."""
+    """Looks up a star by its name (canonical or alias)."""
     star = await star_get_by_name(name)
     if not star:
         raise HTTPException(status_code=404, detail="Étoile non trouvée")
@@ -709,7 +698,7 @@ async def get_star(name: str):
 
 @protected.put("/stars/{name}", response_model=Star)
 async def update_star(name: str, star: StarCreate):
-    """Met à jour une étoile, recherchée par son nom (canonique ou alias)."""
+    """Updates a star, looked up by its name (canonical or alias)."""
     existing = await star_get_by_name(name)
     if not existing:
         raise HTTPException(status_code=404, detail="Étoile non trouvée")
@@ -718,7 +707,7 @@ async def update_star(name: str, star: StarCreate):
 
 @protected.delete("/stars/{name}", status_code=204)
 async def delete_star(name: str):
-    """Supprime une étoile, recherchée par son nom (canonique ou alias)."""
+    """Deletes a star, looked up by its name (canonical or alias)."""
     existing = await star_get_by_name(name)
     if not existing:
         raise HTTPException(status_code=404, detail="Étoile non trouvée")
@@ -726,31 +715,31 @@ async def delete_star(name: str):
 
 @protected.get("/stars/{name}/programs", response_model=list[Program])
 async def get_star_programs(name: str):
-    """Retourne les programmes auxquels appartient une étoile."""
+    """Returns the programs a star belongs to."""
     existing = await star_get_by_name(name)
     if not existing:
         raise HTTPException(status_code=404, detail="Étoile non trouvée")
     return await star_get_programs(existing.id)
 
 # ─────────────────────────────────────────────────────────────
-# Endpoints — Programmes scientifiques
+# Endpoints — Scientific programs
 # ─────────────────────────────────────────────────────────────
-# Adressées par nom, jamais par id — même principe que pour les étoiles.
+# Addressed by name, never by id — same principle as for stars.
 
 @protected.post("/programs", response_model=Program, status_code=201)
 async def create_program(program: ProgramCreate):
-    """Crée un programme scientifique."""
+    """Creates a scientific program."""
     prog_id = await program_insert(program)
     return await program_get(prog_id)
 
 @protected.get("/programs", response_model=list[Program])
 async def list_programs():
-    """Liste tous les programmes."""
+    """Lists all programs."""
     return await program_list()
 
 @protected.get("/programs/{name}", response_model=Program)
 async def get_program(name: str):
-    """Récupère un programme par son nom."""
+    """Retrieves a program by its name."""
     program = await program_get_by_name(name)
     if not program:
         raise HTTPException(status_code=404, detail="Programme non trouvé")
@@ -758,7 +747,7 @@ async def get_program(name: str):
 
 @protected.delete("/programs/{name}", status_code=204)
 async def delete_program(name: str):
-    """Supprime un programme, recherché par son nom."""
+    """Deletes a program, looked up by its name."""
     program = await program_get_by_name(name)
     if not program:
         raise HTTPException(status_code=404, detail="Programme non trouvé")
@@ -766,7 +755,7 @@ async def delete_program(name: str):
 
 @protected.get("/programs/{name}/stars", response_model=list[StarInProgram])
 async def get_program_stars(name: str):
-    """Retourne les étoiles d'un programme, avec leur temps de pose éventuel."""
+    """Returns a program's stars, with their optional exposure time."""
     program = await program_get_by_name(name)
     if not program:
         raise HTTPException(status_code=404, detail="Programme non trouvé")
@@ -774,8 +763,8 @@ async def get_program_stars(name: str):
 
 @protected.post("/programs/{name}/stars/{star_name}", status_code=204)
 async def add_star_to_program(name: str, star_name: str, exposure_time: Optional[float] = None):
-    """Associe une étoile à un programme, avec un temps de pose optionnel
-    spécifique à ce couple programme/étoile."""
+    """Links a star to a program, with an optional exposure time specific to
+    this program/star pair."""
     program = await program_get_by_name(name)
     if not program:
         raise HTTPException(status_code=404, detail="Programme non trouvé")
@@ -786,7 +775,7 @@ async def add_star_to_program(name: str, star_name: str, exposure_time: Optional
 
 @protected.delete("/programs/{name}/stars/{star_name}", status_code=204)
 async def remove_star_from_program(name: str, star_name: str):
-    """Retire une étoile d'un programme."""
+    """Removes a star from a program."""
     program = await program_get_by_name(name)
     if not program:
         raise HTTPException(status_code=404, detail="Programme non trouvé")
@@ -796,14 +785,14 @@ async def remove_star_from_program(name: str, star_name: str):
     await program_remove_star(program.id, star.id)
 
 # ─────────────────────────────────────────────────────────────
-# Endpoints — Authentification
+# Endpoints — Authentication
 # ─────────────────────────────────────────────────────────────
-# Volontairement sur "app" directement, pas "protected" : il faut pouvoir se
-# connecter avant d'avoir une session. C'est la seule route API publique.
+# Deliberately on "app" directly, not "protected": you need to be able to log
+# in before having a session. This is the only public API route.
 
 @app.post("/auth/login", response_model=UserOut)
 async def login(credentials: LoginRequest, response: Response):
-    """Vérifie les identifiants et pose le cookie de session."""
+    """Verifies the credentials and sets the session cookie."""
     row = await _user_row_by_username(credentials.username)
     if row is None or not _verify_password(credentials.password, row["password_hash"]):
         raise HTTPException(status_code=401, detail="Identifiants invalides")
@@ -817,7 +806,7 @@ async def login(credentials: LoginRequest, response: Response):
 
 @app.post("/auth/logout", status_code=204)
 async def logout(request: Request, response: Response):
-    """Invalide la session côté serveur et efface le cookie."""
+    """Invalidates the session server-side and clears the cookie."""
     token = request.cookies.get(SESSION_COOKIE_NAME)
     if token:
         await session_delete(token)
@@ -825,17 +814,17 @@ async def logout(request: Request, response: Response):
 
 @protected.get("/auth/me", response_model=UserOut)
 async def get_me(user: UserOut = Depends(get_current_user)):
-    """Utilisateur actuellement connecté — utilisé par le GUI au démarrage
-    pour savoir s'il doit afficher l'écran de connexion ou l'application."""
+    """Currently logged-in user — used by the GUI at startup to know whether
+    to show the login screen or the application."""
     return user
 
 # ─────────────────────────────────────────────────────────────
-# Endpoints — Gestion des comptes (admin uniquement)
+# Endpoints — Account management (admin only)
 # ─────────────────────────────────────────────────────────────
 
 @admin_router.post("", response_model=UserOut, status_code=201)
 async def create_user(user: UserCreate):
-    """Crée un compte. Réservé aux admins — pas d'auto-inscription."""
+    """Creates an account. Admin-only — no self-registration."""
     try:
         return await user_create(user)
     except ValueError as e:
@@ -847,8 +836,8 @@ async def list_users():
 
 @admin_router.delete("/{username}", status_code=204)
 async def delete_user(username: str, current: UserOut = Depends(require_admin)):
-    """Supprime un compte — refuse de se supprimer soi-même ou de supprimer
-    le dernier compte admin restant (on se couperait tout accès admin)."""
+    """Deletes an account — refuses to delete yourself or the last remaining
+    admin account (that would cut off all admin access)."""
     if username == current.username:
         raise HTTPException(status_code=400, detail="impossible de se supprimer soi-même")
     admins = [u for u in await user_list() if u.is_admin]
@@ -860,9 +849,9 @@ app.include_router(protected)
 app.include_router(admin_router)
 
 # ─────────────────────────────────────────────────────────────
-# Interface web (fichiers statiques du GUI)
+# Web interface (GUI static files)
 # ─────────────────────────────────────────────────────────────
-# Monté en dernier : les routes API ci-dessus restent prioritaires.
+# Mounted last: the API routes above stay in priority.
 
 GUI_DIR = Path(__file__).parent / "gui" / "bin"
 

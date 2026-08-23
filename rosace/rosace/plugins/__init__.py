@@ -1,6 +1,6 @@
 """
-Registre des plugins de stage.
-Importer ce module suffit à instancier tous les plugins.
+Stage plugin registry.
+Importing this module is enough to instantiate every plugin.
 """
 
 from ..models import OrchestratorStage, SessionStagePlugin, ObservationStagePlugin

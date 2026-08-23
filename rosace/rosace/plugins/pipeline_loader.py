@@ -1,11 +1,11 @@
 """
-Chargeur de pipeline dynamique.
+Dynamic pipeline loader.
 
-Lit un fichier YAML de programme scientifique et instancie les sous-plugins
-dans l'ordre déclaré, pour le séquenceur et pour la réduction.
+Reads a scientific program's YAML file and instantiates the sub-plugins in
+the declared order, for the sequencer and for reduction.
 
-Structure attendue du YAML :
-    program: nom_du_programme
+Expected YAML structure:
+    program: program_name
     sequencer:
       - slew
       - focus
@@ -17,24 +17,24 @@ Structure attendue du YAML :
       - extract
     sharing: blank_share
 
-Usage :
+Usage:
     from .pipeline_loader import load_pipelines, load_sharing_plugin
     seq_pipeline, red_pipeline = load_pipelines(program)
     sharing_plugin = load_sharing_plugin(program)
 
-Chargement dynamique par convention de nommage — pas de registre central à
-maintenir (contrairement à l'ancienne approche) : un sous-plugin déclaré
-"<name>" dans le YAML vit dans son propre répertoire, un par sous-plugin
-(<name>/<name>.py, classe <Name>Plugin). Seuls les sous-plugins réellement
-déclarés dans le programme en cours sont importés — pas tout le catalogue.
+Dynamic loading by naming convention — no central registry to maintain
+(unlike the old approach): a sub-plugin declared "<name>" in the YAML lives
+in its own directory, one per sub-plugin (<name>/<name>.py, class
+<Name>Plugin). Only the sub-plugins actually declared in the current
+program are imported — never the whole catalogue.
 
-Seul SEQUENCER a un axe backend (SEQUENCER_BACKEND, config.py) : le nom nu
-(<name>.py) est la version canonique — utilisée pour REDUCTION (qui n'a pas
-de dépendance matérielle) et pour SEQUENCER quand SEQUENCER_BACKEND="indi".
-"internal" est une exception ponctuelle réservée à la démo (pas un backend
-de plein droit) : seuls les sous-plugins réellement nécessaires à la démo
-ont un fichier <name>_internal.py — son absence pour un sous-plugin donné
-est normale, pas un manque.
+Only SEQUENCER has a backend axis (SEQUENCER_BACKEND, config.py): the bare
+name (<name>.py) is the canonical version — used for REDUCTION (which has
+no hardware dependency) and for SEQUENCER when SEQUENCER_BACKEND="indi".
+"internal" is a one-off exception reserved for the demo (not a full-fledged
+backend): only the sub-plugins actually needed for the demo have a
+<name>_internal.py file — its absence for a given sub-plugin is normal, not
+a gap.
 """
 
 from __future__ import annotations
@@ -52,19 +52,18 @@ from ..config import SEQUENCER_BACKEND
 
 log = logging.getLogger("spectro.pipeline_loader")
 
-# ── Répertoire contenant les fichiers de programme ────────────────────────────
+# ── Directory holding the program files ────────────────────────────────────────
 PROGRAMS_DIR = Path(__file__).parents[1] / "programs"
 
-# Un nom (de programme ou de sous-plugin) finit interpolé tel quel dans un
-# chemin de fichier et dans un chemin de module Python importé dynamiquement —
-# restreint aux caractères qu'un composant de chemin/module Python peut
-# légitimement prendre (pas de '-', invalide dans un identifiant Python), pour
-# empêcher toute traversée de répertoire (ex. "../../etc").
+# A name (program or sub-plugin) ends up interpolated as-is into a file path
+# and into a dynamically imported Python module path — restricted to the
+# characters a path/module component can legitimately take (no '-', invalid
+# in a Python identifier), to prevent any directory traversal (e.g. "../../etc").
 _NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 
 def _validate_name(kind: str, name: str) -> str:
-    """Vérifie que "name" ne peut pas s'échapper d'un chemin de fichier/module. Lève ValueError sinon."""
+    """Checks that "name" can't escape a file/module path. Raises ValueError otherwise."""
     if not _NAME_RE.fullmatch(name):
         raise ValueError(
             f"Nom {kind} {name!r} invalide — attendu : lettres, chiffres ou '_' uniquement"
@@ -74,9 +73,9 @@ def _validate_name(kind: str, name: str) -> str:
 
 def _resolve_module_and_class(kind: str, name: str) -> tuple[str, str]:
     """
-    Détermine le chemin de module et le nom de classe attendus pour un
-    sous-plugin déclaré "name" dans un programme, selon "kind" ('sequencer',
-    'reduction' ou 'sharing') et, pour 'sequencer' uniquement, SEQUENCER_BACKEND.
+    Determines the expected module path and class name for a sub-plugin
+    declared "name" in a program, based on "kind" ('sequencer', 'reduction'
+    or 'sharing') and, for 'sequencer' only, SEQUENCER_BACKEND.
     """
     class_name = "".join(word.capitalize() for word in name.split("_")) + "Plugin"
 
@@ -100,7 +99,7 @@ def _resolve_module_and_class(kind: str, name: str) -> tuple[str, str]:
 
 
 def _load_subplugin_class(kind: str, name: str) -> type:
-    """Importe dynamiquement le module du sous-plugin et retourne sa classe."""
+    """Dynamically imports the sub-plugin's module and returns its class."""
     module_path, class_name = _resolve_module_and_class(kind, name)
 
     try:
@@ -250,18 +249,19 @@ def validate_subplugin_catalogue() -> None:
         )
 
 
-# ── Fonctions publiques ────────────────────────────────────────────────────────
+# ── Public functions ────────────────────────────────────────────────────────
 
 def list_programs() -> list[str]:
-    """Retourne les noms des programmes disponibles (sans extension)."""
+    """Returns the names of the available programs (without extension)."""
     return sorted(p.stem for p in PROGRAMS_DIR.glob("*.yaml"))
 
 
 def load_program_yaml(program_name: str) -> dict:
     """
-    Charge et retourne le contenu brut du YAML d'un programme.
-    Lève FileNotFoundError si le fichier n'existe pas, ValueError si program_name
-    contient un caractère interdit (protection contre une traversée de répertoire).
+    Loads and returns a program's raw YAML content.
+    Raises FileNotFoundError if the file doesn't exist, ValueError if
+    program_name contains a forbidden character (protection against a
+    directory traversal).
     """
     program_name = _validate_name("program", program_name)
     path = PROGRAMS_DIR / f"{program_name}.yaml"
@@ -277,13 +277,12 @@ def load_program_yaml(program_name: str) -> dict:
 
 def build_pipeline(step_names: list[str], kind: str) -> list:
     """
-    Instancie et retourne la liste ordonnée de sous-plugins à partir d'une
-    liste de noms déclarés dans un programme et de "kind" ('sequencer' ou
-    'reduction') — résolution dynamique, un import par étape déclarée
-    (seules les étapes de CETTE liste sont importées, jamais le catalogue
-    entier des sous-plugins existants).
+    Instantiates and returns the ordered list of sub-plugins from a list of
+    names declared in a program and a "kind" ('sequencer' or 'reduction')
+    — dynamic resolution, one import per declared step (only the steps in
+    THIS list are imported, never the whole catalogue of existing sub-plugins).
 
-    Lève ValueError si un nom déclaré n'a pas de sous-plugin correspondant.
+    Raises ValueError if a declared name has no matching sub-plugin.
     """
     pipeline = []
     for name in step_names:
@@ -300,13 +299,13 @@ def build_pipeline(step_names: list[str], kind: str) -> list:
 
 def load_pipelines(program_name: str) -> tuple[list, list]:
     """
-    Charge le programme YAML et retourne (sequencer_pipeline, reduction_pipeline).
+    Loads the program YAML and returns (sequencer_pipeline, reduction_pipeline).
 
-    :param program_name: Nom du fichier YAML sans extension (ex. 'demo')
-    :returns: (liste de sous-plugins séquenceur, liste de sous-plugins réduction)
-    :raises FileNotFoundError: Programme YAML introuvable
-    :raises ValueError: Sous-plugin déclaré dans le YAML mais introuvable
-    :raises KeyError: Clés 'sequencer' ou 'reduction' manquantes dans le YAML
+    :param program_name: YAML filename without extension (e.g. 'demo')
+    :returns: (list of sequencer sub-plugins, list of reduction sub-plugins)
+    :raises FileNotFoundError: Program YAML not found
+    :raises ValueError: A sub-plugin declared in the YAML could not be found
+    :raises KeyError: 'sequencer' or 'reduction' key missing from the YAML
     """
     data = load_program_yaml(program_name)
 
@@ -328,15 +327,15 @@ def load_pipelines(program_name: str) -> tuple[list, list]:
 
 def load_sharing_plugin(program_name: str):
     """
-    Charge le programme YAML et retourne l'unique sous-plugin SHARING déclaré
-    — contrairement à sequencer/reduction, la clé "sharing" est singulière
-    (un seul plugin de diffusion par programme, pas une liste d'étapes) :
-    un programme qui a besoin de diffuser vers plusieurs destinations gère ça
-    dans son propre sous-plugin, ce n'est pas au mécanisme de le permettre.
+    Loads the program YAML and returns the single declared SHARING
+    sub-plugin — unlike sequencer/reduction, the "sharing" key is singular
+    (one sharing plugin per program, not a list of steps): a program that
+    needs to share to several destinations handles that inside its own
+    sub-plugin, the mechanism itself isn't meant to support it.
 
-    :raises FileNotFoundError: Programme YAML introuvable
-    :raises ValueError: Sous-plugin déclaré dans le YAML mais introuvable
-    :raises KeyError: Clé 'sharing' manquante dans le YAML
+    :raises FileNotFoundError: Program YAML not found
+    :raises ValueError: A sub-plugin declared in the YAML could not be found
+    :raises KeyError: 'sharing' key missing from the YAML
     """
     data = load_program_yaml(program_name)
 

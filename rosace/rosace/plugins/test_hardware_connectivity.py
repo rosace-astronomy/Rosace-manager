@@ -1,6 +1,6 @@
 """
-Tests de la connexion matérielle pour INIT_SESSION (sequencer_backend=indi).
-Lancement : pytest plugins/test_hardware_connectivity.py -v
+Tests for hardware connectivity for INIT_SESSION (sequencer_backend=indi).
+Run: pytest plugins/test_hardware_connectivity.py -v
 """
 
 import asyncio
@@ -19,7 +19,7 @@ _HARDWARE_YAML_FILES = sorted(_CONF_DIR.glob("hardware_indi_*.yaml"))
 
 @pytest.fixture
 def short_timeout(monkeypatch):
-    """Un timeout court pour ne pas ralentir la suite de tests."""
+    """A short timeout so it doesn't slow down the test suite."""
     monkeypatch.setattr(hc, "HARDWARE_CONNECT_TIMEOUT_SECONDS", 0.2)
 
 
@@ -154,7 +154,7 @@ class TestConnectSessionHardware:
         })
         monkeypatch.setattr(hc, "_connect_device_sync", MagicMock(return_value=MagicMock()))
 
-        result = await hc.connect_session_hardware()  # ne doit pas lever
+        result = await hc.connect_session_hardware()  # must not raise
 
         assert result.adapters == {}
         assert result.hardware_config == {}
@@ -213,7 +213,7 @@ class TestConnectSessionHardware:
         })
 
         def slow_connect(device_cfg, timeout):
-            time.sleep(1)  # bien plus long que short_timeout (0.2s)
+            time.sleep(1)  # much longer than short_timeout (0.2s)
 
         monkeypatch.setattr(hc, "_connect_device_sync", slow_connect)
 
@@ -221,9 +221,9 @@ class TestConnectSessionHardware:
             await hc.connect_session_hardware()
 
     async def test_devices_are_connected_one_at_a_time(self, monkeypatch, short_timeout):
-        """Plusieurs devices peuvent partager le même IndiClient singleton (même
-        indi_host/indi_port), dont l'initialisation n'est pas thread-safe : on
-        vérifie qu'aucune connexion de device ne chevauche une autre."""
+        """Several devices can share the same IndiClient singleton (same
+        indi_host/indi_port), whose setup isn't thread-safe: check that no
+        two device connections overlap."""
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
             "INDI_drivers": {"mount": MOUNT_DRIVER, "focuser": FOCUSER_DRIVER},
         })

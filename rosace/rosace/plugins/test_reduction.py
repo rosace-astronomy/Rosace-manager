@@ -1,9 +1,9 @@
 """
-Tests du plugin REDUCTION (ReductionPlugin).
-Le chargement du pipeline (pipeline_loader.load_pipelines) est mocké : ces
-tests couvrent l'orchestration, pas le comportement des vrais sous-plugins
-(couvert par reduction_plugins/test_*.py).
-Lancement : pytest plugins/test_reduction.py -v
+Tests for the REDUCTION plugin (ReductionPlugin).
+Pipeline loading (pipeline_loader.load_pipelines) is mocked: these tests
+cover orchestration, not the real sub-plugins' behavior (covered by
+reduction_plugins/test_*.py).
+Run: pytest plugins/test_reduction.py -v
 """
 
 from datetime import datetime, timezone
@@ -99,4 +99,4 @@ class TestReductionPlugin:
         with pytest.raises(RuntimeError, match="dark failed"):
             await ReductionPlugin().run(obs)
 
-        assert calls == ["bias", "dark"]  # flat jamais atteint
+        assert calls == ["bias", "dark"]  # flat never reached

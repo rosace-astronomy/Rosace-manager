@@ -1,6 +1,6 @@
 """
-Tests du plugin SCHEDULER (SchedulerPlugin).
-Lancement : pytest plugins/test_scheduler.py -v
+Tests for the SCHEDULER plugin (SchedulerPlugin).
+Run: pytest plugins/test_scheduler.py -v
 """
 
 import uuid
@@ -29,9 +29,10 @@ def _write_observation_list(tmp_path, content: str):
 
 
 class TestTargetAltitudeDeg:
-    """Teste _target_altitude_deg() elle-même, pas SchedulerPlugin. Le pôle céleste
-    nord (dec=90°) est à une hauteur constamment égale à la latitude du site, quelle
-    que soit l'heure — le seul cas simple qui ne dépend pas de l'instant du test."""
+    """Tests _target_altitude_deg() itself, not SchedulerPlugin. The north
+    celestial pole (dec=90°) sits at an altitude constantly equal to the
+    site's latitude, regardless of the time — the only simple case that
+    doesn't depend on the test's run time."""
 
     def test_north_celestial_pole_altitude_equals_site_latitude(self):
         from rosace.config import SITE_LATITUDE_DEG
@@ -83,8 +84,8 @@ class TestSchedulerPlugin:
         session = await self._make_session()
         obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
 
-        assert obs.scheduler_data["target"].name == "alf Lyr"  # nom canonique
-        assert obs.scheduler_data["queried_name"] == "VegaSingleTargetTest"  # nom tel qu'écrit dans le fichier
+        assert obs.scheduler_data["target"].name == "alf Lyr"  # canonical name
+        assert obs.scheduler_data["queried_name"] == "VegaSingleTargetTest"  # name as written in the file
         assert obs.scheduler_data["program"] == "Be_stars"
         assert obs.scheduler_data["exposure"].exposure_time == pytest.approx(45.0)
         assert_scheduler_contract(obs)
@@ -157,9 +158,9 @@ class TestSchedulerPlugin:
     async def test_repeated_target_at_different_priorities_lets_intermediate_priority_through(
         self, tmp_path, monkeypatch
     ):
-        """Une cible demandée deux fois à des priorités différentes (2 et 4) ne doit
-        pas 'emprunter' sa priorité la plus précoce pour sa seconde occurrence — une
-        cible de priorité intermédiaire (3) doit être proposée entre les deux."""
+        """A target requested twice at different priorities (2 and 4) must not
+        'borrow' its earliest priority for its second occurrence — a target at
+        an intermediate priority (3) must be offered between the two."""
         sid_repeated = await star_insert(StarCreate(name="RepeatedPriorityStar", ra=1.0, dec=1.0))
         sid_between = await star_insert(StarCreate(name="BetweenPriorityStar", ra=2.0, dec=2.0))
         pid = await program_insert(ProgramCreate(name="InterleavedPrioProgram"))
@@ -191,9 +192,9 @@ class TestSchedulerPlugin:
         assert_scheduler_contract(obs3)
 
     async def test_alias_lines_count_as_same_target(self, tmp_path, monkeypatch):
-        """Deux lignes pour la même étoile (une fois par son nom canonique, une fois
-        par alias) comptent comme une seule cible demandée deux fois — pas deux
-        cibles distinctes."""
+        """Two lines for the same star (once by its canonical name, once by an
+        alias) count as a single target requested twice — not two distinct
+        targets."""
         sid = await star_insert(StarCreate(name="alf Lyr Alias Test", ra=279.23, dec=38.78))
         pid = await program_insert(ProgramCreate(name="Be_stars_alias_test"))
         await program_add_star(pid, sid)
@@ -208,7 +209,7 @@ class TestSchedulerPlugin:
 
         session = await self._make_session()
 
-        # 1er et 2e appel : la cible reste consommable (2 lignes demandées, 0 puis 1 observées)
+        # 1st and 2nd call: the target stays consumable (2 lines requested, 0 then 1 observed)
         obs1 = await SchedulerPlugin().run(self._make_obs(session.session_id))
         assert obs1.scheduler_data["target"].name == "alf Lyr Alias Test"
         assert_scheduler_contract(obs1)
@@ -219,7 +220,7 @@ class TestSchedulerPlugin:
         assert_scheduler_contract(obs2)
         await db_insert_observation(obs2, session.session_id)
 
-        # 3e appel : entièrement consommée (2 lignes, 2 déjà observées)
+        # 3rd call: fully consumed (2 lines, 2 already observed)
         obs3 = await SchedulerPlugin().run(self._make_obs(session.session_id))
         assert obs3.scheduler_data["target"] is None
 
@@ -244,7 +245,7 @@ class TestSchedulerPlugin:
     async def test_exposure_time_none_when_not_set_in_program_stars(self, tmp_path, monkeypatch):
         sid = await star_insert(StarCreate(name="NoExpStar", ra=6.0, dec=6.0))
         pid = await program_insert(ProgramCreate(name="NoExpProgram"))
-        await program_add_star(pid, sid)  # pas de exposure_time
+        await program_add_star(pid, sid)  # no exposure_time
 
         monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
             tmp_path, "Priority, Program, Star, commentaire\n1, NoExpProgram, NoExpStar, x\n"
@@ -272,8 +273,8 @@ class TestSchedulerPlugin:
         assert obs.scheduler_data["target"] is None
 
     async def test_low_altitude_target_lets_lower_priority_through(self, tmp_path, monkeypatch):
-        """La cible de priorité 1 est sous la hauteur minimale — la cible de
-        priorité 2, elle, est observable et doit être sélectionnée à la place."""
+        """The priority-1 target is below the minimum altitude — the priority-2
+        target, on the other hand, is observable and must be selected instead."""
         sid_low_alt = await star_insert(StarCreate(name="TooLowPriority1", ra=1.0, dec=1.0))
         sid_high_alt = await star_insert(StarCreate(name="ObservablePriority2", ra=2.0, dec=2.0))
         pid = await program_insert(ProgramCreate(name="MixedAltitudeProgram"))
@@ -298,8 +299,8 @@ class TestSchedulerPlugin:
         assert_scheduler_contract(obs)
 
     async def test_below_threshold_target_is_not_marked_consumed(self, tmp_path, monkeypatch):
-        """Une cible ignorée pour hauteur insuffisante doit rester proposable
-        dès qu'elle redevient observable — ce n'est pas une observation manquée."""
+        """A target skipped for insufficient altitude must stay offerable as
+        soon as it becomes observable again — it's not a missed observation."""
         sid = await star_insert(StarCreate(name="LaterObservableStar", ra=1.0, dec=1.0))
         pid = await program_insert(ProgramCreate(name="LaterObservableProgram"))
         await program_add_star(pid, sid)
@@ -344,8 +345,8 @@ class TestSchedulerPlugin:
             await SchedulerPlugin().run(self._make_obs(session.session_id))
 
     async def test_invalid_exposure_time_in_db_raises_fatal_error(self, tmp_path, monkeypatch):
-        """Une valeur exposure_time corrompue en base (ex. '' au lieu de NULL,
-        via une édition manuelle externe) ne doit pas boucler indéfiniment."""
+        """A corrupted exposure_time value in the database (e.g. '' instead of
+        NULL, via an external manual edit) must not loop indefinitely."""
         import aiosqlite
         from rosace.targets import TARGETS_DB_PATH
 

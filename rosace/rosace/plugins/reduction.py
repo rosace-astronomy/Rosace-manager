@@ -1,11 +1,11 @@
 """
-Plugin REDUCTION — Orchestrateur de la chaîne de réduction.
-Le pipeline (liste de sous-plugins) est chargé dynamiquement depuis le YAML
-du programme scientifique de l'observation (obs.scheduler_data["program"]),
-posé par SCHEDULER — donc rechargé à chaque observation, pas une fois pour
-toutes au démarrage.
+REDUCTION plugin — Reduction chain orchestrator.
+The pipeline (list of sub-plugins) is loaded dynamically from the
+observation's scientific program YAML (obs.scheduler_data["program"]), set
+by SCHEDULER — so it's reloaded for every observation, not once and for
+all at startup.
 
-Structure :
+Structure:
     programs/<program>.yaml  →  pipeline_loader  →  [Bias, Dark, Flat, Extract, …]
 """
 
@@ -19,8 +19,8 @@ log = logging.getLogger("spectro.plugin.reduction")
 
 class ReductionPlugin:
     """
-    Orchestre la chaîne de réduction en enchaînant les sous-plugins
-    déclarés dans le YAML du programme de l'observation en cours.
+    Orchestrates the reduction chain by running, in order, the sub-plugins
+    declared in the current observation's program YAML.
     """
 
     async def run(self, obs: Observation) -> Observation:
@@ -38,9 +38,9 @@ class ReductionPlugin:
             f"{len(raw_files)} fichier(s) brut(s)"
         )
 
-        # Chaque sous-plugin lit/écrit directement dans obs.reduction_data
-        # (et lit obs.sequencer_data["star_spectra_images"] posé par SEQUENCER en entrée —
-        # une clé partagée, pas le nom du sous-plugin producteur)
+        # Each sub-plugin reads/writes obs.reduction_data directly
+        # (and reads obs.sequencer_data["star_spectra_images"] set by SEQUENCER as input --
+        # a shared key, not the name of the sub-plugin that produced it)
         for sub in red_pipeline:
             step = sub.__class__.__name__
             log.info(f"[REDUCTION] → {step}")

@@ -1,6 +1,6 @@
 """
-Interrogation de la base Simbad (CDS Strasbourg) via l'API TAP.
-Retourne les informations d'une étoile sous forme de StarCreate.
+Queries the Simbad database (CDS Strasbourg) via the TAP API.
+Returns a star's information as a StarCreate.
 """
 
 import logging
@@ -29,24 +29,24 @@ WHERE ident.id = '{name}'
 
 
 class SimbadNotFoundError(Exception):
-    """L'objet n'a pas été trouvé dans Simbad."""
+    """The object was not found in Simbad."""
     pass
 
 
 class SimbadQueryError(Exception):
-    """Erreur lors de la requête à Simbad."""
+    """Error while querying Simbad."""
     pass
 
 
 async def simbad_search(name: str) -> StarCreate:
     """
-    Interroge Simbad pour un nom d'étoile et retourne un StarCreate.
+    Queries Simbad for a star name and returns a StarCreate.
 
-    :param name: Nom de l'étoile (ex. "Vega", "Sirius", "HD 187642")
-    :raises SimbadNotFoundError: Si l'étoile n'est pas trouvée
-    :raises SimbadQueryError: En cas d'erreur de communication
+    :param name: Star name (e.g. "Vega", "Sirius", "HD 187642")
+    :raises SimbadNotFoundError: If the star isn't found
+    :raises SimbadQueryError: On a communication error
     """
-    query = ADQL_QUERY.format(name=name.replace("'", "''"))  # échappement SQL
+    query = ADQL_QUERY.format(name=name.replace("'", "''"))  # SQL escaping
 
     params = {
         "REQUEST": "doQuery",
@@ -69,8 +69,8 @@ async def simbad_search(name: str) -> StarCreate:
     except Exception as e:
         raise SimbadQueryError(f"Erreur inattendue : {e}") from e
 
-    # Parsing de la réponse JSON TAP
-    # Format : {"metadata": [...], "data": [[val1, val2, ...]]}
+    # Parsing the TAP JSON response
+    # Format: {"metadata": [...], "data": [[val1, val2, ...]]}
     rows = data.get("data", [])
     if not rows:
         raise SimbadNotFoundError(f"Aucun résultat Simbad pour : {name}")

@@ -1,6 +1,6 @@
 """
-Tests des helpers d'acquisition partagés (acquisition_helpers.py).
-Lancement : pytest plugins/sequencer_plugins/test_acquisition_helpers.py -v
+Tests for the shared acquisition helpers (acquisition_helpers.py).
+Run: pytest plugins/sequencer_plugins/test_acquisition_helpers.py -v
 """
 
 from datetime import datetime, timezone

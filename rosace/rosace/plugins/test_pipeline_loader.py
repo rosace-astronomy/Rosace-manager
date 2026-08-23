@@ -1,7 +1,7 @@
 """
-Tests du pipeline_loader.
-Vérifie le chargement dynamique des pipelines depuis les fichiers YAML de programme.
-Lancez avec : pytest plugins/test_pipeline_loader.py -v
+Tests for pipeline_loader.
+Checks dynamic pipeline loading from program YAML files.
+Run: pytest plugins/test_pipeline_loader.py -v
 """
 
 import pytest
@@ -67,18 +67,18 @@ class TestLoadProgrammeYaml:
 
     @pytest.mark.parametrize("bad_name", ["../evil", "foo/bar", "foo bar", "..", ""])
     def test_raises_on_path_traversal_attempt(self, bad_name):
-        """Un nom qui pourrait s'échapper de PROGRAMS_DIR est rejeté avant
-        toute résolution de chemin — pas de FileNotFoundError qui révèlerait
-        si le chemin traversé existe ou non."""
+        """A name that could escape PROGRAMS_DIR is rejected before any path
+        resolution is attempted — no FileNotFoundError that would reveal
+        whether the traversed path exists or not."""
         with pytest.raises(ValueError, match="invalide"):
             load_program_yaml(bad_name)
 
 
 class TestBuildPipeline:
-    """Résolution dynamique par importlib — pas de registre central, un import
-    par étape déclarée. Le backend actif (conf/config.yaml) détermine le
-    module SEQUENCER résolu ; ces tests tournent avec le backend réel de la
-    config de test ("indi" — voir conf/config.yaml), donc sans suffixe."""
+    """Dynamic resolution via importlib — no central registry, one import
+    per declared step. The active backend (conf/config.yaml) determines the
+    resolved SEQUENCER module; these tests run with the test config's real
+    backend ("indi" — see conf/config.yaml), so no suffix."""
 
     def test_builds_full_sequencer_pipeline(self):
         pipeline = build_pipeline(["slew", "focus", "star_spectra_acquisition"], "sequencer")
@@ -87,7 +87,7 @@ class TestBuildPipeline:
         assert names == ["SlewPlugin", "FocusPlugin", "StarSpectraAcquisitionPlugin"]
 
     def test_builds_partial_pipeline(self):
-        """Un pipeline peut omettre des étapes (ex: pas de focus)."""
+        """A pipeline can omit steps (e.g. no focus)."""
         pipeline = build_pipeline(["slew", "star_spectra_acquisition"], "sequencer")
         assert len(pipeline) == 2
 
@@ -96,7 +96,7 @@ class TestBuildPipeline:
             build_pipeline(["slew", "inexistant"], "sequencer")
 
     def test_order_is_preserved(self):
-        """L'ordre du YAML est strictement respecté."""
+        """The YAML's order is strictly honored."""
         pipeline = build_pipeline(["star_spectra_acquisition", "slew"], "sequencer")
         assert pipeline[0].__class__.__name__ == "StarSpectraAcquisitionPlugin"
         assert pipeline[1].__class__.__name__ == "SlewPlugin"
@@ -112,9 +112,9 @@ class TestBuildPipeline:
 
     @pytest.mark.parametrize("bad_name", ["../evil", "foo/bar", "foo bar", "foo-bar"])
     def test_raises_on_invalid_step_name(self, bad_name):
-        """Un nom d'étape invalide (YAML programme) est rejeté avant toute
-        tentative d'import — protège aussi les noms déclarés dans un YAML,
-        pas seulement le nom de programme lui-même."""
+        """An invalid step name (program YAML) is rejected before any import
+        is attempted — also protects names declared in a YAML, not just the
+        program name itself."""
         with pytest.raises(ValueError, match="invalide"):
             build_pipeline([bad_name], "sequencer")
 
@@ -134,9 +134,9 @@ class TestLoadPipelines:
         assert red_names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
 
     def test_etoiles_brillantes_no_focus_full_reduction(self):
-        """Pas de focus (étoile brillante, réglage manuel) — mais la chaîne de
-        réduction reste complète : chaque sous-plugin REDUCTION dépend
-        explicitement du précédent, aucune étape ne peut être sautée."""
+        """No focus (bright star, manual adjustment) — but the reduction
+        chain stays complete: each REDUCTION sub-plugin explicitly depends
+        on the previous one, no step can be skipped."""
         seq, red = load_pipelines("etoiles_brillantes")
         seq_names = [p.__class__.__name__ for p in seq]
         red_names = [p.__class__.__name__ for p in red]
@@ -144,8 +144,8 @@ class TestLoadPipelines:
         assert red_names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
 
     def test_nova_monitoring_minimal_sequencer_full_reduction(self):
-        """Séquenceur minimal (pas de focus, réactivité maximale) — mais la
-        chaîne de réduction reste complète, même contrainte que ci-dessus."""
+        """Minimal sequencer (no focus, maximum responsiveness) — but the
+        reduction chain stays complete, same constraint as above."""
         seq, red = load_pipelines("nova_monitoring")
         seq_names = [p.__class__.__name__ for p in seq]
         red_names = [p.__class__.__name__ for p in red]
@@ -165,7 +165,7 @@ class TestLoadPipelines:
             load_pipelines("programme_inexistant")
 
     def test_custom_yaml_program(self, tmp_path, monkeypatch):
-        """Un YAML personnalisé est correctement chargé."""
+        """A custom YAML is loaded correctly."""
         import yaml as _yaml
         from rosace.plugins import pipeline_loader
 
@@ -205,9 +205,9 @@ class TestLoadPipelines:
 
 
 class TestSequencerBackendDispatch:
-    """_resolve_module_and_class() choisit le module SEQUENCER selon
-    SEQUENCER_BACKEND (config.py) — REDUCTION n'a pas de dépendance
-    matérielle, jamais suffixé quel que soit le backend actif."""
+    """_resolve_module_and_class() picks the SEQUENCER module based on
+    SEQUENCER_BACKEND (config.py) — REDUCTION has no hardware dependency,
+    never suffixed regardless of the active backend."""
 
     def test_internal_backend_resolves_internal_suffix(self, monkeypatch):
         from rosace.plugins import pipeline_loader
@@ -259,8 +259,8 @@ class TestSequencerBackendDispatch:
 
 
 class TestLoadSharingPlugin:
-    """load_sharing_plugin() résout un seul sous-plugin (clé "sharing"
-    singulière dans le YAML) — pas une liste comme sequencer/reduction."""
+    """load_sharing_plugin() resolves a single sub-plugin (singular "sharing"
+    key in the YAML) — not a list like sequencer/reduction."""
 
     def test_loads_blank_for_demo(self):
         sub = load_sharing_plugin("demo")

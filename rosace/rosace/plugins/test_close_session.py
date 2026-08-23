@@ -1,6 +1,6 @@
 """
-Tests du plugin CLOSE_SESSION (CloseSessionPlugin).
-Lancement : pytest plugins/test_close_session.py -v
+Tests for the CLOSE_SESSION plugin (CloseSessionPlugin).
+Run: pytest plugins/test_close_session.py -v
 """
 
 from unittest.mock import AsyncMock
@@ -13,7 +13,7 @@ from rosace.plugins.close_session import CloseSessionPlugin
 
 @pytest.fixture(autouse=True)
 def fast_sleep(monkeypatch):
-    """Évite d'attendre le sleep(7.0) simulé (stationnement télescope)."""
+    """Avoids waiting out the simulated sleep(7.0) (telescope parking)."""
     mock = AsyncMock(return_value=None)
     monkeypatch.setattr("rosace.plugins.close_session.asyncio.sleep", mock)
     return mock
@@ -52,7 +52,7 @@ class TestCloseSessionPlugin:
         ctx = SessionContext(site_name="St-Pancrasse")
         ctx.hardware = {"mount": failing, "science_camera": AsyncMock()}
 
-        await CloseSessionPlugin().run(ctx)  # ne doit pas lever
+        await CloseSessionPlugin().run(ctx)  # must not raise
 
         ctx.hardware["science_camera"].disconnect.assert_awaited_once()
 
@@ -96,7 +96,7 @@ class TestCloseSessionPlugin:
         ctx = SessionContext(site_name="St-Pancrasse")
         ctx.hardware = {"science_camera": AsyncMock()}
 
-        await CloseSessionPlugin().run(ctx)  # ne doit pas lever
+        await CloseSessionPlugin().run(ctx)  # must not raise
 
     async def test_park_failure_does_not_block_disconnects(self):
         mount = AsyncMock()
@@ -104,7 +104,7 @@ class TestCloseSessionPlugin:
         ctx = SessionContext(site_name="St-Pancrasse")
         ctx.hardware = {"mount": mount, "science_camera": AsyncMock()}
 
-        await CloseSessionPlugin().run(ctx)  # ne doit pas lever
+        await CloseSessionPlugin().run(ctx)  # must not raise
 
         mount.disconnect.assert_awaited_once()
         ctx.hardware["science_camera"].disconnect.assert_awaited_once()

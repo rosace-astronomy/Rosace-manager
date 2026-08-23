@@ -1,10 +1,10 @@
 """
-Sous-plugin SEQUENCER — Pointage (Slew)
-Backend "indi" — appelle réellement le hardware via obs.hardware["mount"]
-(voir hardware/mount.py pour le contrat générique, hardware_indi/adapters/mount.py
-pour l'implémentation INDI). Minimal à dessein : ni gestion fine des erreurs de
-pointage, ni vérification post-slew — à enrichir quand ce sous-plugin deviendra
-une vraie fonctionnalité, pas juste un câblage.
+SEQUENCER sub-plugin — Pointing (Slew)
+Backend "indi" — calls the real hardware via obs.hardware["mount"] (see
+hardware/mount.py for the generic contract, hardware_indi/adapters/mount.py
+for the INDI implementation). Deliberately minimal: no fine-grained
+pointing error handling, no post-slew check yet — to be enriched once this
+sub-plugin becomes a real feature, not just wiring.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ log = logging.getLogger("spectro.subplugin.slew")
 
 
 class SlewPlugin(SubPlugin):
-    """Pointe le télescope vers la cible (RA/Dec) via le hardware INDI réel."""
+    """Points the telescope at the target (RA/Dec) via the real INDI hardware."""
 
     async def execute(self, obs: Observation) -> Observation:
         target = obs.scheduler_data.get("target")

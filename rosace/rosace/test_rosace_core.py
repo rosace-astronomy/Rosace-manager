@@ -1,13 +1,13 @@
 """
-test_rosace_core.py — Tests de régression du module cœur Rosace.
-Périmètre : models, config, database, targets, simbad (hors plugins).
+test_rosace_core.py — Regression tests for Rosace's core module.
+Scope: models, config, database, targets, simbad (excluding plugins).
 
-Lancement :
+Run:
     pytest test_rosace_core.py -v
-    pytest test_rosace_core.py -v --tb=short   # traceback concis
-    pytest test_rosace_core.py -v -k "models"  # un groupe seulement
+    pytest test_rosace_core.py -v --tb=short   # concise traceback
+    pytest test_rosace_core.py -v -k "models"  # one group only
 
-Dépendances :
+Dependencies:
     pip install pytest pytest-asyncio aiosqlite pydantic httpx
 """
 
@@ -25,12 +25,12 @@ import pytest
 import pytest_asyncio
 
 # ─────────────────────────────────────────────────────────────
-# La fixture tmp_data_dir (patch de BASE_DATA_DIR) vit désormais dans
-# conftest.py — partagée par tous les fichiers de tests du paquet.
+# The tmp_data_dir fixture (patches BASE_DATA_DIR) now lives in
+# conftest.py — shared by every test file in the package.
 # ─────────────────────────────────────────────────────────────
 
 # ─────────────────────────────────────────────────────────────
-# Imports du package (après le patch)
+# Package imports (after the patch)
 # ─────────────────────────────────────────────────────────────
 
 from rosace.models import (
@@ -74,11 +74,11 @@ from rosace.config import ACTIVE_HARDWARE, HARDWARE_CONFIG_PATH, SEQUENCER_BACKE
 
 
 # ═════════════════════════════════════════════════════════════
-# GROUPE 0 — Configuration
+# GROUP 0 — Configuration
 # ═════════════════════════════════════════════════════════════
 
 class TestHardwareConfig:
-    """Sélection du fichier de configuration matérielle active."""
+    """Selection of the active hardware configuration file."""
 
     def test_active_hardware_matches_config_path_stem(self):
         assert HARDWARE_CONFIG_PATH.stem == ACTIVE_HARDWARE
@@ -88,11 +88,12 @@ class TestHardwareConfig:
 
 
 class TestSequencerBackend:
-    """Backend d'exécution SEQUENCER (internal/indi), défaut au démarrage."""
+    """SEQUENCER execution backend (internal/indi), the default at startup."""
 
     def test_backend_loaded_from_config_is_valid(self):
-        """conf/config.yaml choisit librement 'internal' ou 'indi' — pas de valeur figée à tester ici,
-        juste que ce que config.py a chargé et validé est bien l'une des deux."""
+        """conf/config.yaml is free to choose 'internal' or 'indi' — no fixed
+        value to test here, just that whatever config.py loaded and
+        validated is indeed one of the two."""
         assert SEQUENCER_BACKEND in ("internal", "indi")
 
     def test_validate_accepts_known_values(self):
@@ -106,7 +107,7 @@ class TestSequencerBackend:
             _validate_sequencer_backend("inte")
 
     def test_fatal_startup_error_reaches_log_file(self, tmp_path, monkeypatch):
-        """Filet de secours : le message atterrit dans rosace.log même sans configure_logging()."""
+        """Safety net: the message still lands in rosace.log even without configure_logging()."""
         import rosace.config as config_module
 
         monkeypatch.setattr(config_module, "BASE_DATA_DIR", tmp_path)
@@ -118,16 +119,16 @@ class TestSequencerBackend:
         assert "[CONFIG]" in log_content
 
     def test_fatal_startup_error_never_raises_even_if_logging_broken(self, monkeypatch):
-        """Best-effort : une erreur pendant la journalisation de secours ne doit jamais
-        masquer/remplacer l'erreur d'origine — elle est juste avalée silencieusement."""
+        """Best-effort: an error during the safety-net logging must never
+        mask/replace the original error — it's just silently swallowed."""
         import rosace.config as config_module
 
         monkeypatch.setattr(config_module, "BASE_DATA_DIR", "/chemin/inexistant/impossible")
-        config_module._log_fatal_startup_error("ne doit pas lever")  # ne doit pas lever
+        config_module._log_fatal_startup_error("ne doit pas lever")  # must not raise
 
 
 class TestConfigResolution:
-    """_resolve_config_path() : ROSACE_CONFIG > <base_data_dir>/conf/config.yaml > défaut du paquet."""
+    """_resolve_config_path(): ROSACE_CONFIG > <base_data_dir>/conf/config.yaml > packaged default."""
 
     def test_explicit_rosace_config_env_wins(self, tmp_path, monkeypatch):
         explicit = tmp_path / "explicit.yaml"
@@ -166,7 +167,7 @@ class TestConfigResolution:
 
 
 class TestCheckConfigCLI:
-    """`python -m rosace.main --check-config [fichier]` — valide et sort, ne démarre jamais le serveur."""
+    """`python -m rosace.main --check-config [file]` — validates and exits, never starts the server."""
 
     def test_no_argument_validates_active_config_and_exits_zero(self):
         result = subprocess.run(
@@ -212,14 +213,14 @@ class TestHelpCLI:
 
 
 # ═════════════════════════════════════════════════════════════
-# GROUPE 1 — Modèles Pydantic
+# GROUP 1 — Pydantic models
 # ═════════════════════════════════════════════════════════════
 
 class TestOrchestratorStage:
-    """Énumération des stages de la machine à états."""
+    """State machine stage enumeration."""
 
     def test_all_stages_present(self):
-        """Les 9 stages attendus sont bien déclarés."""
+        """The 9 expected stages are indeed declared."""
         expected = {
             "idle", "init_session", "scheduler", "sequencer",
             "reduction", "sharing", "archive", "close_session", "error",
@@ -228,7 +229,7 @@ class TestOrchestratorStage:
         assert actual == expected
 
     def test_stage_is_string_enum(self):
-        """OrchestratorStage hérite de str — utilisable comme chaîne."""
+        """OrchestratorStage inherits from str — usable as a string."""
         assert OrchestratorStage.IDLE == "idle"
         assert isinstance(OrchestratorStage.SCHEDULER, str)
 
@@ -237,7 +238,7 @@ class TestOrchestratorStage:
 
 
 class TestTargetModel:
-    """Modèle Target (coordonnées célestes)."""
+    """Target model (celestial coordinates)."""
 
     def test_valid_target(self):
         t = Target(name="Vega", ra=279.23, dec=38.78)
@@ -255,7 +256,7 @@ class TestTargetModel:
         assert t.ra == 0.0
 
     def test_ra_upper_bound_exclusive(self):
-        """ra doit être strictement < 360."""
+        """ra must be strictly < 360."""
         from pydantic import ValidationError
         with pytest.raises(ValidationError):
             Target(name="Bad", ra=360.0, dec=0.0)
@@ -278,7 +279,7 @@ class TestTargetModel:
 
 
 class TestExposureConfig:
-    """Configuration d'exposition."""
+    """Exposure configuration."""
 
     def test_defaults(self):
         e = ExposureConfig(exposure_time=300.0)
@@ -301,9 +302,9 @@ class TestExposureConfig:
             ExposureConfig(exposure_time=-1.0)
 
     def test_exposure_time_optional(self):
-        """exposure_time peut être absent — cas où aucun temps de pose spécifique
-        n'est défini en base pour ce couple programme/étoile (à calculer plus
-        tard depuis la magnitude, pas encore implémenté)."""
+        """exposure_time can be absent — the case where no specific exposure
+        time is set in the database for this program/star pair (to be
+        computed later from magnitude, not yet implemented)."""
         e = ExposureConfig()
         assert e.exposure_time is None
 
@@ -317,7 +318,7 @@ class TestExposureConfig:
 
 
 class TestObservation:
-    """Dossier d'observation complet (rempli par les plugins de stage)."""
+    """Full observation file (filled in by the stage plugins)."""
 
     def _make(self, obs_id="abc12345") -> Observation:
         obs = Observation(
@@ -337,7 +338,7 @@ class TestObservation:
         assert obs.sequencer_data == {}
 
     def test_stage_data_is_independent_per_instance(self):
-        """Deux instances ne partagent pas les mêmes casiers <stage>_data."""
+        """Two instances don't share the same <stage>_data casiers."""
         obs1 = self._make("id1")
         obs2 = self._make("id2")
         obs1.sequencer_data["raw_files"] = ["a.fits"]
@@ -397,7 +398,7 @@ class TestObservation:
         assert " " not in obs.suggested_filename
 
     def test_suggested_filename_reflects_current_scheduler_data(self):
-        """La propriété se recalcule à chaque lecture — pas figée à la création."""
+        """The property recomputes on every read — not frozen at creation."""
         obs = Observation(id="x", created_at=datetime.now(timezone.utc), session_id="sess1234")
         assert obs.suggested_filename.endswith("_target.yaml")
         obs.scheduler_data["target"] = Target(name="Deneb", ra=1.0, dec=1.0)
@@ -405,7 +406,7 @@ class TestObservation:
 
 
 class TestSessionContext:
-    """Contexte de session transmis entre les stages."""
+    """Session context passed between stages."""
 
     def test_default_values(self):
         ctx = SessionContext()
@@ -415,7 +416,7 @@ class TestSessionContext:
 
     def test_session_ids_are_unique(self):
         ids = {SessionContext().session_id for _ in range(50)}
-        assert len(ids) == 50                # très forte probabilité
+        assert len(ids) == 50                # very high probability
 
     def test_started_at_is_utc(self):
         ctx = SessionContext()
@@ -439,24 +440,24 @@ class TestSessionContext:
 
 
 class TestObservationSessionId:
-    """Observation.session_id — traçabilité de la session d'origine."""
+    """Observation.session_id — traceability of the originating session."""
 
     def test_session_id_is_required(self):
         from pydantic import ValidationError
         with pytest.raises(ValidationError):
-            Observation(id="x", created_at=datetime.now(timezone.utc))  # session_id manquant
+            Observation(id="x", created_at=datetime.now(timezone.utc))  # session_id missing
 
 
 # ═════════════════════════════════════════════════════════════
-# GROUPE 2 — Base de données sessions / observations
+# GROUP 2 — Sessions / observations database
 # ═════════════════════════════════════════════════════════════
 
 class TestDatabase:
-    """Tests des fonctions database.py (SQLite via aiosqlite)."""
+    """Tests for database.py's functions (SQLite via aiosqlite)."""
 
     @pytest_asyncio.fixture(autouse=True)
     async def init_db(self):
-        """Initialise les tables avant chaque test."""
+        """Initializes the tables before every test."""
         await db_init()
 
     def _make_ctx(self) -> SessionContext:
@@ -475,13 +476,13 @@ class TestDatabase:
         return obs
 
     async def test_db_init_idempotent(self):
-        """db_init peut être appelé plusieurs fois sans erreur."""
+        """db_init can be called more than once without error."""
         await db_init()
         await db_init()
 
     async def test_db_init_enables_wal_mode(self):
-        """WAL : un lecteur externe (ex. DB Browser for SQLite) ne doit plus
-        bloquer les écritures concurrentes de Rosace."""
+        """WAL: an external reader (e.g. DB Browser for SQLite) must no
+        longer block Rosace's concurrent writes."""
         import aiosqlite
         from rosace.config import DB_PATH
 
@@ -536,12 +537,12 @@ class TestDatabase:
             await db_stamp_stage(obs.id, stage)
 
     async def test_stamp_ignored_stage(self):
-        """Un stage non mappé (ex. IDLE) ne lève pas d'erreur."""
+        """An unmapped stage (e.g. IDLE) doesn't raise an error."""
         ctx = self._make_ctx()
         await db_insert_session(ctx)
         obs = self._make_obs(ctx.session_id)
         await db_insert_observation(obs, ctx.session_id)
-        await db_stamp_stage(obs.id, OrchestratorStage.IDLE)   # doit passer silencieusement
+        await db_stamp_stage(obs.id, OrchestratorStage.IDLE)   # must pass silently
 
     async def test_set_error(self):
         ctx = self._make_ctx()
@@ -651,8 +652,8 @@ class TestDatabase:
         assert obs1.id in ids and obs2.id in ids
 
     async def test_queried_name_roundtrips(self):
-        """queried_name (le nom tel qu'utilisé, ex. un alias) est bien conservé
-        séparément du nom canonique — distinct de target_name."""
+        """queried_name (the name as used, e.g. an alias) is indeed kept
+        separately from the canonical name — distinct from target_name."""
         ctx = self._make_ctx()
         await db_insert_session(ctx)
         obs = self._make_obs(ctx.session_id)
@@ -667,7 +668,7 @@ class TestDatabase:
     async def test_queried_name_none_when_not_set(self):
         ctx = self._make_ctx()
         await db_insert_session(ctx)
-        obs = self._make_obs(ctx.session_id)  # ne pose pas queried_name
+        obs = self._make_obs(ctx.session_id)  # doesn't set queried_name
         await db_insert_observation(obs, ctx.session_id)
 
         rows = await db_get_recent_observations(limit=1)
@@ -688,7 +689,7 @@ class TestDatabase:
     async def test_priority_none_when_not_set(self):
         ctx = self._make_ctx()
         await db_insert_session(ctx)
-        obs = self._make_obs(ctx.session_id)  # ne pose pas priority
+        obs = self._make_obs(ctx.session_id)  # doesn't set priority
         await db_insert_observation(obs, ctx.session_id)
 
         rows = await db_get_recent_observations(limit=1)
@@ -696,7 +697,7 @@ class TestDatabase:
         assert row["priority"] is None
 
     async def test_get_recent_observations_excludes_previous_astronomical_day(self):
-        """Une observation d'avant-hier n'apparaît pas dans la liste du jour astronomique en cours."""
+        """An observation from two days ago doesn't appear in the current astronomical day's list."""
         ctx = self._make_ctx()
         await db_insert_session(ctx)
 
@@ -728,7 +729,7 @@ class TestDatabase:
         assert count == 2
 
     async def test_count_observations_for_target_scoped_by_program(self):
-        """Même étoile, programme différent : ne doit pas compter dans l'autre programme."""
+        """Same star, different program: must not count toward the other program."""
         ctx = self._make_ctx()
         await db_insert_session(ctx)
         obs = self._make_obs(ctx.session_id)  # program="etoiles_be"
@@ -737,8 +738,8 @@ class TestDatabase:
         assert count == 0
 
     async def test_count_observations_for_target_persists_across_sessions(self):
-        """Le compteur est scopé par nuit astronomique, pas par session_id — un
-        arrêt/redémarrage de session ne doit pas le remettre à zéro."""
+        """The counter is scoped by astronomical night, not by session_id —
+        stopping/restarting a session must not reset it to zero."""
         obs1_ctx = self._make_ctx()
         await db_insert_session(obs1_ctx)
         obs1 = self._make_obs(obs1_ctx.session_id)
@@ -746,7 +747,7 @@ class TestDatabase:
         obs1.scheduler_data["program"] = "CrossSessionProgram"
         await db_insert_observation(obs1, obs1_ctx.session_id)
 
-        obs2_ctx = self._make_ctx()  # nouvelle session, même nuit
+        obs2_ctx = self._make_ctx()  # new session, same night
         await db_insert_session(obs2_ctx)
         obs2 = self._make_obs(obs2_ctx.session_id)
         obs2.scheduler_data["target"] = Target(name="VegaCrossSessionTest", ra=0.0, dec=0.0)
@@ -760,11 +761,11 @@ class TestDatabase:
     # (astronomical_day_start_utc now lives in time_helpers.py, shared with init_session.py)
 
 # ═════════════════════════════════════════════════════════════
-# GROUPE 3 — Base de données cibles (targets.py)
+# GROUP 3 — Targets database (targets.py)
 # ═════════════════════════════════════════════════════════════
 
 class TestTargetsDB:
-    """Tests CRUD étoiles et programmes (targets.py)."""
+    """CRUD tests for stars and programs (targets.py)."""
 
     @pytest_asyncio.fixture(autouse=True)
     async def init_db(self):
@@ -778,8 +779,8 @@ class TestTargetsDB:
         return ProgramCreate(name=name, description="Test programme")
 
     async def test_targets_db_init_enables_wal_mode(self):
-        """WAL : un lecteur externe (ex. DB Browser for SQLite) ne doit plus
-        bloquer les écritures concurrentes de Rosace."""
+        """WAL: an external reader (e.g. DB Browser for SQLite) must no
+        longer block Rosace's concurrent writes."""
         import aiosqlite
         from rosace.targets import TARGETS_DB_PATH
 
@@ -788,7 +789,7 @@ class TestTargetsDB:
                 row = await cursor.fetchone()
         assert row[0].lower() == "wal"
 
-    # ── Étoiles ──────────────────────────────────────────────
+    # ── Stars ──────────────────────────────────────────────
 
     async def test_star_insert_and_get(self):
         sid = await star_insert(self._star("Deneb"))
@@ -833,7 +834,7 @@ class TestTargetsDB:
         assert await star_get(sid) is None
 
     async def test_star_fields_roundtrip(self):
-        """Tous les champs facultatifs survivent un aller-retour en base."""
+        """Every optional field survives a round trip through the database."""
         sc = StarCreate(name="Rigel", ra=78.63, dec=-8.20,
                         magnitude_v=0.13, spectral_type="B8Ia",
                         notes="Belle étoile")
@@ -843,7 +844,7 @@ class TestTargetsDB:
         assert star.spectral_type == "B8Ia"
         assert star.notes         == "Belle étoile"
 
-    # ── Alias ────────────────────────────────────────────────
+    # ── Aliases ────────────────────────────────────────────────
 
     async def test_star_get_by_name_falls_back_to_alias(self):
         sid = await star_insert(self._star("AlphaLyrTest1"))
@@ -851,11 +852,11 @@ class TestTargetsDB:
         star = await star_get_by_name("VegaAliasTest1")
         assert star is not None
         assert star.id == sid
-        assert star.name == "AlphaLyrTest1"  # nom canonique, pas l'alias
+        assert star.name == "AlphaLyrTest1"  # canonical name, not the alias
 
     async def test_star_get_by_name_prefers_canonical_over_alias(self):
-        """Si le terme cherché est à la fois nom canonique d'une étoile ET alias
-        d'une autre, le nom canonique gagne (recherche à deux niveaux)."""
+        """If the searched term is both a star's canonical name AND another
+        star's alias, the canonical name wins (two-level lookup)."""
         sid1 = await star_insert(self._star("PreferCanonicalTestName", ra=1.0, dec=1.0))
         sid2 = await star_insert(self._star("AutreEtoileTest2", ra=10.0, dec=10.0))
         await star_add_alias(sid2, "PreferCanonicalTestName-alias-piege")
@@ -882,7 +883,7 @@ class TestTargetsDB:
         await star_delete(sid)
         assert await star_get_by_name("VegaAliasTest5") is None
 
-    # ── Programmes ───────────────────────────────────────────
+    # ── Programs ───────────────────────────────────────────
 
     async def test_program_insert_and_get(self):
         pid = await program_insert(self._program("Prog_X"))
@@ -916,7 +917,7 @@ class TestTargetsDB:
         await program_delete(pid)
         assert await program_get(pid) is None
 
-    # ── Liens program ↔ stars ─────────────────────────────────
+    # ── Program ↔ star links ─────────────────────────────────
 
     async def test_program_add_and_get_stars(self):
         sid1 = await star_insert(self._star("S1", ra=10.0, dec=10.0))
@@ -929,7 +930,7 @@ class TestTargetsDB:
         assert {s.id for s in stars} == {sid1, sid2}
 
     async def test_program_add_star_idempotent(self):
-        """Ajouter deux fois la même étoile ne crée pas de doublon."""
+        """Adding the same star twice doesn't create a duplicate."""
         sid = await star_insert(self._star("SIdem", ra=30.0, dec=5.0))
         pid = await program_insert(self._program("P_Idem"))
         await program_add_star(pid, sid)
@@ -953,7 +954,7 @@ class TestTargetsDB:
         assert stars[0].exposure_time is None
 
     async def test_program_add_star_upserts_exposure_time(self):
-        """Un second appel sur le même couple programme/étoile met à jour le temps de pose."""
+        """A second call on the same program/star pair updates the exposure time."""
         sid = await star_insert(self._star("SUpsert", ra=37.0, dec=5.0))
         pid = await program_insert(self._program("P_Upsert"))
         await program_add_star(pid, sid, exposure_time=60.0)
@@ -980,7 +981,7 @@ class TestTargetsDB:
         assert {p.id for p in progs} == {pid1, pid2}
 
     async def test_delete_star_cleans_program_links(self):
-        """Supprimer une étoile retire aussi ses entrées program_stars."""
+        """Deleting a star also removes its program_stars entries."""
         sid = await star_insert(self._star("SClean", ra=60.0, dec=5.0))
         pid = await program_insert(self._program("P_Clean"))
         await program_add_star(pid, sid)
@@ -989,7 +990,7 @@ class TestTargetsDB:
         assert stars == []
 
     async def test_delete_program_cleans_star_links(self):
-        """Supprimer un programme retire aussi ses entrées program_stars."""
+        """Deleting a program also removes its program_stars entries."""
         sid = await star_insert(self._star("SPClean", ra=70.0, dec=5.0))
         pid = await program_insert(self._program("PP_Clean"))
         await program_add_star(pid, sid)
@@ -999,10 +1000,10 @@ class TestTargetsDB:
 
 
 # ═════════════════════════════════════════════════════════════
-# GROUPE 4 — Module Simbad (requêtes mockées)
+# GROUP 4 — Simbad module (mocked queries)
 # ═════════════════════════════════════════════════════════════
 
-# Réponse JSON TAP simulée (format Simbad)
+# Simulated TAP JSON response (Simbad format)
 SIMBAD_RESPONSE_VEGA = {
     "metadata": [
         {"name": "main_id"},
@@ -1033,7 +1034,7 @@ SIMBAD_RESPONSE_NO_MAG = {
 
 
 def _mock_httpx_response(payload: dict, status_code: int = 200):
-    """Construit un mock de réponse httpx."""
+    """Builds a mock httpx response."""
     import json as _json
     resp = MagicMock()
     resp.status_code = status_code
@@ -1043,10 +1044,10 @@ def _mock_httpx_response(payload: dict, status_code: int = 200):
 
 
 class TestSimbad:
-    """Tests du module simbad.py (requêtes réseau mockées)."""
+    """Tests for the simbad.py module (mocked network requests)."""
 
     async def test_simbad_found(self):
-        """Retourne un StarCreate correctement peuplé."""
+        """Returns a correctly populated StarCreate."""
         mock_resp = _mock_httpx_response(SIMBAD_RESPONSE_VEGA)
 
         async def _fake_get(url, params):
@@ -1068,7 +1069,7 @@ class TestSimbad:
         assert result.magnitude_v == pytest.approx(0.03)
 
     async def test_simbad_not_found(self):
-        """Lève SimbadNotFoundError si data est vide."""
+        """Raises SimbadNotFoundError if data is empty."""
         mock_resp = _mock_httpx_response(SIMBAD_RESPONSE_EMPTY)
 
         with patch("rosace.simbad.httpx.AsyncClient") as MockClient:
@@ -1082,7 +1083,7 @@ class TestSimbad:
                 await simbad_search("PasUnEtoile")
 
     async def test_simbad_magnitude_none(self):
-        """magnitude_v est None quand vmag est NULL dans Simbad."""
+        """magnitude_v is None when vmag is NULL in Simbad."""
         mock_resp = _mock_httpx_response(SIMBAD_RESPONSE_NO_MAG)
 
         with patch("rosace.simbad.httpx.AsyncClient") as MockClient:
@@ -1097,7 +1098,7 @@ class TestSimbad:
         assert result.magnitude_v is None
 
     async def test_simbad_network_error(self):
-        """Lève SimbadQueryError en cas d'erreur réseau."""
+        """Raises SimbadQueryError on a network error."""
         import httpx
 
         with patch("rosace.simbad.httpx.AsyncClient") as MockClient:
@@ -1111,7 +1112,7 @@ class TestSimbad:
                 await simbad_search("Vega")
 
     async def test_simbad_http_error(self):
-        """Lève SimbadQueryError en cas d'erreur HTTP 5xx."""
+        """Raises SimbadQueryError on a 5xx HTTP error."""
         import httpx
 
         with patch("rosace.simbad.httpx.AsyncClient") as MockClient:
@@ -1131,8 +1132,8 @@ class TestSimbad:
 
     async def test_simbad_sql_injection_escape(self):
         """
-        Le nom contenant une apostrophe est correctement échappé
-        (pas de crash sur la construction de la requête ADQL).
+        A name containing an apostrophe is correctly escaped
+        (no crash while building the ADQL query).
         """
         mock_resp = _mock_httpx_response(SIMBAD_RESPONSE_EMPTY)
 
@@ -1148,13 +1149,13 @@ class TestSimbad:
 
 
 # ═════════════════════════════════════════════════════════════
-# GROUPE 5 — Cohérence croisée modèles / machine à états
+# GROUP 5 — Cross-consistency between models / state machine
 # ═════════════════════════════════════════════════════════════
 
 class TestSystemState:
     """
-    Vérifie la cohérence de SystemState (importé depuis main)
-    sans démarrer l'application FastAPI.
+    Checks SystemState's consistency (imported from main)
+    without starting the FastAPI application.
     """
 
     def test_system_state_initial(self):
@@ -1192,21 +1193,21 @@ class TestSystemState:
 
 
 # ═════════════════════════════════════════════════════════════
-# GROUPE 6 — Machine à états orchestrée (session_runner)
+# GROUP 6 — Orchestrated state machine (session_runner)
 # ═════════════════════════════════════════════════════════════
 
 class TestSessionRunner:
     """
-    Teste la boucle session_runner() de main.py avec des plugins factices
-    (monkeypatch de rosace.main.plugins) pour contrôler précisément le
-    déroulement. Un "arrêt propre" se simule simplement en mettant
-    state.is_running à False depuis un plugin factice — pas besoin d'une
-    exception dédiée, la boucle vérifie déjà is_running avant chaque stage.
+    Tests main.py's session_runner() loop with fake plugins
+    (monkeypatching rosace.main.plugins) to precisely control the
+    sequence of events. A "clean stop" is simulated simply by setting
+    state.is_running to False from a fake plugin — no need for a
+    dedicated exception, the loop already checks is_running before every stage.
     """
 
     @pytest.fixture(autouse=True)
     def reset_state(self):
-        """Isole chaque test : état propre avant et après."""
+        """Isolates every test: clean state before and after."""
         import rosace.main as main_mod
         main_mod.state.is_running = False
         main_mod.state.session_active = False
@@ -1217,7 +1218,7 @@ class TestSessionRunner:
         main_mod.state.stage = OrchestratorStage.IDLE
 
     async def test_clean_stop_calls_close_session(self, monkeypatch):
-        """is_running=False pendant SCHEDULER déclenche quand même CLOSE_SESSION puis IDLE."""
+        """is_running=False during SCHEDULER still triggers CLOSE_SESSION then IDLE."""
         import rosace.main as main_mod
 
         close_called = []
@@ -1230,7 +1231,7 @@ class TestSessionRunner:
 
         class FakeScheduler:
             async def run(self, obs):
-                main_mod.state.is_running = False  # simule un /control/stop concurrent
+                main_mod.state.is_running = False  # simulates a concurrent /control/stop
                 obs.scheduler_data["target"] = Target(name="TestStar", ra=0.0, dec=0.0)
                 return obs
 
@@ -1293,7 +1294,7 @@ class TestSessionRunner:
         assert "/" not in row[0]
 
     async def test_scheduler_nothing_to_observe_retries_without_error(self, monkeypatch):
-        """target=None n'est pas une erreur : pas de db_set_error, juste une nouvelle tentative."""
+        """target=None is not an error: no db_set_error, just a new attempt."""
         import rosace.main as main_mod
 
         scheduler_calls = []
@@ -1309,8 +1310,8 @@ class TestSessionRunner:
                 scheduler_calls.append(1)
                 if len(scheduler_calls) >= 2:
                     main_mod.state.is_running = False
-                    return obs  # target reste None -> plus rien à faire, on arrête proprement
-                return obs  # target=None : "rien à observer" au premier appel
+                    return obs  # target stays None -> nothing left to do, stop cleanly
+                return obs  # target=None: "nothing to observe" on the first call
 
         class FakeClose:
             async def run(self, ctx): return ctx
@@ -1323,11 +1324,11 @@ class TestSessionRunner:
         main_mod.state.is_running = True
         await main_mod.session_runner()
 
-        assert len(scheduler_calls) == 2   # SCHEDULER redemandé, pas d'erreur enregistrée
+        assert len(scheduler_calls) == 2   # SCHEDULER asked again, no error recorded
         assert main_mod.state.completed == []
 
     async def test_interruptible_sleep_stops_early_when_is_running_false(self, monkeypatch):
-        """Un stop pendant l'attente y met fin bien avant le délai complet (pas juste après)."""
+        """A stop during the wait ends it well before the full delay (not just right after)."""
         import rosace.main as main_mod
 
         monkeypatch.setattr(main_mod, "SLEEP_STEP_SECONDS", 0.05)
@@ -1341,11 +1342,11 @@ class TestSessionRunner:
         await asyncio.gather(main_mod._interruptible_sleep(5.0), stop_soon())
         elapsed = time.monotonic() - start
 
-        assert elapsed < 0.5   # très en dessous des 5s demandées
+        assert elapsed < 0.5   # well under the requested 5s
 
     async def test_stop_during_scheduler_retry_wait_is_honored_promptly(self, monkeypatch):
-        """Un STOP cliqué pendant l'attente 'rien à observer' interrompt la session sans
-        attendre la fin des SCHEDULER_RETRY_SECONDS."""
+        """A STOP clicked during the 'nothing to observe' wait interrupts the
+        session without waiting out the full SCHEDULER_RETRY_SECONDS."""
         import rosace.main as main_mod
 
         close_called = []
@@ -1358,7 +1359,7 @@ class TestSessionRunner:
 
         class FakeScheduler:
             async def run(self, obs):
-                return obs  # target=None à chaque appel : jamais rien à observer
+                return obs  # target=None on every call: never anything to observe
 
         class FakeClose:
             async def run(self, ctx):
@@ -1375,17 +1376,17 @@ class TestSessionRunner:
 
         async def click_stop_soon():
             await asyncio.sleep(0.12)
-            main_mod.state.is_running = False  # simule POST /control/stop
+            main_mod.state.is_running = False  # simulates POST /control/stop
 
         start = time.monotonic()
         await asyncio.gather(main_mod.session_runner(), click_stop_soon())
         elapsed = time.monotonic() - start
 
         assert close_called == [True]
-        assert elapsed < 1.0   # très en dessous des 5s de SCHEDULER_RETRY_SECONDS
+        assert elapsed < 1.0   # well under SCHEDULER_RETRY_SECONDS' 5s
 
     async def test_error_restarts_from_scheduler_not_init(self, monkeypatch):
-        """Une erreur dans SEQUENCER relance depuis SCHEDULER, pas depuis INIT_SESSION."""
+        """An error in SEQUENCER restarts from SCHEDULER, not from INIT_SESSION."""
         import rosace.main as main_mod
 
         init_calls = []
@@ -1422,12 +1423,12 @@ class TestSessionRunner:
         main_mod.state.is_running = True
         await main_mod.session_runner()
 
-        assert init_calls == [1]           # INIT_SESSION jamais relancé
-        assert len(scheduler_calls) == 2   # SCHEDULER relancé après l'erreur
+        assert init_calls == [1]           # INIT_SESSION never restarted
+        assert len(scheduler_calls) == 2   # SCHEDULER restarted after the error
 
     async def test_scheduler_fatal_error_stops_session_without_looping(self, monkeypatch):
-        """SchedulerFatalError (config/données invalides) arrête la session
-        immédiatement, contrairement à une erreur ordinaire qui relance en boucle."""
+        """SchedulerFatalError (invalid config/data) stops the session
+        immediately, unlike an ordinary error which loops back and restarts."""
         import rosace.main as main_mod
         from rosace.plugins.schedulers import SchedulerFatalError
 
@@ -1454,11 +1455,11 @@ class TestSessionRunner:
         main_mod.state.is_running = True
         await main_mod.session_runner()
 
-        assert len(scheduler_calls) == 1   # jamais relancé
+        assert len(scheduler_calls) == 1   # never restarted
         assert main_mod.state.is_running is False
 
     async def test_close_session_error_still_reaches_idle(self, monkeypatch):
-        """Si CLOSE_SESSION lève une exception, l'état repasse quand même à IDLE."""
+        """If CLOSE_SESSION raises an exception, the state still goes back to IDLE."""
         import rosace.main as main_mod
 
         class FakeInit:
@@ -1487,7 +1488,7 @@ class TestSessionRunner:
         assert main_mod.state.stage == OrchestratorStage.IDLE
 
     async def test_init_session_failure_prevents_loop(self, monkeypatch):
-        """Un échec dans INIT_SESSION empêche la boucle SCHEDULER de démarrer."""
+        """A failure in INIT_SESSION prevents the SCHEDULER loop from starting."""
         import rosace.main as main_mod
 
         scheduler_called = []
@@ -1510,11 +1511,11 @@ class TestSessionRunner:
         assert scheduler_called == []
         assert main_mod.state.is_running is False
         assert main_mod.state.stage == OrchestratorStage.ERROR
-        assert main_mod.state.session_active is False  # même sur cette sortie précoce
+        assert main_mod.state.session_active is False  # even on this early exit
 
     async def test_session_active_true_during_run_false_after(self, monkeypatch):
-        """session_active doit être vrai pendant toute la durée de l'appel, et
-        redevenir faux à la sortie — quel que soit le chemin de sortie."""
+        """session_active must be true for the whole duration of the call, and
+        become false again on exit — regardless of the exit path."""
         import rosace.main as main_mod
 
         active_during_run = []
@@ -1528,7 +1529,7 @@ class TestSessionRunner:
 
         class FakeScheduler:
             async def run(self, ctx):
-                main_mod.state.is_running = False  # simule /control/stop immédiat
+                main_mod.state.is_running = False  # simulates an immediate /control/stop
                 return ctx
 
         class FakeClose:
@@ -1546,10 +1547,9 @@ class TestSessionRunner:
         assert main_mod.state.session_active is False
 
     async def test_stop_check_reflects_is_running(self, monkeypatch, tmp_path):
-        """Chaque Observation fraîchement créée reçoit un stop_check() qui reflète
-        state.is_running en direct — utilisé par les sous-plugins dont le travail
-        s'étend sur plusieurs sous-étapes internes pour s'interrompre entre deux
-        de leurs propres sous-étapes."""
+        """Every freshly-created Observation gets a stop_check() that reflects
+        state.is_running live — used by sub-plugins whose work spans several
+        internal steps, to interrupt themselves between two of their own steps."""
         import rosace.main as main_mod
 
         captured_stop_check = []
@@ -1581,14 +1581,14 @@ class TestSessionRunner:
         assert stop_check() is True  # state.is_running was flipped to False by FakeScheduler
 
     async def test_live_hardware_is_not_deep_copied_into_post_obs_task(self, monkeypatch, tmp_path):
-        """Régression : model_copy(deep=True, update={"hardware": {}}) essayait quand
-        même de deep-copier obs.hardware avant d'appliquer update — copy.deepcopy()
-        sur un objet non copiable (ex. un threading.Lock, comme dans un adaptateur
-        INDI réel) levait une exception non rattrapée dans le bloc for...else, qui
-        tuait silencieusement toute la boucle session_runner() (state.is_running
-        restait bloqué à True pour toujours). Ce test reproduit l'ingrédient exact
-        (hardware non copiable) et vérifie que la session va bien jusqu'à
-        CLOSE_SESSION, et que REDUCTION est bien atteint en arrière-plan."""
+        """Regression: model_copy(deep=True, update={"hardware": {}}) still tried
+        to deep-copy obs.hardware before applying update — copy.deepcopy() on a
+        non-copyable object (e.g. a threading.Lock, like in a real INDI adapter)
+        raised an exception uncaught in the for...else block, which silently
+        killed the whole session_runner() loop (state.is_running stayed stuck
+        True forever). This test reproduces the exact ingredient (non-copyable
+        hardware) and checks that the session does reach CLOSE_SESSION, and
+        that REDUCTION is indeed reached in the background."""
         import threading
         import rosace.main as main_mod
 
@@ -1637,11 +1637,11 @@ class TestSessionRunner:
 
 
 # ═════════════════════════════════════════════════════════════
-# GROUPE 7 — Endpoints FastAPI (TestClient, lifespan réel)
+# GROUP 7 — FastAPI endpoints (TestClient, real lifespan)
 # ═════════════════════════════════════════════════════════════
 
 class TestApiEndpoints:
-    """Tests de la couche HTTP (jamais exercée directement par les autres groupes)."""
+    """Tests for the HTTP layer (never exercised directly by the other groups)."""
 
     @pytest.fixture(autouse=True)
     def reset_state(self):
@@ -1703,7 +1703,7 @@ class TestApiEndpoints:
         }
 
     def test_control_start_when_idle(self, monkeypatch):
-        """Démarre la session ; session_runner est mocké pour ne pas boucler indéfiniment."""
+        """Starts the session; session_runner is mocked so it doesn't loop forever."""
         import rosace.main as main_mod
 
         async def fake_runner():
@@ -1718,7 +1718,7 @@ class TestApiEndpoints:
         assert "démarrée" in res.json()["message"].lower()
 
     def test_control_start_when_already_running(self):
-        """Ne redémarre pas une session déjà en cours (pas de background task ajoutée)."""
+        """Doesn't restart an already-running session (no background task added)."""
         import rosace.main as main_mod
 
         with self._client() as client:
@@ -1729,13 +1729,13 @@ class TestApiEndpoints:
         assert "déjà" in res.json()["message"].lower()
 
     def test_control_start_refused_while_previous_session_still_winding_down(self):
-        """is_running=False (arrêt demandé) ne suffit pas à autoriser un nouveau
-        départ tant que la session précédente n'a pas fini son nettoyage."""
+        """is_running=False (stop requested) isn't enough to allow a new start
+        as long as the previous session hasn't finished its cleanup."""
         import rosace.main as main_mod
 
         with self._client() as client:
-            main_mod.state.is_running = False       # arrêt déjà demandé...
-            main_mod.state.session_active = True     # ...mais le nettoyage tourne encore
+            main_mod.state.is_running = False       # stop already requested...
+            main_mod.state.session_active = True     # ...but cleanup is still running
             res = client.post("/control/start")
 
         assert res.status_code == 200
@@ -1757,8 +1757,9 @@ class TestApiEndpoints:
         assert res.status_code == 404
 
     def test_get_star_via_api(self):
-        """POST /stars n'existe pas (toute création passe par Simbad) — l'étoile
-        est insérée directement en base, l'API n'est exercée que côté lecture."""
+        """POST /stars doesn't exist (all creation goes through Simbad) — the
+        star is inserted directly into the database, the API is only exercised
+        on the read side."""
         from rosace.targets import StarCreate, star_insert
 
         async def _insert():
@@ -1776,8 +1777,8 @@ class TestApiEndpoints:
         assert body["queried_name"] == "ApiTestStar"
 
     def test_simbad_import_returns_existing_on_duplicate(self, monkeypatch):
-        """Un second import du même nom ne crée pas de doublon : renvoie l'étoile
-        existante (200), pas d'erreur."""
+        """A second import of the same name doesn't create a duplicate: returns
+        the existing star (200), no error."""
         import rosace.main as main_mod
         from rosace.targets import StarCreate
 
@@ -1795,8 +1796,8 @@ class TestApiEndpoints:
         assert second.json()["id"] == first.json()["id"]
 
     def test_simbad_import_registers_search_term_as_alias(self, monkeypatch):
-        """Si le nom recherché diffère du nom canonique renvoyé par Simbad, il
-        est enregistré comme alias — et devient ensuite directement cherchable."""
+        """If the searched name differs from the canonical name Simbad returns,
+        it's registered as an alias — and then becomes directly searchable."""
         import rosace.main as main_mod
         from rosace.targets import StarCreate
 
@@ -1819,13 +1820,13 @@ class TestApiEndpoints:
         assert by_alias.json()["name"] == "alf Lyr ApiAliasTest"
 
     def test_simbad_import_deduplicates_across_different_search_terms(self, monkeypatch):
-        """Deux noms différents (ex. 'bet Lyr' / 'Sheliak') que Simbad résout vers
-        la même identité canonique ne doivent pas créer deux étoiles distinctes."""
+        """Two different names (e.g. 'bet Lyr' / 'Sheliak') that Simbad resolves
+        to the same canonical identity must not create two distinct stars."""
         import rosace.main as main_mod
         from rosace.targets import StarCreate
 
         async def fake_simbad_search(name):
-            # Simule deux noms de recherche différents pour le même objet physique.
+            # Simulates two different search terms for the same physical object.
             return StarCreate(name="DedupCanonicalStar", ra=282.52, dec=33.36)
 
         monkeypatch.setattr(main_mod, "simbad_search", fake_simbad_search)
@@ -1843,12 +1844,12 @@ class TestApiEndpoints:
         with self._client() as client:
             all_stars = client.get("/stars").json()
         canonical_matches = [s for s in all_stars if s["name"] == "DedupCanonicalStar"]
-        assert len(canonical_matches) == 1  # pas de doublon
+        assert len(canonical_matches) == 1  # no duplicate
 
     def test_simbad_import_reports_alias_added(self, monkeypatch):
-        """La réponse indique explicitement si le terme recherché a été
-        enregistré comme nouvel alias — pour ne pas avoir à aller vérifier
-        la base à la main."""
+        """The response explicitly states whether the searched term was
+        registered as a new alias — so the caller doesn't have to go check
+        the database by hand."""
         import rosace.main as main_mod
         from rosace.targets import StarCreate
 
@@ -1858,20 +1859,20 @@ class TestApiEndpoints:
         monkeypatch.setattr(main_mod, "simbad_search", fake_simbad_search)
 
         with self._client() as client:
-            # Nouvelle étoile, nom recherché différent du nom canonique -> alias ajouté.
+            # New star, searched name differs from the canonical name -> alias added.
             created = client.post("/simbad/import", params={"name": "AliasAddedSearchTerm"})
             assert created.json()["alias_added"] is True
 
-            # Même nom recherché une 2e fois -> déjà connu, pas de nouvel alias.
+            # Same searched name a 2nd time -> already known, no new alias.
             again = client.post("/simbad/import", params={"name": "AliasAddedSearchTerm"})
             assert again.json()["alias_added"] is False
 
-            # Recherche directement par le nom canonique -> jamais un alias.
+            # Searching directly by the canonical name -> never an alias.
             by_canonical = client.post("/simbad/import", params={"name": "AliasAddedCanonicalStar"})
             assert by_canonical.json()["alias_added"] is False
 
     def test_import_stars_from_file_mixed_results(self, monkeypatch):
-        """Une ligne par étoile ; les erreurs sur une ligne n'empêchent pas les autres."""
+        """One line per star; errors on one line don't prevent the others."""
         import rosace.main as main_mod
         from rosace.targets import StarCreate
 
@@ -2057,7 +2058,7 @@ class TestApiEndpoints:
 
 
 # ═════════════════════════════════════════════════════════════
-# GROUPE 8 — Authentification (auth.py)
+# GROUP 8 — Authentication (auth.py)
 # ═════════════════════════════════════════════════════════════
 
 class TestAuthRoutes:
