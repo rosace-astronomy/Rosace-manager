@@ -1,5 +1,5 @@
 """
-Sous-plugin SEQUENCER -- Bias frame acquisition, with current-session reuse.
+Sub-plugin SEQUENCER -- Bias frame acquisition, with current-session reuse.
 Backend "indi" -- named "bias_acquisition" rather than "bias" to avoid
 colliding with reduction_plugins/bias (the BIAS-subtraction processing
 step -- see CLAUDE.md's cross-family uniqueness rule), same reasoning as

@@ -1,6 +1,6 @@
 """
-Tests du sous-plugin SLEW (SlewPlugin), backend internal.
-Lancement : pytest plugins/sequencer_plugins/slew/test_slew_internal.py -v
+Tests for the SLEW sub-plugin (SlewPlugin), internal backend.
+Run: pytest plugins/sequencer_plugins/slew/test_slew_internal.py -v
 """
 
 from datetime import datetime, timezone

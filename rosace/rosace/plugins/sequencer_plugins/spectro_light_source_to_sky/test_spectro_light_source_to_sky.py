@@ -1,6 +1,6 @@
 """
-Tests du sous-plugin SPECTRO_LIGHT_SOURCE_TO_SKY (SpectroLightSourceToSkyPlugin), backend indi.
-Lancement : pytest plugins/sequencer_plugins/spectro_light_source_to_sky/test_spectro_light_source_to_sky.py -v
+Tests for the SPECTRO_LIGHT_SOURCE_TO_SKY sub-plugin (SpectroLightSourceToSkyPlugin), indi backend.
+Run: pytest plugins/sequencer_plugins/spectro_light_source_to_sky/test_spectro_light_source_to_sky.py -v
 """
 
 from datetime import datetime, timezone

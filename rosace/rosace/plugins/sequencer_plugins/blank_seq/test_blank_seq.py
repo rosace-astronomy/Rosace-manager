@@ -1,6 +1,6 @@
 """
-Tests du sous-plugin SEQUENCER "blank_seq" (BlankSeqPlugin) — gabarit minimal.
-Lancement : pytest plugins/sequencer_plugins/blank_seq/test_blank_seq.py -v
+Tests for the SEQUENCER "blank_seq" sub-plugin (BlankSeqPlugin) — minimal template.
+Run: pytest plugins/sequencer_plugins/blank_seq/test_blank_seq.py -v
 """
 
 from datetime import datetime, timezone

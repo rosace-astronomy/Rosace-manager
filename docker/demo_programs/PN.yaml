@@ -6,7 +6,7 @@
 # Dockerfile) — same content as demo.yaml, backend-agnostic.
 
 program: PN
-description: "Nébuleuses planétaires (démo, sans matériel réel)"
+description: "Planetary nebulae (demo, no real hardware)"
 
 sequencer:
   - slew

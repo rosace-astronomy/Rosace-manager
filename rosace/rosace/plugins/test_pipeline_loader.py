@@ -28,10 +28,10 @@ class TestListProgrammes:
         assert isinstance(result, list)
 
     def test_known_programs_present(self):
+        """Only "demo" is a stable fixture (the packaged default) -- every
+        other program is user-defined content, not something a test should
+        hardcode as always present."""
         result = list_programs()
-        assert "etoiles_be" in result
-        assert "etoiles_brillantes" in result
-        assert "nova_monitoring" in result
         assert "demo" in result
 
     def test_sorted_alphabetically(self):
@@ -41,29 +41,29 @@ class TestListProgrammes:
 
 class TestLoadProgrammeYaml:
 
-    def test_loads_etoiles_be(self):
-        data = load_program_yaml("etoiles_be")
+    def test_loads_demo(self):
+        data = load_program_yaml("demo")
         assert "sequencer" in data
         assert "reduction" in data
 
     def test_sequencer_steps_are_list(self):
-        data = load_program_yaml("etoiles_be")
+        data = load_program_yaml("demo")
         assert isinstance(data["sequencer"], list)
         assert len(data["sequencer"]) > 0
 
     def test_reduction_steps_are_list(self):
-        data = load_program_yaml("etoiles_be")
+        data = load_program_yaml("demo")
         assert isinstance(data["reduction"], list)
         assert len(data["reduction"]) > 0
 
     def test_raises_on_unknown_program(self):
         with pytest.raises(FileNotFoundError, match="not found"):
-            load_program_yaml("programme_inexistant")
+            load_program_yaml("nonexistent_program")
 
     def test_error_message_lists_available(self):
         with pytest.raises(FileNotFoundError) as exc_info:
             load_program_yaml("xxx")
-        assert "etoiles_be" in str(exc_info.value)
+        assert "demo" in str(exc_info.value)
 
     @pytest.mark.parametrize("bad_name", ["../evil", "foo/bar", "foo bar", "..", ""])
     def test_raises_on_path_traversal_attempt(self, bad_name):
@@ -122,22 +122,15 @@ class TestBuildPipeline:
 class TestLoadPipelines:
 
     def test_returns_tuple_of_two_lists(self):
-        seq, red = load_pipelines("etoiles_be")
+        seq, red = load_pipelines("demo")
         assert isinstance(seq, list)
         assert isinstance(red, list)
 
-    def test_etoiles_be_full_pipeline(self):
-        seq, red = load_pipelines("etoiles_be")
-        seq_names = [p.__class__.__name__ for p in seq]
-        red_names = [p.__class__.__name__ for p in red]
-        assert seq_names == ["SlewPlugin", "FocusPlugin", "StarSpectraAcquisitionPlugin"]
-        assert red_names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
-
-    def test_etoiles_brillantes_no_focus_full_reduction(self):
+    def test_bright_stars_no_focus_full_reduction(self):
         """No focus (bright star, manual adjustment) — but the reduction
         chain stays complete: each REDUCTION sub-plugin explicitly depends
         on the previous one, no step can be skipped."""
-        seq, red = load_pipelines("etoiles_brillantes")
+        seq, red = load_pipelines("bright_stars")
         seq_names = [p.__class__.__name__ for p in seq]
         red_names = [p.__class__.__name__ for p in red]
         assert "FocusPlugin" not in seq_names

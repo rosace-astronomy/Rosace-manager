@@ -1,9 +1,9 @@
-# ── Programme : Démonstration ──────────────────────────────────────────────
-# Programme minimal et rapide, indépendant du backend actif (internal/indi) —
-# sert de vitrine niveau 1 et de vérification bout-en-bout du pipeline.
+# ── Program: Demo ────────────────────────────────────────────────────────────
+# Minimal, fast program, independent of the active backend (internal/indi) —
+# serves as a level-1 showcase and end-to-end pipeline verification.
 
 program: demo
-description: "Programme minimal pour démonstration et vérification rapide du pipeline"
+description: "Minimal program for demo and quick end-to-end pipeline verification"
 
 sequencer:
   - slew

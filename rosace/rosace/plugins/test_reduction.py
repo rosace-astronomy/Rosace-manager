@@ -19,7 +19,7 @@ def _make_obs(with_raw_files=True, with_program=True) -> Observation:
     if with_raw_files:
         obs.sequencer_data["star_spectra_images"] = ["/tmp/spectrum_0001.fits"]
     if with_program:
-        obs.scheduler_data["program"] = "etoiles_be"
+        obs.scheduler_data["program"] = "demo"
     return obs
 
 

@@ -7,7 +7,7 @@
 # one at image build time (see Dockerfile) — same content as demo.yaml.
 
 program: Be_stars
-description: "Suivi spectral d'étoiles Be (démo, sans matériel réel)"
+description: "Spectral monitoring of Be stars (demo, no real hardware)"
 
 sequencer:
   - slew

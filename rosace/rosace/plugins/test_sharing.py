@@ -17,7 +17,7 @@ from rosace.plugins.sharing import SharingPlugin
 def _make_obs(with_program=True) -> Observation:
     obs = Observation(id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234")
     if with_program:
-        obs.scheduler_data["program"] = "etoiles_be"
+        obs.scheduler_data["program"] = "demo"
     return obs
 
 

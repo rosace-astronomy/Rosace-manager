@@ -1,6 +1,6 @@
 """
-Tests du sous-plugin FOCUS (FocusPlugin), backend internal.
-Lancement : pytest plugins/sequencer_plugins/focus/test_focus_internal.py -v
+Tests for the FOCUS sub-plugin (FocusPlugin), internal backend.
+Run: pytest plugins/sequencer_plugins/focus/test_focus_internal.py -v
 """
 
 from datetime import datetime, timezone

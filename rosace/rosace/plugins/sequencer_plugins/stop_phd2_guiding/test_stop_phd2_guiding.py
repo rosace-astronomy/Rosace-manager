@@ -1,6 +1,6 @@
 """
-Tests du sous-plugin STOP_PHD2_GUIDING (StopPhd2GuidingPlugin), backend indi.
-Lancement : pytest plugins/sequencer_plugins/stop_phd2_guiding/test_stop_phd2_guiding.py -v
+Tests for the STOP_PHD2_GUIDING sub-plugin (StopPhd2GuidingPlugin), indi backend.
+Run: pytest plugins/sequencer_plugins/stop_phd2_guiding/test_stop_phd2_guiding.py -v
 """
 
 from datetime import datetime, timezone

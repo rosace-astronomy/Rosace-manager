@@ -19,7 +19,7 @@ def _make_obs(with_scheduler_data=True, obs_dir="/tmp/whatever") -> Observation:
     if with_scheduler_data:
         obs.scheduler_data["target"] = Target(name="Vega", ra=279.23, dec=38.78)
         obs.scheduler_data["exposure"] = ExposureConfig(exposure_time=10.0)
-        obs.scheduler_data["program"] = "etoiles_be"
+        obs.scheduler_data["program"] = "demo"
     return obs
 
 
@@ -41,7 +41,7 @@ class TestSequencerPlugin:
 
     async def test_raises_if_scheduler_data_incomplete(self):
         obs = _make_obs(with_scheduler_data=False)
-        with pytest.raises(RuntimeError, match="scheduler_data incomplet"):
+        with pytest.raises(RuntimeError, match="scheduler_data incomplete"):
             await SequencerPlugin().run(obs)
 
     async def test_raises_if_obs_dir_missing(self):
@@ -76,10 +76,10 @@ class TestSequencerPlugin:
             lambda program: ([], []),
         )
 
-        obs = _make_obs()  # program = "etoiles_be"
+        obs = _make_obs()  # program = "demo"
         result = await SequencerPlugin().run(obs)
 
-        assert result.program_file == "etoiles_be.yaml"
+        assert result.program_file == "demo.yaml"
         assert result.program_steps == {
             "sequencer": ["slew", "focus", "star_spectra_acquisition"],
             "reduction": ["bias", "dark", "flat", "extract"],

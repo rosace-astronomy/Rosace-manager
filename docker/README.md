@@ -1,82 +1,81 @@
-# Rosace — module de démo Docker
+# Rosace — Docker demo module
 
-Ce dossier contient tout ce qu'il faut pour faire tourner une **démo** de Rosace
-dans un conteneur Docker : GUI déjà compilée, backend simulé
-(`sequencer_backend: internal`), catalogue d'étoiles pré-rempli, compte admin
-créé automatiquement. Ce n'est **pas** la façon dont une vraie installation
-observatoire est censée tourner (voir `Dockerfile`) — c'est uniquement pour
-permettre à quelqu'un d'essayer Rosace en quelques commandes, sans rien
-installer d'autre que Docker.
+This folder contains everything needed to run a **demo** of Rosace in a
+Docker container: pre-built GUI, simulated backend
+(`sequencer_backend: internal`), pre-filled star catalogue, admin account
+created automatically. This is **not** how a real observatory installation
+is meant to run (see `Dockerfile`) — it's purely to let someone try Rosace
+in a few commands, without installing anything besides Docker.
 
-## Prérequis
+## Prerequisites
 
-Installer Docker (une seule fois) :
-- **Linux** : `docker` via le gestionnaire de paquets de la distribution, ou
+Install Docker (once):
+- **Linux**: `docker` via the distribution's package manager, or
   https://docs.docker.com/engine/install/
-- **Windows / Mac** : Docker Desktop — https://www.docker.com/products/docker-desktop/
+- **Windows / Mac**: Docker Desktop — https://www.docker.com/products/docker-desktop/
 
-Vérifier que ça fonctionne : `docker --version`
+Check it works: `docker --version`
 
-## Construire l'image
+## Build the image
 
-Depuis la racine du dépôt (là où se trouve le `Dockerfile`) :
+From the repo root (where the `Dockerfile` lives):
 
 ```
 docker build -t rosace-demo .
 ```
 
-- `-t rosace-demo` : nom donné à l'image, pour la retrouver ensuite.
-- `.` : construire à partir du dossier courant.
+- `-t rosace-demo`: name given to the image, to find it again later.
+- `.`: build from the current directory.
 
-Première construction : une à deux minutes (téléchargement des dépendances
-Python et Node.js, compilation du GUI). Les fois suivantes, si le code n'a
-pas changé, Docker réutilise ce qu'il a déjà — beaucoup plus rapide.
+First build: one to two minutes (downloading Python and Node.js
+dependencies, compiling the GUI). Later builds, if the code hasn't
+changed, reuse what Docker already has — much faster.
 
-## Lancer le conteneur
+## Run the container
 
 ```
 docker run -d -p 8080:8000 -v rosace-data:/data --name rosace-demo rosace-demo
 ```
 
-- `-d` : lancer en arrière-plan.
-- `-p 8080:8000` : port 8080 de la machine hôte relié au port 8000 du
-  conteneur — ouvrir ensuite http://localhost:8080. Si le port 8080 est déjà
-  pris chez toi, changer le premier nombre (ex. `-p 8081:8000`).
-- `-v rosace-data:/data` : volume nommé, où sont gardés le catalogue
-  d'étoiles, les comptes et les observations — **survit** à l'arrêt ou à la
-  suppression du conteneur. Sans ce `-v`, tout serait perdu à chaque
-  redémarrage.
-- `--name rosace-demo` : nom donné au conteneur, pour le désigner facilement
-  dans les commandes suivantes.
+- `-d`: run in the background.
+- `-p 8080:8000`: host port 8080 connected to the container's port 8000 —
+  then open http://localhost:8080. If port 8080 is already taken on your
+  machine, change the first number (e.g. `-p 8081:8000`).
+- `-v rosace-data:/data`: named volume, where the star catalogue,
+  accounts and observations are kept — **survives** stopping or removing
+  the container. Without this `-v`, everything would be lost on every
+  restart.
+- `--name rosace-demo`: name given to the container, to refer to it
+  easily in the commands below.
 
-## Se connecter
+## Log in
 
-http://localhost:8080 (ou le port choisi ci-dessus)
+http://localhost:8080 (or the port chosen above)
 
-- Utilisateur : `rosace`
-- Mot de passe : `rosace`
+- Username: `rosace`
+- Password: `rosace`
 
-Identifiants de démo créés automatiquement au premier démarrage
-(`docker/seed_demo_data.py`) — volontairement simples, à ne jamais faire pour
-une vraie installation exposée sur un réseau. Un petit catalogue d'étoiles
-(seedé depuis `docker/seed_demo_data.py`) est déjà prêt : cliquer sur START
-dans l'interface lance directement une session d'observation simulée.
+Demo credentials created automatically on first startup
+(`docker/seed_demo_data.py`) — deliberately simple, never do this for a
+real installation exposed on a network. A small star catalogue (seeded
+from `docker/seed_demo_data.py`) is already ready: clicking START in the
+interface directly launches a simulated observation session.
 
-## Commandes utiles
+## Useful commands
 
-| Action | Commande |
+| Action | Command |
 |---|---|
-| Voir les logs en direct | `docker logs -f rosace-demo` |
-| Arrêter le conteneur | `docker stop rosace-demo` |
-| Le relancer (mêmes données) | `docker start rosace-demo` |
-| Le supprimer (garde les données du volume) | `docker rm -f rosace-demo` |
-| Repartir de zéro (supprime aussi les données) | `docker volume rm rosace-data` |
+| View live logs | `docker logs -f rosace-demo` |
+| Stop the container | `docker stop rosace-demo` |
+| Restart it (same data) | `docker start rosace-demo` |
+| Remove it (keeps the volume's data) | `docker rm -f rosace-demo` |
+| Start from scratch (also deletes the data) | `docker volume rm rosace-data` |
 
-## Mettre à jour après une modification du code
+## Updating after a code change
 
-`docker build` reconstruit l'**image**, mais ne touche pas au **conteneur**
-déjà lancé (qui continue de tourner sur l'ancienne version). Après chaque
-modification (Python ou GUI/X4) :
+`docker build` rebuilds the **image**, but doesn't touch the already
+running **container** (which keeps running the old version). After every
+change (Python or GUI/X4):
 
 ```
 docker build -t rosace-demo .
@@ -84,68 +83,68 @@ docker rm -f rosace-demo
 docker run -d -p 8080:8000 -v rosace-data:/data --name rosace-demo rosace-demo
 ```
 
-Le volume `rosace-data` étant conservé, les données (catalogue, comptes,
-observations) survivent à la mise à jour — seule l'application change,
-comme réinstaller un logiciel en gardant son dossier de configuration.
+Since the `rosace-data` volume is kept, the data (catalogue, accounts,
+observations) survives the update — only the application changes, like
+reinstalling software while keeping its configuration folder.
 
-## Problème : "port is already in use" / "container name already in use"
+## Problem: "port is already in use" / "container name already in use"
 
-- **Port déjà utilisé** (ex. une instance Rosace tourne déjà en local sur le
-  8000) : changer le port hôte dans `-p`, ex. `-p 8081:8000`.
-- **Nom de conteneur déjà pris** (`Conflict. The container name "/rosace-demo"
-  is already in use`) : un conteneur de ce nom existe déjà, probablement d'un
-  essai précédent.
-  - Pour le réutiliser tel quel : `docker start rosace-demo`
-  - Pour repartir propre : `docker rm rosace-demo` puis relancer la commande
-    `docker run` ci-dessus.
+- **Port already in use** (e.g. a Rosace instance is already running
+  locally on 8000): change the host port in `-p`, e.g. `-p 8081:8000`.
+- **Container name already taken** (`Conflict. The container name
+  "/rosace-demo" is already in use`): a container with that name already
+  exists, probably from an earlier attempt.
+  - To reuse it as-is: `docker start rosace-demo`
+  - To start clean: `docker rm rosace-demo` then rerun the `docker run`
+    command above.
 
-## Transmettre l'image sans registre (ex. tester sur un autre PC/Mac)
+## Sharing the image without a registry (e.g. testing on another PC/Mac)
 
-Avant toute publication sur un registre (Docker Hub, GitHub Container
-Registry...), l'image peut être transmise comme un simple fichier — clé USB,
-email, drive partagé — sans connexion Internet nécessaire au moment du
-transfert.
+Before any publication to a registry (Docker Hub, GitHub Container
+Registry...), the image can be transferred as a plain file — USB stick,
+email, shared drive — with no Internet connection needed at transfer
+time.
 
-Sur la machine qui a construit l'image :
+On the machine that built the image:
 
 ```
 docker save rosace-demo | gzip > rosace-demo.tar.gz
 ```
 
-Produit un fichier `.tar.gz` d'environ 700 Mo.
+Produces a `.tar.gz` file of about 700 MB.
 
-Sur la machine qui reçoit le fichier (Docker Desktop installé, rien
-d'autre) :
+On the machine receiving the file (Docker Desktop installed, nothing
+else):
 
 ```
 docker load -i rosace-demo.tar.gz
 docker run -d -p 8080:8000 -v rosace-data:/data --name rosace-demo rosace-demo
 ```
 
-`docker load` réimporte l'image sous le même nom (`rosace-demo`), puis ça se
-lance exactement comme sur la machine d'origine.
+`docker load` re-imports the image under the same name (`rosace-demo`),
+then it starts up exactly like on the original machine.
 
-**Nuance multi-plateforme** : l'image est construite pour l'architecture de
-la machine qui a fait `docker build` (typiquement `amd64`/Intel). Sur un Mac
-Apple Silicon (M1/M2/M3...), Docker Desktop la fait quand même tourner via un
-mode d'émulation intégré — plus lent, mais fonctionnel sans rien configurer.
-Pour une image native (plus rapide) sur Apple Silicon, il faut soit la
-reconstruire directement sur ce Mac, soit utiliser `docker buildx` pour
-produire une image multi-architecture en une fois (raffinement à faire plus
-tard, pas nécessaire pour un premier test).
+**Cross-platform nuance**: the image is built for the architecture of
+the machine that ran `docker build` (typically `amd64`/Intel). On an
+Apple Silicon Mac (M1/M2/M3...), Docker Desktop still runs it via a
+built-in emulation mode — slower, but functional with no configuration
+needed. For a native (faster) image on Apple Silicon, either rebuild it
+directly on that Mac, or use `docker buildx` to produce a
+multi-architecture image in one go (a refinement for later, not needed
+for a first test).
 
-## Publication future (pas encore fait)
+## Future publication (not yet done)
 
-Le dépôt étant sur GitHub (`rosace-astronomy/Rosace-manager`), GitHub
-Container Registry (`ghcr.io`) serait l'option naturelle pour une diffusion
-publique : gratuit pour un dépôt public, lié au compte GitHub existant. Une
-fois publiée, n'importe qui pourrait faire directement :
+Since the repo is on GitHub (`rosace-astronomy/Rosace-manager`), GitHub
+Container Registry (`ghcr.io`) would be the natural option for public
+distribution: free for a public repo, tied to the existing GitHub
+account. Once published, anyone could directly run:
 
 ```
 docker pull ghcr.io/rosace-astronomy/rosace-demo:latest
 docker run -d -p 8080:8000 -v rosace-data:/data --name rosace-demo ghcr.io/rosace-astronomy/rosace-demo:latest
 ```
 
-— sans `git clone`, sans build local. Peut être automatisé avec une GitHub
-Action qui reconstruit et republie l'image à chaque push. Non fait pour
-l'instant, sur décision explicite (voir discussion).
+— no `git clone`, no local build. Could be automated with a GitHub
+Action that rebuilds and republishes the image on every push. Not done
+yet, by explicit decision (see discussion).

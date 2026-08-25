@@ -1,6 +1,6 @@
 # Welcome to the ROSACE project[](https://rosace-astronomy.github.io/rosace-docs/#welcome-to-the-rosace-project)
 
-ROSACE is the acronym for **Robotic Observations and Spectrocopic Astronomy, a Collaborative Experience**
+ROSACE is the acronym for **Robotic Observations and Spectroscopic Astronomy, a Collaborative Experience**
 
 The ROSACE project aims to develop a network of amateur and  professional observatories to run Robotic Spectroscopic astronomical  observations. All together, we offer a new tool to the Science to better understand  our Universe.
 
@@ -9,6 +9,39 @@ The project is based on Open Source software tools only.
 Robotic observation means that **no human action** is required. From opening the dome (or shelter) to processing the data and sharing the result, all is automated.
 
 The project is developed by the community: your contribution is welcome. Our intention is to propose a system that can be adapted from smallest to biggest telescopes.
+
+## Quick start (development)
+
+The fastest way to try Rosace is the [Docker demo](docker/README.md) — no
+Python setup needed. To run it from source instead:
+
+```bash
+# Activate the virtual environment
+source rosace-manager/bin/activate
+
+# Install in editable mode with dev dependencies (from the repo root)
+pip install -e "rosace/[dev]"
+
+# First run only: bootstrap the first admin account
+python -m rosace.main --create-admin <username>
+
+# Start the server
+cd rosace
+uvicorn rosace.main:app --host 0.0.0.0 --port 8000
+# or: python -m rosace.main
+```
+
+The web GUI is served at http://localhost:8000/, and the interactive API
+docs at http://localhost:8000/docs.
+
+Run the test suite:
+
+```bash
+cd rosace
+pytest rosace -v
+```
+
+See `CLAUDE.md` for the full architecture reference.
 
 Contents:
 

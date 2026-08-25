@@ -1,0 +1,20 @@
+# ── Program: Bright stars ─────────────────────────────────────────────────────
+# Radial velocities of bright stars (V < 4).
+# Focusing skipped if recent. Full reduction chain: each REDUCTION
+# sub-plugin explicitly depends on the previous step (bias →
+# dark → flat → extract), no step can be skipped.
+
+program: bright_stars
+description: "Radial velocity measurements on bright stars — short exposures"
+
+sequencer:
+  - slew                        # Telescope pointing (focus omitted: bright star, manual setting)
+  - star_spectra_acquisition    # CCD exposure
+
+reduction:
+  - bias        # Bias subtraction
+  - dark        # Dark subtraction
+  - flat        # Flat-field correction
+  - extract     # 1D spectrum extraction
+
+sharing: blank_share

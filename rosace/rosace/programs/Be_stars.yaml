@@ -1,23 +1,23 @@
-# ── Programme : Étoiles Be ────────────────────────────────────────────────────
-# Suivi spectral d'étoiles Be (émission Hα).
-# Pipeline complet : pointage, mise au point, pose longue, réduction complète.
+# ── Program: Be stars ─────────────────────────────────────────────────────────
+# Spectral monitoring of Be stars (Hα emission).
+# Full pipeline: pointing, focusing, long exposure, full reduction.
 
 program: Be_stars
-description: "Suivi spectral d'étoiles Be — émission Hα et variations de profil"
+description: "Spectral monitoring of Be stars — Hα emission and profile variations"
 
 sequencer:
-  - home_sync_am3                # Recalage monture AM3 (une seule fois par session)
-  - pointing_72ed                # Pointage télescope
-  # - focus                      # Mise au point automatique
-  - star_spectra_acquisition     # Acquisition des poses science (bascule le spectro en SKY)
-  - stop_phd2_guiding            # Stoppe le guidage (PHD2) -- inutile/perdu pendant les darks/bias
-  - dark_acquisition             # Darks (session/bibliothèque/caméra) -- avant le reset SKY ci-dessous
-  - bias_acquisition             # Bias (session/caméra) -- avant le reset SKY ci-dessous
-  - spectro_light_source_to_sky  # Remet le spectroscope en SKY (sécurité fin d'observation)
+  - home_sync_am3                # AM3 mount re-homing (once per session)
+  - pointing_72ed                # Telescope pointing
+  # - focus                      # Automatic focusing
+  - star_spectra_acquisition     # Science exposure acquisition (switches spectro to SKY)
+  - stop_phd2_guiding            # Stops guiding (PHD2) -- unnecessary/lost during darks/bias
+  - dark_acquisition             # Darks (session/library/camera) -- before the SKY reset below
+  - bias_acquisition             # Bias (session/camera) -- before the SKY reset below
+  - spectro_light_source_to_sky  # Resets the spectroscope to SKY (safety at end of observation)
 reduction:
-  - bias        # Soustraction biais
-  - dark        # Soustraction dark
-  - flat        # Correction flat-field
-  - extract     # Extraction spectre 1D
+  - bias        # Bias subtraction
+  - dark        # Dark subtraction
+  - flat        # Flat-field correction
+  - extract     # 1D spectrum extraction
 
 sharing: blank_share

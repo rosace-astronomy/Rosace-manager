@@ -328,7 +328,7 @@ class TestObservation:
         )
         obs.scheduler_data["target"] = Target(name="Altair", ra=297.69, dec=8.87)
         obs.scheduler_data["exposure"] = ExposureConfig(exposure_time=120.0)
-        obs.scheduler_data["program"] = "etoiles_be"
+        obs.scheduler_data["program"] = "demo"
         return obs
 
     def test_basic_creation(self):
@@ -472,7 +472,7 @@ class TestDatabase:
         )
         obs.scheduler_data["target"] = Target(name="Vega", ra=279.23, dec=38.78)
         obs.scheduler_data["exposure"] = ExposureConfig(exposure_time=300.0)
-        obs.scheduler_data["program"] = "etoiles_be"
+        obs.scheduler_data["program"] = "demo"
         return obs
 
     async def test_db_init_idempotent(self):
@@ -712,7 +712,7 @@ class TestDatabase:
         assert old_obs.id not in ids
 
     async def test_count_observations_for_target_zero_when_none(self):
-        count = await db_count_observations_for_target("etoiles_be", "VegaCountZeroTest")
+        count = await db_count_observations_for_target("demo", "VegaCountZeroTest")
         assert count == 0
 
     async def test_count_observations_for_target_counts_matching_pair(self):
@@ -732,9 +732,9 @@ class TestDatabase:
         """Same star, different program: must not count toward the other program."""
         ctx = self._make_ctx()
         await db_insert_session(ctx)
-        obs = self._make_obs(ctx.session_id)  # program="etoiles_be"
+        obs = self._make_obs(ctx.session_id)  # program="demo"
         await db_insert_observation(obs, ctx.session_id)
-        count = await db_count_observations_for_target("un_autre_program", "Vega")
+        count = await db_count_observations_for_target("another_program", "Vega")
         assert count == 0
 
     async def test_count_observations_for_target_persists_across_sessions(self):

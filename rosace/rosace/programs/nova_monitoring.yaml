@@ -1,20 +1,20 @@
-# ── Programme : Suivi de novæ / transitoires ─────────────────────────────────
-# Réactivité maximale : pipeline SEQUENCER minimal pour capturer un événement
-# transitoire. Chaîne de réduction complète : chaque sous-plugin REDUCTION
-# dépend explicitement de l'étape précédente (bias → dark → flat → extract),
-# aucune étape ne peut être sautée.
+# ── Program: Nova / transient monitoring ─────────────────────────────────────
+# Maximum responsiveness: minimal SEQUENCER pipeline to capture a transient
+# event. Full reduction chain: each REDUCTION sub-plugin explicitly depends
+# on the previous step (bias → dark → flat → extract), no step can be
+# skipped.
 
 program: nova_monitoring
-description: "Surveillance spectrale de novæ et transitoires — réactivité maximale"
+description: "Spectral monitoring of novae and transients — maximum responsiveness"
 
 sequencer:
-  - slew                        # Pointage immédiat
-  - star_spectra_acquisition    # Pose directe sans mise au point (urgence)
+  - slew                        # Immediate pointing
+  - star_spectra_acquisition    # Direct exposure, no focusing (emergency)
 
 reduction:
-  - bias        # Soustraction biais
-  - dark        # Soustraction dark
-  - flat        # Correction flat-field
-  - extract     # Extraction spectre 1D
+  - bias        # Bias subtraction
+  - dark        # Dark subtraction
+  - flat        # Flat-field correction
+  - extract     # 1D spectrum extraction
 
 sharing: blank_share

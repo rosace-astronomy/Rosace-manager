@@ -1,5 +1,5 @@
 """
-Sous-plugin SEQUENCER -- Dark frame acquisition, with session/library reuse.
+Sub-plugin SEQUENCER -- Dark frame acquisition, with session/library reuse.
 Backend "indi" -- named "dark_acquisition" rather than "dark" to avoid
 colliding with reduction_plugins/dark (the DARK-subtraction processing
 step -- see CLAUDE.md's cross-family uniqueness rule).
