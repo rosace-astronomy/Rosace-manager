@@ -26,9 +26,9 @@ class SharingPlugin:
     async def run(self, obs: Observation) -> Observation:
         program = obs.scheduler_data.get("program")
         if not program:
-            raise RuntimeError("SHARING : program manquant dans scheduler_data")
+            raise RuntimeError("SHARING: program missing from scheduler_data")
 
         sub = load_sharing_plugin(program)
-        log.info(f"[SHARING] Diffusion via '{sub.__class__.__name__}'")
+        log.info(f"[SHARING] Sharing via '{sub.__class__.__name__}'")
         obs = await sub.execute(obs)
         return obs

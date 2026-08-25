@@ -20,16 +20,16 @@ class FlatPlugin(SubPlugin):
 
     async def execute(self, obs: Observation) -> Observation:
         if "dark" not in obs.reduction_data:
-            raise RuntimeError("FLAT : reduction_data['dark'] manquant — DARK doit avoir tourné avant FLAT")
+            raise RuntimeError("FLAT: reduction_data['dark'] missing — DARK must run before FLAT")
         input_files: list[str] = obs.reduction_data["dark"]["corrected_files"]
         if not input_files:
-            raise RuntimeError("FLAT : aucun fichier d'entrée (reduction_data['dark']['corrected_files'] vide)")
+            raise RuntimeError("FLAT: no input file (reduction_data['dark']['corrected_files'] empty)")
         if not obs.obs_dir:
             raise RuntimeError("FLAT : observation directory (obs_dir) not set")
 
         normalize = True
 
-        log.info(f"[FLAT] Division flat sur {len(input_files)} fichier(s) — normalize={normalize}")
+        log.info(f"[FLAT] Flat division on {len(input_files)} file(s) — normalize={normalize}")
 
         flat_corrected: list[str] = []
         for f in input_files:
@@ -38,9 +38,9 @@ class FlatPlugin(SubPlugin):
             await asyncio.sleep(0.05)
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.touch()
-            log.info(f"[FLAT] Simulation : {f} → {out_name}")
+            log.info(f"[FLAT] Simulation: {f} → {out_name}")
             flat_corrected.append(out_name)
 
         obs.reduction_data["flat"] = {"corrected_files": flat_corrected}
-        log.info(f"[FLAT] Correction terminée — {len(flat_corrected)} fichier(s)")
+        log.info(f"[FLAT] Correction complete — {len(flat_corrected)} file(s)")
         return obs

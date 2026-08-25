@@ -451,7 +451,7 @@ async def start_session(background_tasks: BackgroundTasks):
 async def stop_session():
     """Requests a clean session stop (after the current observation)."""
     state.is_running = False
-    log.info("[ORCHESTRATOR] Arrêt demandé — CLOSE_SESSION sera exécuté en fin de cycle")
+    log.info("[ORCHESTRATOR] Stop requested — CLOSE_SESSION will run at the end of the cycle")
     return {"message": "Arrêt demandé — CLOSE_SESSION sera exécuté en fin de cycle"}
 
 

@@ -28,7 +28,7 @@ def create_observation_file(obs: Observation, target_dir: Path) -> Path:
     """
     filepath = target_dir / obs.suggested_filename
     obs.yaml_file = filepath.name
-    log.info(f"[OBSERVATION_FILE] Fichier d'observation créé : {obs.yaml_file}")
+    log.info(f"[OBSERVATION_FILE] Observation file created: {obs.yaml_file}")
     return filepath
 
 

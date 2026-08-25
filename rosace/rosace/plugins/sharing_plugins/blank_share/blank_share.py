@@ -64,12 +64,12 @@ class BlankSharePlugin(SubPlugin):
     async def execute(self, obs: Observation) -> Observation:
         reduced_files = obs.reduction_data.get("extract", {}).get("reduced_files", [])
         if not reduced_files:
-            raise RuntimeError("SHARING : aucun fichier réduit (reduction_data['extract']['reduced_files'] vide)")
+            raise RuntimeError("SHARING: no reduced file (reduction_data['extract']['reduced_files'] empty)")
 
-        log.info(f"[SHARING] Diffusion de {len(reduced_files)} fichier(s)")
+        log.info(f"[SHARING] Sharing {len(reduced_files)} file(s)")
         for f in reduced_files:
             await asyncio.sleep(0.3)  # TODO: real email/API sending
-            log.info(f"[SHARING] Diffusé : {f}")
+            log.info(f"[SHARING] Shared: {f}")
 
         obs.sharing_data["blank_share"] = {"shared_files": reduced_files}
         return obs

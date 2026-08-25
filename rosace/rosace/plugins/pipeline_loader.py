@@ -66,7 +66,7 @@ def _validate_name(kind: str, name: str) -> str:
     """Checks that "name" can't escape a file/module path. Raises ValueError otherwise."""
     if not _NAME_RE.fullmatch(name):
         raise ValueError(
-            f"Nom {kind} {name!r} invalide — attendu : lettres, chiffres ou '_' uniquement"
+            f"Invalid {kind} name {name!r} — expected: letters, digits or '_' only"
         )
     return name
 
@@ -86,14 +86,14 @@ def _resolve_module_and_class(kind: str, name: str) -> tuple[str, str]:
             module_path = f"rosace.plugins.sequencer_plugins.{name}.{name}"
         else:
             raise ValueError(
-                f"sequencer_backend={SEQUENCER_BACKEND!r} inconnu (attendu : 'internal' ou 'indi')"
+                f"sequencer_backend={SEQUENCER_BACKEND!r} unknown (expected: 'internal' or 'indi')"
             )
     elif kind == "reduction":
         module_path = f"rosace.plugins.reduction_plugins.{name}.{name}"
     elif kind == "sharing":
         module_path = f"rosace.plugins.sharing_plugins.{name}.{name}"
     else:
-        raise ValueError(f"kind={kind!r} inconnu (attendu : 'sequencer', 'reduction' ou 'sharing')")
+        raise ValueError(f"kind={kind!r} unknown (expected: 'sequencer', 'reduction' or 'sharing')")
 
     return module_path, class_name
 
@@ -106,14 +106,14 @@ def _load_subplugin_class(kind: str, name: str) -> type:
         module = importlib.import_module(module_path)
     except ImportError as e:
         raise ValueError(
-            f"Sous-plugin {kind} '{name}' introuvable : module '{module_path}' non chargeable — {e}"
+            f"{kind} sub-plugin '{name}' not found: module '{module_path}' could not be loaded — {e}"
         ) from e
 
     try:
         return getattr(module, class_name)
     except AttributeError as e:
         raise ValueError(
-            f"Sous-plugin {kind} '{name}' introuvable : classe '{class_name}' absente de '{module_path}'"
+            f"{kind} sub-plugin '{name}' not found: class '{class_name}' missing from '{module_path}'"
         ) from e
 
 
@@ -268,8 +268,8 @@ def load_program_yaml(program_name: str) -> dict:
     if not path.exists():
         available = list_programs()
         raise FileNotFoundError(
-            f"Programme '{program_name}' introuvable dans {PROGRAMS_DIR}. "
-            f"Programmes disponibles : {available}"
+            f"Program '{program_name}' not found in {PROGRAMS_DIR}. "
+            f"Available programs: {available}"
         )
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
@@ -291,7 +291,7 @@ def build_pipeline(step_names: list[str], kind: str) -> list:
         plugin_instance = plugin_class()
         pipeline.append(plugin_instance)
         log.debug(
-            f"[PIPELINE] Sous-plugin chargé : {name} → "
+            f"[PIPELINE] Sub-plugin loaded: {name} → "
             f"{plugin_class.__module__}.{plugin_class.__name__}"
         )
     return pipeline
@@ -310,14 +310,14 @@ def load_pipelines(program_name: str) -> tuple[list, list]:
     data = load_program_yaml(program_name)
 
     if "sequencer" not in data:
-        raise KeyError(f"Clé 'sequencer' manquante dans le programme '{program_name}'")
+        raise KeyError(f"Missing 'sequencer' key in program '{program_name}'")
     if "reduction" not in data:
-        raise KeyError(f"Clé 'reduction' manquante dans le programme '{program_name}'")
+        raise KeyError(f"Missing 'reduction' key in program '{program_name}'")
 
     seq_steps = data["sequencer"]
     red_steps = data["reduction"]
 
-    log.debug(f"[PIPELINE] Programme '{program_name}' chargé")
+    log.debug(f"[PIPELINE] Program '{program_name}' loaded")
 
     seq_pipeline = build_pipeline(seq_steps, "sequencer")
     red_pipeline = build_pipeline(red_steps, "reduction")
@@ -340,9 +340,9 @@ def load_sharing_plugin(program_name: str):
     data = load_program_yaml(program_name)
 
     if "sharing" not in data:
-        raise KeyError(f"Clé 'sharing' manquante dans le programme '{program_name}'")
+        raise KeyError(f"Missing 'sharing' key in program '{program_name}'")
 
     name = _validate_name("sharing", data["sharing"].strip().lower())
     plugin_class = _load_subplugin_class("sharing", name)
-    log.info(f"[PIPELINE] Programme '{program_name}' — sous-plugin sharing : {name} → {plugin_class.__name__}")
+    log.info(f"[PIPELINE] Program '{program_name}' — sharing sub-plugin: {name} → {plugin_class.__name__}")
     return plugin_class()

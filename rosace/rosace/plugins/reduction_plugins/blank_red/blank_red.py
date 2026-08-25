@@ -82,12 +82,12 @@ class BlankRedPlugin(SubPlugin):
     async def execute(self, obs: Observation) -> Observation:
         if "star_spectra_images" not in obs.sequencer_data:
             raise RuntimeError(
-                "BLANK_RED : sequencer_data['star_spectra_images'] manquant — "
-                "aucun sous-plugin d'acquisition n'a tourné avant BLANK_RED"
+                "BLANK_RED: sequencer_data['star_spectra_images'] missing — "
+                "no acquisition sub-plugin ran before BLANK_RED"
             )
         raw_files = obs.sequencer_data["star_spectra_images"]
 
-        log.info(f"[BLANK_RED] Exemple de sous-plugin REDUCTION sur {len(raw_files)} fichier(s)")
+        log.info(f"[BLANK_RED] Example REDUCTION sub-plugin on {len(raw_files)} file(s)")
 
         obs.reduction_data["blank_red"] = {"processed_files": raw_files}
         return obs

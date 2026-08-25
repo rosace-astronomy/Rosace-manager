@@ -46,7 +46,7 @@ class TestReductionPlugin:
 
     async def test_raises_if_program_missing(self):
         obs = _make_obs(with_program=False)
-        with pytest.raises(RuntimeError, match="program manquant"):
+        with pytest.raises(RuntimeError, match="program missing"):
             await ReductionPlugin().run(obs)
 
     async def test_calls_subplugins_in_order(self, monkeypatch):

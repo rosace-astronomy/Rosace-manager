@@ -49,8 +49,8 @@ class ProgramCreate(BaseModel):
     @classmethod
     def _validate_name(cls, v: str) -> str:
         if not _PROGRAM_NAME_RE.fullmatch(v):
-            log.warning(f"[PROGRAMS] Nom de programme rejeté : {v!r} — caractères autorisés : lettres, chiffres, '_'")
-            raise ValueError("le nom ne peut contenir que des lettres, des chiffres et '_'")
+            log.warning(f"[PROGRAMS] Program name rejected: {v!r} — allowed characters: letters, digits, '_'")
+            raise ValueError("the name can only contain letters, digits and '_'")
         return v
 
 class Program(ProgramCreate):
@@ -118,7 +118,7 @@ async def targets_db_init() -> None:
             )
         """)
         await db.commit()
-    log.info(f"[TARGETS DB] Base initialisée : {TARGETS_DB_PATH}")
+    log.info(f"[TARGETS DB] Database initialised: {TARGETS_DB_PATH}")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -135,7 +135,7 @@ async def star_insert(star: StarCreate) -> int:
              star.spectral_type, star.notes)
         )
         await db.commit()
-        log.info(f"[TARGETS DB] Étoile insérée : {star.name} (id={cursor.lastrowid})")
+        log.info(f"[TARGETS DB] Star inserted: {star.name} (id={cursor.lastrowid})")
         return cursor.lastrowid
 
 
@@ -190,7 +190,7 @@ async def star_update(star_id: int, star: StarCreate) -> None:
              star.spectral_type, star.notes, star_id)
         )
         await db.commit()
-    log.info(f"[TARGETS DB] Étoile mise à jour : {star.name} (id={star_id})")
+    log.info(f"[TARGETS DB] Star updated: {star.name} (id={star_id})")
 
 
 async def star_delete(star_id: int) -> None:
@@ -200,7 +200,7 @@ async def star_delete(star_id: int) -> None:
         await db.execute("DELETE FROM program_stars WHERE star_id = ?", (star_id,))
         await db.execute("DELETE FROM stars WHERE id = ?", (star_id,))
         await db.commit()
-    log.info(f"[TARGETS DB] Étoile supprimée : id={star_id}")
+    log.info(f"[TARGETS DB] Star deleted: id={star_id}")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -216,7 +216,7 @@ async def star_add_alias(star_id: int, alias_name: str) -> int:
             (star_id, alias_name)
         )
         await db.commit()
-        log.info(f"[TARGETS DB] Alias ajouté : {alias_name} -> star_id={star_id}")
+        log.info(f"[TARGETS DB] Alias added: {alias_name} -> star_id={star_id}")
         return cursor.lastrowid
 
 
@@ -225,7 +225,7 @@ async def star_remove_alias(alias_id: int) -> None:
     async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         await db.execute("DELETE FROM star_aliases WHERE id = ?", (alias_id,))
         await db.commit()
-    log.info(f"[TARGETS DB] Alias supprimé : id={alias_id}")
+    log.info(f"[TARGETS DB] Alias deleted: id={alias_id}")
 
 
 async def star_list_aliases(star_id: int) -> list[str]:
@@ -252,7 +252,7 @@ async def program_insert(program: ProgramCreate) -> int:
             (program.name, program.description)
         )
         await db.commit()
-        log.info(f"[TARGETS DB] Programme inséré : {program.name} (id={cursor.lastrowid})")
+        log.info(f"[TARGETS DB] Program inserted: {program.name} (id={cursor.lastrowid})")
         return cursor.lastrowid
 
 
@@ -289,7 +289,7 @@ async def program_delete(program_id: int) -> None:
         await db.execute("DELETE FROM program_stars WHERE program_id = ?", (program_id,))
         await db.execute("DELETE FROM programs WHERE id = ?", (program_id,))
         await db.commit()
-    log.info(f"[TARGETS DB] Programme supprimé : id={program_id}")
+    log.info(f"[TARGETS DB] Program deleted: id={program_id}")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -309,7 +309,7 @@ async def program_add_star(program_id: int, star_id: int, exposure_time: Optiona
             (program_id, star_id, exposure_time)
         )
         await db.commit()
-    log.info(f"[TARGETS DB] Étoile {star_id} ajoutée au programme {program_id} (exposure_time={exposure_time})")
+    log.info(f"[TARGETS DB] Star {star_id} added to program {program_id} (exposure_time={exposure_time})")
 
 
 async def program_remove_star(program_id: int, star_id: int) -> None:
@@ -320,7 +320,7 @@ async def program_remove_star(program_id: int, star_id: int) -> None:
             (program_id, star_id)
         )
         await db.commit()
-    log.info(f"[TARGETS DB] Étoile {star_id} retirée du programme {program_id}")
+    log.info(f"[TARGETS DB] Star {star_id} removed from program {program_id}")
 
 
 async def program_get_stars(program_id: int) -> list[StarInProgram]:

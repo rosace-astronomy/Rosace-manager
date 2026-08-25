@@ -26,16 +26,16 @@ class ReductionPlugin:
     async def run(self, obs: Observation) -> Observation:
         raw_files = obs.sequencer_data.get("star_spectra_images")
         if not raw_files:
-            raise RuntimeError("REDUCTION : aucun fichier brut (sequencer_data['star_spectra_images'] vide)")
+            raise RuntimeError("REDUCTION: no raw file (sequencer_data['star_spectra_images'] empty)")
 
         program = obs.scheduler_data.get("program")
         if not program:
-            raise RuntimeError("REDUCTION : program manquant dans scheduler_data")
+            raise RuntimeError("REDUCTION: program missing from scheduler_data")
 
         _, red_pipeline = load_pipelines(program)
         log.info(
-            f"[REDUCTION] Début réduction '{program}' — "
-            f"{len(raw_files)} fichier(s) brut(s)"
+            f"[REDUCTION] Starting reduction '{program}' — "
+            f"{len(raw_files)} raw file(s)"
         )
 
         # Each sub-plugin reads/writes obs.reduction_data directly
@@ -47,11 +47,11 @@ class ReductionPlugin:
             try:
                 obs = await sub.execute(obs)
             except Exception as e:
-                log.error(f"[REDUCTION] Échec à l'étape {step} : {e}")
+                log.error(f"[REDUCTION] Step {step} failed: {e}")
                 raise
 
         log.info(
-            f"[REDUCTION] Réduction terminée — "
-            f"{len(obs.reduction_data.get('extract', {}).get('reduced_files', []))} spectre(s) produit(s)"
+            f"[REDUCTION] Reduction complete — "
+            f"{len(obs.reduction_data.get('extract', {}).get('reduced_files', []))} spectrum(s) produced"
         )
         return obs

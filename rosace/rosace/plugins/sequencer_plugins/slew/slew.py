@@ -23,15 +23,15 @@ class SlewPlugin(SubPlugin):
     async def execute(self, obs: Observation) -> Observation:
         target = obs.scheduler_data.get("target")
         if not target:
-            raise RuntimeError("SLEW : target manquant dans scheduler_data")
+            raise RuntimeError("SLEW: target missing from scheduler_data")
 
         queried_name = obs.scheduler_data.get("queried_name")
-        log.info(f"[SLEW] Pointage vers {queried_name}")
+        log.info(f"[SLEW] Slewing to {queried_name}")
         mount = obs.hardware["mount"]
         await mount.slew_to(target.ra, target.dec)
 
         # No sequencer_data casier: the target is already in scheduler_data, and
         # nothing downstream needs to know specifically which SEQUENCER sub-plugin
         # pointed the telescope.
-        log.info(f"[SLEW] Télescope en position sur {queried_name}")
+        log.info(f"[SLEW] Telescope in position on {queried_name}")
         return obs

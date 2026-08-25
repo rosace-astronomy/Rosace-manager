@@ -83,7 +83,7 @@ class BlankSeqPlugin(SubPlugin):
     async def execute(self, obs: Observation) -> Observation:
         queried_name = obs.scheduler_data.get("queried_name") or "inconnue"
 
-        log.info(f"[BLANK_SEQ] Exemple de sous-plugin SEQUENCER pour {queried_name}")
+        log.info(f"[BLANK_SEQ] Example SEQUENCER sub-plugin for {queried_name}")
 
         # No casier: this example has nothing descriptive of its own to report.
         return obs

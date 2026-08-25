@@ -39,4 +39,4 @@ class SubPlugin:
         returns the enriched file.
         Any exception propagates to the parent plugin's orchestrator.
         """
-        raise NotImplementedError(f"{self.name} doit implémenter execute()")
+        raise NotImplementedError(f"{self.name} must implement execute()")

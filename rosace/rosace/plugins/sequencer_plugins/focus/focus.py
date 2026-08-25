@@ -27,5 +27,5 @@ class FocusPlugin(SubPlugin):
         await asyncio.sleep(1)
 
         obs.sequencer_data["focus"] = {"position_um": None, "fwhm_px": None}
-        log.info("[FOCUS] (placeholder INDI) Mise au point terminée")
+        log.info("[FOCUS] (placeholder INDI) Focusing complete")
         return obs

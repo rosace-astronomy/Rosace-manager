@@ -119,8 +119,8 @@ _LOGGING_CFG_PATH = Path(__file__).parent / "conf" / "logging.cfg"
 def _validate_sequencer_backend(value: str) -> str:
     if value not in _VALID_SEQUENCER_BACKENDS:
         raise ValueError(
-            f"conf/config.yaml: sequencer_backend={value!r} invalide "
-            f"(valeurs acceptées : {_VALID_SEQUENCER_BACKENDS})"
+            f"conf/config.yaml: sequencer_backend={value!r} invalid "
+            f"(accepted values: {_VALID_SEQUENCER_BACKENDS})"
         )
     return value
 
@@ -165,8 +165,8 @@ _VALID_SCHEDULERS = ("scheduler_rosace_2026", "blank")
 def _validate_active_scheduler(value: str) -> str:
     if value not in _VALID_SCHEDULERS:
         raise ValueError(
-            f"conf/config.yaml: active_scheduler={value!r} invalide "
-            f"(valeurs acceptées : {_VALID_SCHEDULERS})"
+            f"conf/config.yaml: active_scheduler={value!r} invalid "
+            f"(accepted values: {_VALID_SCHEDULERS})"
         )
     return value
 

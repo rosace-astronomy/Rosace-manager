@@ -1980,7 +1980,7 @@ class TestApiEndpoints:
             target_logger.removeHandler(collector)
 
         assert res.status_code == 422
-        assert any("Nom de programme rejeté" in m for m in collector.messages)
+        assert any("Program name rejected" in m for m in collector.messages)
 
     def test_observations_recent_endpoint(self):
         with self._client() as client:

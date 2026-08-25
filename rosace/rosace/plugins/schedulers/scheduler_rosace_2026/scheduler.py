@@ -29,8 +29,8 @@ def _read_observation_list(path) -> list[dict]:
         f = open(path, encoding="utf-8", newline="")
     except FileNotFoundError as e:
         raise SchedulerFatalError(
-            f"Fichier de plan d'observation introuvable : {path} "
-            f"(voir observation_list_path dans conf/config.yaml)"
+            f"Observation plan file not found: {path} "
+            f"(see observation_list_path in conf/config.yaml)"
         ) from e
 
     with f:
@@ -45,11 +45,11 @@ def _read_observation_list(path) -> list[dict]:
                 })
             except KeyError as e:
                 raise SchedulerFatalError(
-                    f"{path} : colonne manquante {e} — colonnes attendues : "
-                    f"Priority, Program, Star (colonnes trouvées : {list(row.keys())})"
+                    f"{path}: missing column {e} — expected columns: "
+                    f"Priority, Program, Star (found columns: {list(row.keys())})"
                 ) from e
             except ValueError as e:
-                raise SchedulerFatalError(f"{path} : ligne invalide {row} — {e}") from e
+                raise SchedulerFatalError(f"{path}: invalid line {row} — {e}") from e
         return rows
 
 
@@ -95,7 +95,7 @@ class SchedulerPlugin:
     """
 
     async def run(self, obs: Observation) -> Observation:
-        log.info("[SCHEDULER] Sélection de la prochaine cible…")
+        log.info("[SCHEDULER] Selecting next target…")
 
         rows = _read_observation_list(OBSERVATION_LIST_PATH)
 
@@ -104,28 +104,28 @@ class SchedulerPlugin:
         for row in sorted(rows, key=lambda r: r["priority"]):
             program = await program_get_by_name(row["program"])
             if not program:
-                log.warning(f"[SCHEDULER] Programme inconnu, ligne ignorée : {row}")
+                log.warning(f"[SCHEDULER] Unknown program, line ignored: {row}")
                 continue
 
             star = await star_get_by_name(row["star"])
             if not star:
-                log.warning(f"[SCHEDULER] Étoile inconnue, ligne ignorée : {row}")
+                log.warning(f"[SCHEDULER] Unknown star, line ignored: {row}")
                 continue
 
             try:
                 program_stars = await program_get_stars(program.id)
             except ValidationError as e:
                 raise SchedulerFatalError(
-                    f"Donnée invalide dans targets.db pour le programme '{program.name}' "
-                    f"(table program_stars) — vérifie notamment exposure_time : doit être "
-                    f"un nombre ou vide (NULL), jamais une chaîne vide (''). Détail : {e}"
+                    f"Invalid data in targets.db for program '{program.name}' "
+                    f"(table program_stars) — check exposure_time in particular: it must be "
+                    f"a number or empty (NULL), never an empty string (''). Detail: {e}"
                 ) from e
 
             matching = next((s for s in program_stars if s.id == star.id), None)
             if matching is None:
                 log.warning(
-                    f"[SCHEDULER] Étoile '{row['star']}' non liée au programme "
-                    f"'{program.name}', ligne ignorée"
+                    f"[SCHEDULER] Star '{row['star']}' not linked to program "
+                    f"'{program.name}', line ignored"
                 )
                 continue
 
@@ -159,8 +159,8 @@ class SchedulerPlugin:
             altitude = _target_altitude_deg(star.ra, star.dec)
             if altitude < MIN_TARGET_ALTITUDE_DEG:
                 log.info(
-                    f"[SCHEDULER] {item['queried_name']} sous la hauteur minimale "
-                    f"({altitude:.1f}° < {MIN_TARGET_ALTITUDE_DEG}°), ligne ignorée"
+                    f"[SCHEDULER] {item['queried_name']} below minimum altitude "
+                    f"({altitude:.1f}° < {MIN_TARGET_ALTITUDE_DEG}°), line ignored"
                 )
                 continue
 
@@ -172,12 +172,12 @@ class SchedulerPlugin:
             obs.scheduler_data["priority"] = item["priority"]
             obs.scheduler_data["exposure"] = ExposureConfig(exposure_time=item["exposure_time"])
             log.info(
-                f"[SCHEDULER] Cible sélectionnée : {item['queried_name']} "
-                f"({star.name}, priorité {item['priority']}) "
-                f"— programme : {item['program'].name}"
+                f"[SCHEDULER] Target selected: {item['queried_name']} "
+                f"({star.name}, priority {item['priority']}) "
+                f"— program: {item['program'].name}"
             )
             return obs
 
-        log.info("[SCHEDULER] Aucune cible disponible à observer pour l'instant")
+        log.info("[SCHEDULER] No target available to observe right now")
         obs.scheduler_data["target"] = None
         return obs

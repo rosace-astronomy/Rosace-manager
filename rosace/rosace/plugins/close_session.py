@@ -11,7 +11,7 @@ class CloseSessionPlugin:
     """Closes the session: telescope parking, instrument disconnection."""
 
     async def run(self, ctx: SessionContext) -> SessionContext:
-        log.info(f"[CLOSE_SESSION] Clôture session {ctx.session_id}")
+        log.info(f"[CLOSE_SESSION] Closing session {ctx.session_id}")
 
         await deactivate_cooling_for_every_camera(ctx.hardware, ctx.hardware_config)
 
@@ -35,5 +35,5 @@ class CloseSessionPlugin:
                 log.error(f"[CLOSE_SESSION] Failed to disconnect '{device_name}': {e}")
 
         await asyncio.sleep(7.0)
-        log.info("[CLOSE_SESSION] Session clôturée")
+        log.info("[CLOSE_SESSION] Session closed")
         return ctx

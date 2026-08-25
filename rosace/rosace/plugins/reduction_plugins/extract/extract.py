@@ -20,10 +20,10 @@ class ExtractPlugin(SubPlugin):
 
     async def execute(self, obs: Observation) -> Observation:
         if "flat" not in obs.reduction_data:
-            raise RuntimeError("EXTRACT : reduction_data['flat'] manquant — FLAT doit avoir tourné avant EXTRACT")
+            raise RuntimeError("EXTRACT: reduction_data['flat'] missing — FLAT must run before EXTRACT")
         input_files: list[str] = obs.reduction_data["flat"]["corrected_files"]
         if not input_files:
-            raise RuntimeError("EXTRACT : aucun fichier d'entrée (reduction_data['flat']['corrected_files'] vide)")
+            raise RuntimeError("EXTRACT: no input file (reduction_data['flat']['corrected_files'] empty)")
         if not obs.obs_dir:
             raise RuntimeError("EXTRACT : observation directory (obs_dir) not set")
 
@@ -32,8 +32,8 @@ class ExtractPlugin(SubPlugin):
         wavelength_calib = False
 
         log.info(
-            f"[EXTRACT] Extraction spectrale — méthode={method}, "
-            f"ouverture={aperture_px}px, calib_lambda={wavelength_calib}"
+            f"[EXTRACT] Spectral extraction — method={method}, "
+            f"aperture={aperture_px}px, wavelength_calib={wavelength_calib}"
         )
 
         reduced_files: list[str] = []
@@ -43,9 +43,9 @@ class ExtractPlugin(SubPlugin):
             await asyncio.sleep(0.1)
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.touch()
-            log.info(f"[EXTRACT] Simulation : {f} → {out_name}")
+            log.info(f"[EXTRACT] Simulation: {f} → {out_name}")
             reduced_files.append(out_name)
 
         obs.reduction_data["extract"] = {"reduced_files": reduced_files}
-        log.info(f"[EXTRACT] Extraction terminée — {len(reduced_files)} spectre(s) produit(s)")
+        log.info(f"[EXTRACT] Extraction complete — {len(reduced_files)} spectrum(s) produced")
         return obs

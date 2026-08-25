@@ -26,9 +26,9 @@ class SequencerPlugin:
     async def run(self, obs: Observation) -> Observation:
         program = obs.scheduler_data.get("program")
         if not program or "target" not in obs.scheduler_data:
-            raise RuntimeError("SEQUENCER : scheduler_data incomplet (target/program)")
+            raise RuntimeError("SEQUENCER: scheduler_data incomplete (target/program)")
         if not obs.obs_dir:
-            raise RuntimeError("SEQUENCER : répertoire d'observation (obs_dir) non défini")
+            raise RuntimeError("SEQUENCER: observation directory (obs_dir) not set")
 
         # Manifest set as the very first action, before any sub-plugin -- survives a
         # crash anywhere in SEQUENCER, REDUCTION or SHARING (see models.py).
@@ -42,7 +42,7 @@ class SequencerPlugin:
 
         seq_pipeline, _ = load_pipelines(program)
         log.info(
-            f"[SEQUENCER] Début séquence '{program}' pour {obs.scheduler_data.get('queried_name')}"
+            f"[SEQUENCER] Starting sequence '{program}' for {obs.scheduler_data.get('queried_name')}"
         )
 
         # Each sub-plugin reads/writes obs.sequencer_data directly
@@ -52,11 +52,11 @@ class SequencerPlugin:
             try:
                 obs = await sub.execute(obs)
             except Exception as e:
-                log.error(f"[SEQUENCER] Échec à l'étape {step} : {e}")
+                log.error(f"[SEQUENCER] Step {step} failed: {e}")
                 raise
 
         log.info(
-            f"[SEQUENCER] Séquence terminée — "
-            f"{len(obs.sequencer_data.get('star_spectra_images', []))} fichier(s) brut(s)"
+            f"[SEQUENCER] Sequence complete — "
+            f"{len(obs.sequencer_data.get('star_spectra_images', []))} raw file(s)"
         )
         return obs

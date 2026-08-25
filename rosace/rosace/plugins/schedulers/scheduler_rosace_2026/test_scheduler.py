@@ -323,7 +323,7 @@ class TestSchedulerPlugin:
         monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", tmp_path / "DoesNotExist.txt")
 
         session = await self._make_session()
-        with pytest.raises(SchedulerFatalError, match="introuvable"):
+        with pytest.raises(SchedulerFatalError, match="not found"):
             await SchedulerPlugin().run(self._make_obs(session.session_id))
 
     async def test_missing_column_in_observation_list_raises_fatal_error(self, tmp_path, monkeypatch):
@@ -332,7 +332,7 @@ class TestSchedulerPlugin:
         ))
 
         session = await self._make_session()
-        with pytest.raises(SchedulerFatalError, match="colonne manquante"):
+        with pytest.raises(SchedulerFatalError, match="missing column"):
             await SchedulerPlugin().run(self._make_obs(session.session_id))
 
     async def test_invalid_priority_value_raises_fatal_error(self, tmp_path, monkeypatch):
@@ -341,7 +341,7 @@ class TestSchedulerPlugin:
         ))
 
         session = await self._make_session()
-        with pytest.raises(SchedulerFatalError, match="ligne invalide"):
+        with pytest.raises(SchedulerFatalError, match="invalid line"):
             await SchedulerPlugin().run(self._make_obs(session.session_id))
 
     async def test_invalid_exposure_time_in_db_raises_fatal_error(self, tmp_path, monkeypatch):
@@ -364,5 +364,5 @@ class TestSchedulerPlugin:
         ))
 
         session = await self._make_session()
-        with pytest.raises(SchedulerFatalError, match="Donnée invalide"):
+        with pytest.raises(SchedulerFatalError, match="Invalid data"):
             await SchedulerPlugin().run(self._make_obs(session.session_id))

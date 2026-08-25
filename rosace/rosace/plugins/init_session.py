@@ -14,7 +14,7 @@ class InitSessionPlugin:
     """Initializes the session: session directory, instrument connections, pre-night checks."""
 
     async def run(self, ctx: SessionContext) -> SessionContext:
-        log.info(f"[INIT_SESSION] Démarrage session {ctx.session_id}")
+        log.info(f"[INIT_SESSION] Starting session {ctx.session_id}")
 
         date_str = astronomical_day_local_date()
         safe_site = SITE_NAME.replace(" ", "_").replace("/", "-")
@@ -48,5 +48,5 @@ class InitSessionPlugin:
             log.info("[INIT_SESSION] Running in DEMO mode (sequencer_backend=internal) — no hardware involved")
 
         await asyncio.sleep(1.0)
-        log.info("[INIT_SESSION] Session initialisée")
+        log.info("[INIT_SESSION] Session initialised")
         return ctx

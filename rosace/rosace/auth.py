@@ -84,7 +84,7 @@ async def auth_db_init() -> None:
             )
         """)
         await db.commit()
-    log.info(f"[AUTH] Tables d'authentification initialisées : {DB_PATH}")
+    log.info(f"[AUTH] Authentication tables initialised: {DB_PATH}")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -115,8 +115,8 @@ async def user_create(user: UserCreate) -> UserOut:
             )
             await db.commit()
         except aiosqlite.IntegrityError as e:
-            raise ValueError(f"le compte '{user.username}' existe déjà") from e
-    log.info(f"[AUTH] Compte créé : {user.username} (admin={user.is_admin})")
+            raise ValueError(f"account '{user.username}' already exists") from e
+    log.info(f"[AUTH] Account created: {user.username} (admin={user.is_admin})")
     return UserOut(username=user.username, is_admin=user.is_admin, created_at=created_at)
 
 
@@ -139,7 +139,7 @@ async def user_delete(username: str) -> None:
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         await db.execute("DELETE FROM users WHERE username = ?", (username,))
         await db.commit()
-    log.info(f"[AUTH] Compte supprimé : {username}")
+    log.info(f"[AUTH] Account deleted: {username}")
 
 
 async def _user_row_by_username(username: str) -> Optional[aiosqlite.Row]:
@@ -220,5 +220,5 @@ async def ensure_first_admin(username: str, password: str) -> None:
     exists — past this first bootstrap, account creation goes through the
     API (admin-only), not shell access to the machine."""
     if await user_count() > 0:
-        raise RuntimeError("un compte existe déjà — --create-admin ne peut amorcer qu'un premier compte")
+        raise RuntimeError("an account already exists — --create-admin can only bootstrap a first account")
     await user_create(UserCreate(username=username, password=password, is_admin=True))

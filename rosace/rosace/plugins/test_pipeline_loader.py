@@ -57,7 +57,7 @@ class TestLoadProgrammeYaml:
         assert len(data["reduction"]) > 0
 
     def test_raises_on_unknown_program(self):
-        with pytest.raises(FileNotFoundError, match="introuvable"):
+        with pytest.raises(FileNotFoundError, match="not found"):
             load_program_yaml("programme_inexistant")
 
     def test_error_message_lists_available(self):
@@ -70,7 +70,7 @@ class TestLoadProgrammeYaml:
         """A name that could escape PROGRAMS_DIR is rejected before any path
         resolution is attempted — no FileNotFoundError that would reveal
         whether the traversed path exists or not."""
-        with pytest.raises(ValueError, match="invalide"):
+        with pytest.raises(ValueError, match="Invalid"):
             load_program_yaml(bad_name)
 
 
@@ -115,7 +115,7 @@ class TestBuildPipeline:
         """An invalid step name (program YAML) is rejected before any import
         is attempted — also protects names declared in a YAML, not just the
         program name itself."""
-        with pytest.raises(ValueError, match="invalide"):
+        with pytest.raises(ValueError, match="Invalid"):
             build_pipeline([bad_name], "sequencer")
 
 
@@ -300,7 +300,7 @@ class TestLoadSharingPlugin:
         }))
         monkeypatch.setattr(pipeline_loader, "PROGRAMS_DIR", tmp_path)
 
-        with pytest.raises(ValueError, match="invalide"):
+        with pytest.raises(ValueError, match="Invalid"):
             load_sharing_plugin("bad5")
 
 

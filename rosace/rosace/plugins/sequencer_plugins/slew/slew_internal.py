@@ -27,14 +27,14 @@ class SlewPlugin(SubPlugin):
         slew_speed = 2.0  # deg/s, simulation
         settle_time = 3.0  # s, simulation
 
-        log.info(f"[SLEW] Pointage vers {queried_name} RA={ra:.4f}° Dec={dec:.4f}°")
+        log.info(f"[SLEW] Slewing to {queried_name} RA={ra:.4f}° Dec={dec:.4f}°")
 
         slew_duration = min(settle_time, 30.0 / slew_speed)
         await asyncio.sleep(slew_duration * 0.1)  # sped up for simulation
-        log.info(f"[SLEW] Simulation — pointage terminé en {slew_duration:.1f}s (accéléré)")
+        log.info(f"[SLEW] Simulation — slew complete in {slew_duration:.1f}s (accelerated)")
 
         # No sequencer_data casier: the target is already in scheduler_data, and
         # nothing downstream needs to know specifically which SEQUENCER sub-plugin
         # pointed the telescope.
-        log.info(f"[SLEW] Télescope en position sur {queried_name}")
+        log.info(f"[SLEW] Telescope in position on {queried_name}")
         return obs

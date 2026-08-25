@@ -55,7 +55,7 @@ async def simbad_search(name: str) -> StarCreate:
         "QUERY":   query,
     }
 
-    log.info(f"[SIMBAD] Recherche : {name}")
+    log.info(f"[SIMBAD] Querying: {name}")
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -63,23 +63,23 @@ async def simbad_search(name: str) -> StarCreate:
             response.raise_for_status()
             data = response.json()
     except httpx.HTTPStatusError as e:
-        raise SimbadQueryError(f"Erreur HTTP Simbad : {e.response.status_code}") from e
+        raise SimbadQueryError(f"Simbad HTTP error: {e.response.status_code}") from e
     except httpx.RequestError as e:
-        raise SimbadQueryError(f"Erreur réseau Simbad : {e}") from e
+        raise SimbadQueryError(f"Simbad network error: {e}") from e
     except Exception as e:
-        raise SimbadQueryError(f"Erreur inattendue : {e}") from e
+        raise SimbadQueryError(f"Unexpected error: {e}") from e
 
     # Parsing the TAP JSON response
     # Format: {"metadata": [...], "data": [[val1, val2, ...]]}
     rows = data.get("data", [])
     if not rows:
-        raise SimbadNotFoundError(f"Aucun résultat Simbad pour : {name}")
+        raise SimbadNotFoundError(f"No Simbad result for: {name}")
 
     row = rows[0]
     cols = [col["name"] for col in data.get("metadata", [])]
     record = dict(zip(cols, row))
 
-    log.info(f"[SIMBAD] Trouvé : {record.get('main_id')} "
+    log.info(f"[SIMBAD] Found: {record.get('main_id')} "
              f"RA={record.get('ra')} DEC={record.get('dec')}")
 
     return StarCreate(
