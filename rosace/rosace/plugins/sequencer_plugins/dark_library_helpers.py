@@ -32,6 +32,11 @@ DARK_LIBRARY_MIN_TEMP_C = -20
 DARK_LIBRARY_MAX_TEMP_C = 0
 DARK_LIBRARY_TEMP_STEP_C = 5
 
+# Safety floor for compute_camera_target_temperature() below -- see its own
+# docstring for why this is needed at all (round_to_5's ceiling behavior can
+# otherwise put the naive target above ambient with a weak cooling_capability_deg_c).
+MIN_COOLING_MARGIN_DEG_C = 5
+
 
 def round_to_5(value: float) -> int:
     """Rounds up to the next multiple of 5 (e.g. -9 -> -5, 3 -> 5, -5 -> -5,
@@ -47,9 +52,21 @@ def compute_camera_target_temperature(ambient_temp_c: float, cooling_capability_
     is stored as a negative value in the hardware YAML) below ambient, rounded
     up to the next multiple of 5 -- the margin keeps enough cooling headroom
     for the whole night, and the rounding is what lets darks be reused across
-    sessions/observations at the same bucket instead of one-off temperatures."""
+    sessions/observations at the same bucket instead of one-off temperatures.
+
+    Always guarantees at least MIN_COOLING_MARGIN_DEG_C below ambient, even
+    after rounding -- round_to_5's ceiling behavior can otherwise push the
+    naive target above, or right at, ambient itself when
+    cooling_capability_deg_c is small (found on a real first-light test: a
+    weak enough cooling capability produced a target hotter than ambient,
+    which a cooling-only camera can never reach, timing out INIT_SESSION's
+    cooldown wait). When the naive rounded-up target doesn't leave that
+    margin, the next colder multiple of 5 is used instead -- still a valid
+    dark-library bucket, just one step colder."""
     delta = 0.8 * abs(cooling_capability_deg_c)
-    return round_to_5(ambient_temp_c - delta)
+    target = round_to_5(ambient_temp_c - delta)
+    max_safe_target = 5 * math.floor((ambient_temp_c - MIN_COOLING_MARGIN_DEG_C) / 5)
+    return min(target, max_safe_target)
 
 
 def temperature_bucket_dirname(temp_c: float) -> str:
@@ -66,6 +83,20 @@ def temperature_bucket_dirname(temp_c: float) -> str:
     return "Temp0degrees"
 
 
+_TEMP_TOKEN_RE = re.compile(r"_(-?\d+)deg_")
+
+# Real-world tolerances: a session restart can recompute a slightly different
+# target temperature (see compute_camera_target_temperature()'s own safety
+# floor above, added for the same underlying reason), and a real camera
+# driver doesn't guarantee an EXPTIME of exactly the requested duration to
+# the millisecond. Without these, a perfectly usable series could be
+# rejected and reshot for no real reason -- found in practice on a first
+# real-sky test. Both user-confirmed values, not yet exposed as config.yaml
+# keys (see DARK_LIBRARY_MIN_TEMP_C etc. above for the same reasoning).
+TEMPERATURE_TOLERANCE_DEG_C = 2.0
+EXPOSURE_TIME_TOLERANCE_SECONDS = 1.0
+
+
 def find_usable_frame_series(
     directory: Path,
     *,
@@ -78,20 +109,27 @@ def find_usable_frame_series(
     """Looks for a usable DARK or BIAS series in `directory` (the session
     directory, or -- DARK only -- one dark-library temperature bucket, same
     rule either way, see CLAUDE.md's dark_acquisition section): at least
-    count_required files of this image_type ("DARK" or "BIAS") matching this
-    temperature (parsed from the filename convention build_fits_root_name()
-    already writes, e.g. "..._-5deg_...", see acquisition_helpers.py), whose
-    first file's FITS header (read alone, not the pixel data) reports the
-    same sensor size (NAXIS1/NAXIS2) as sensor_size and an EXPTIME at least
-    exposure_time_required. Returns the first count_required matching
-    filenames (sorted -- the trailing timestamp in each name makes this
-    chronological), or None if no usable series was found. Never opens more
-    than one file's header."""
+    count_required files of this image_type ("DARK" or "BIAS") within
+    TEMPERATURE_TOLERANCE_DEG_C of this temperature (parsed from the
+    filename convention build_fits_root_name() already writes, e.g.
+    "..._-5deg_...", see acquisition_helpers.py -- not read from the FITS
+    header, which carries no temperature card of its own), whose first
+    file's FITS header (read alone, not the pixel data) reports the same
+    sensor size (NAXIS1/NAXIS2) as sensor_size and an EXPTIME at least
+    exposure_time_required minus EXPOSURE_TIME_TOLERANCE_SECONDS. Returns the
+    first count_required matching filenames (sorted -- the trailing
+    timestamp in each name makes this chronological), or None if no usable
+    series was found. Never opens more than one file's header."""
     if not directory.is_dir():
         return None
 
-    temp_token = f"_{round(temp_c)}deg_"
-    candidates = sorted(p for p in directory.glob(f"{image_type}_*.fits") if temp_token in p.name)
+    candidates = []
+    for p in sorted(directory.glob(f"{image_type}_*.fits")):
+        match = _TEMP_TOKEN_RE.search(p.name)
+        if match is None:
+            continue
+        if abs(int(match.group(1)) - temp_c) <= TEMPERATURE_TOLERANCE_DEG_C:
+            candidates.append(p)
     if len(candidates) < count_required:
         return None
 
@@ -100,7 +138,7 @@ def find_usable_frame_series(
     if (header.get("NAXIS1"), header.get("NAXIS2")) != tuple(sensor_size):
         return None
     exptime = header.get("EXPTIME")
-    if exptime is None or exptime < exposure_time_required:
+    if exptime is None or exptime < exposure_time_required - EXPOSURE_TIME_TOLERANCE_SECONDS:
         return None
 
     return [p.name for p in selected]

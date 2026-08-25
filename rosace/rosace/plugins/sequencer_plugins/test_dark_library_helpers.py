@@ -47,6 +47,29 @@ class TestComputeCameraTargetTemperature:
     def test_accepts_positive_cooling_capability_too(self):
         assert compute_camera_target_temperature(ambient_temp_c=15, cooling_capability_deg_c=30) == -5
 
+    def test_weak_cooling_capability_does_not_exceed_ambient(self):
+        """Found on a real first-light test: ambient 15C, a weak
+        cooling_capability_deg_c (-2C) gives delta=1.6C -> raw 13.4C ->
+        round_to_5 (ceiling) would naively give 15C -- equal to ambient, so
+        a cooling-only camera could never reach it (timed out). The safety
+        floor must instead pick the next colder bucket, at least
+        MIN_COOLING_MARGIN_DEG_C below ambient."""
+        target = compute_camera_target_temperature(ambient_temp_c=15, cooling_capability_deg_c=-2)
+        assert target <= 15 - 5
+        assert target == 10
+
+    def test_extremely_weak_cooling_capability_still_leaves_margin(self):
+        # Ambient 9.9C, cooling_capability -0.1C -> delta 0.08C -> raw 9.82C
+        # -> naive round_to_5 gives 10C (ABOVE ambient) without the floor.
+        target = compute_camera_target_temperature(ambient_temp_c=9.9, cooling_capability_deg_c=-0.1)
+        assert target <= 9.9 - 5
+        assert target == 0
+
+    def test_strong_cooling_capability_unaffected_by_safety_floor(self):
+        """A real cooling margin (as in the worked example above) must not
+        be clamped further than round_to_5 already gives."""
+        assert compute_camera_target_temperature(ambient_temp_c=15, cooling_capability_deg_c=-30) == -5
+
 
 class TestTemperatureBucketDirname:
 
@@ -93,6 +116,26 @@ class TestFindUsableFrameSeries:
             exposure_time_required=300, sensor_size=(100, 80),
         ) is None
 
+    def test_accepts_a_file_within_the_temperature_tolerance(self, tmp_path):
+        """A session restart can recompute a slightly different target
+        temperature -- an existing series within TEMPERATURE_TOLERANCE_DEG_C
+        (2C) must still be reused rather than reshot."""
+        _write_frame_fits(tmp_path, temp_c=-3, index=1)
+        _write_frame_fits(tmp_path, temp_c=-3, index=2)
+        result = find_usable_frame_series(
+            tmp_path, image_type="DARK", temp_c=-5, count_required=2,
+            exposure_time_required=300, sensor_size=(100, 80),
+        )
+        assert result is not None
+
+    def test_rejects_a_file_just_beyond_the_temperature_tolerance(self, tmp_path):
+        _write_frame_fits(tmp_path, temp_c=-2, index=1)
+        _write_frame_fits(tmp_path, temp_c=-2, index=2)
+        assert find_usable_frame_series(
+            tmp_path, image_type="DARK", temp_c=-5, count_required=2,
+            exposure_time_required=300, sensor_size=(100, 80),
+        ) is None
+
     def test_returns_none_if_sensor_size_does_not_match(self, tmp_path):
         _write_frame_fits(tmp_path, naxis1=100, naxis2=80, index=1)
         _write_frame_fits(tmp_path, naxis1=100, naxis2=80, index=2)
@@ -104,6 +147,26 @@ class TestFindUsableFrameSeries:
     def test_returns_none_if_exposure_time_too_short(self, tmp_path):
         _write_frame_fits(tmp_path, exptime=100, index=1)
         _write_frame_fits(tmp_path, exptime=100, index=2)
+        assert find_usable_frame_series(
+            tmp_path, image_type="DARK", temp_c=-5, count_required=2,
+            exposure_time_required=300, sensor_size=(100, 80),
+        ) is None
+
+    def test_accepts_a_file_within_the_exposure_time_tolerance(self, tmp_path):
+        """A real camera driver doesn't guarantee EXPTIME to the millisecond
+        -- a series up to EXPOSURE_TIME_TOLERANCE_SECONDS (1s) short of the
+        requirement must still be reused rather than reshot."""
+        _write_frame_fits(tmp_path, exptime=299.5, index=1)
+        _write_frame_fits(tmp_path, exptime=299.5, index=2)
+        result = find_usable_frame_series(
+            tmp_path, image_type="DARK", temp_c=-5, count_required=2,
+            exposure_time_required=300, sensor_size=(100, 80),
+        )
+        assert result is not None
+
+    def test_rejects_a_file_just_beyond_the_exposure_time_tolerance(self, tmp_path):
+        _write_frame_fits(tmp_path, exptime=298.5, index=1)
+        _write_frame_fits(tmp_path, exptime=298.5, index=2)
         assert find_usable_frame_series(
             tmp_path, image_type="DARK", temp_c=-5, count_required=2,
             exposure_time_required=300, sensor_size=(100, 80),
