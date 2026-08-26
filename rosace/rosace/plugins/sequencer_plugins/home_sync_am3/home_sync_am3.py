@@ -1,17 +1,12 @@
 """
-SEQUENCER sub-plugin -- ZWO AM3 mount home+sync recovery, "indi" backend only.
+SEQUENCER sub-plugin -- ZWO AM3 mount home/park recovery, "indi" backend only.
 
-The AM3 has absolute encoders that are supposed to survive a disconnect/
-reconnect on their own -- but in practice (found 2026-08-18, during a real
-observing session) the mount's reported position was lost after several
-manual reconnects. Re-parking (which slews to the mount's fixed mechanical
-Home reference and locks it there), then unparking (which unlocks motion
-again without moving), then syncing the driver's internal position to
-Home's own known sky coordinate, recovers a reliable position reference.
-This recovery procedure is AM3/driver-specific -- a mount whose absolute
-encoders actually survive a reconnect would never need it -- which is why
-it lives in its own SEQUENCER sub-plugin instead of INIT_SESSION, kept
-mount-agnostic.
+Re-parks then unparks the mount to recover a reliable position reference:
+the driver derives Home's sky coordinate itself from the current time and
+site once unparked, so no explicit SYNC is needed -- and none is issued,
+since a SYNC would also feed the mount's own pointing-correction model,
+distorting subsequent GOTOs. AM3/driver-specific, so it lives in its own
+SEQUENCER sub-plugin rather than INIT_SESSION, kept mount-agnostic.
 
 Runs once per session, before the first real pointing (placed before
 pointing_72ed in the program YAML) -- not before every observation, since
@@ -37,7 +32,6 @@ from __future__ import annotations
 
 import logging
 
-from ....config import SITE_LONGITUDE_DEG
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
 
@@ -48,8 +42,7 @@ _last_homed_session_id: str | None = None
 
 class HomeSyncAm3Plugin(SubPlugin):
     """Once per session, before the first real pointing: park the AM3 mount
-    to its Home reference, unpark it, and sync the driver's position to
-    Home's own known sky coordinate -- recovers a reliable position
+    to its Home reference then unpark it -- recovers a reliable position
     reference after a mid-session reconnect."""
 
     async def execute(self, obs: Observation) -> Observation:
@@ -60,9 +53,7 @@ class HomeSyncAm3Plugin(SubPlugin):
         mount = obs.hardware["mount"]
         await mount.park()
         await mount.unpark()
-        ra, dec = await mount.get_home_position(SITE_LONGITUDE_DEG)
-        await mount.sync_to_coordinates(ra, dec)
 
         _last_homed_session_id = obs.session_id
-        log.info(f"[HOME_SYNC_AM3] Mount re-homed and synced for session {obs.session_id}")
+        log.info(f"[HOME_SYNC_AM3] Mount re-homed for session {obs.session_id}")
         return obs

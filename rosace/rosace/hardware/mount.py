@@ -26,18 +26,3 @@ class Mount(Protocol):
         """Unlock the mount after park(), allowing motion again (position
         unchanged)."""
         ...
-
-    async def sync_to_coordinates(self, ra: float, dec: float) -> None:
-        """Tell the mount it is currently pointed at the given J2000
-        equatorial coordinates (degrees), without moving it -- recalibrates
-        its internal position reference to match reality."""
-        ...
-
-    async def get_home_position(self, longitude_deg: float) -> tuple[float, float]:
-        """Returns the (ra, dec) J2000 equatorial coordinates the mount's
-        home/reference position corresponds to right now, for the given
-        site longitude (degrees, east-positive). A GEM mount's home
-        position (RA axis parallel to the polar axis) points at the
-        celestial pole at hour angle 0 -- both of-date concepts, resolved
-        to J2000 by the implementation."""
-        ...
