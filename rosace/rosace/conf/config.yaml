@@ -117,3 +117,12 @@ subplugin_params:
     # BIAS exposure time (seconds) -- 0 by definition (no integration), but
     # some cameras refuse a literal 0s exposure -- raise this if so.
     exposure_time_seconds: 0.0
+
+  calib_acquisition:
+    # Number of CALIB frames per series.
+    count: 3
+    # CALIB exposure time (seconds) -- a calibration lamp exposure.
+    exposure_time_seconds: 3.0
+    # Maximum age (hours) of an existing session-directory CALIB series
+    # before it's considered stale and reshot -- no library, unlike DARK.
+    max_age_hours: 24.0
