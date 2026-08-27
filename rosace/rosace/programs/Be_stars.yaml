@@ -14,6 +14,7 @@ sequencer:
   - dark_acquisition             # Darks (session/library/camera) -- before the SKY reset below
   - bias_acquisition             # Bias (session/camera) -- before the SKY reset below
   - calib_acquisition            # Calibration lamp (session/camera) -- before the SKY reset below
+  - flat_acquisition             # Flats (session/camera) -- before the SKY reset below
   - spectro_light_source_to_sky  # Resets the spectroscope to SKY (safety at end of observation)
 reduction:
   - bias        # Bias subtraction

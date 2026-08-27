@@ -126,3 +126,10 @@ subplugin_params:
     # Maximum age (hours) of an existing session-directory CALIB series
     # before it's considered stale and reshot -- no library, unlike DARK.
     max_age_hours: 24.0
+
+  flat_acquisition:
+    # Number of FLAT frames per series. Shot once per session and reused
+    # for the rest of it -- no staleness check at all, unlike CALIB.
+    count: 5
+    # FLAT exposure time (seconds).
+    exposure_time_seconds: 3.0
