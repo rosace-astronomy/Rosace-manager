@@ -31,7 +31,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from ....config import BIAS_COUNT, BIAS_EXPOSURE_TIME_SECONDS
+from ....config import SUBPLUGIN_PARAMS
 from ....hardware.spectroscope import LightSource
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
@@ -39,6 +39,10 @@ from ..acquisition_helpers import build_fits_root_name, capture_science_image
 from ..dark_library_helpers import find_usable_frame_series, summarize_series_root_name
 
 log = logging.getLogger("spectro.subplugin.bias_acquisition")
+
+_params = SUBPLUGIN_PARAMS.get("bias_acquisition", {})
+BIAS_COUNT = _params.get("count", 5)
+BIAS_EXPOSURE_TIME_SECONDS = _params.get("exposure_time_seconds", 0.0)
 
 
 class BiasAcquisitionPlugin(SubPlugin):

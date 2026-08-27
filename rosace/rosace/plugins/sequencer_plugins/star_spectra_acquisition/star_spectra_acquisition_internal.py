@@ -26,12 +26,17 @@ import asyncio
 import logging
 from pathlib import Path
 
-from ....config import EXPOSURE_TIME_MAG0_SECONDS, MAX_EXPOSURE_TIME_SECONDS
+from ....config import SUBPLUGIN_PARAMS
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
 from ..acquisition_helpers import compute_exposure_time_and_count
 
 log = logging.getLogger("spectro.subplugin.star_spectra_acquisition")
+
+# Shared with dark_acquisition.py / star_spectra_acquisition.py (indi
+# backend) -- see conf/config.yaml's subplugin_params section.
+EXPOSURE_TIME_MAG0_SECONDS = SUBPLUGIN_PARAMS.get("exposure_time_mag0_seconds", 1.0)
+MAX_EXPOSURE_TIME_SECONDS = SUBPLUGIN_PARAMS.get("max_exposure_time_seconds", 300)
 
 
 class StarSpectraAcquisitionPlugin(SubPlugin):

@@ -61,13 +61,12 @@ GUI_PREVIEW_DIR = BASE_DATA_DIR / "gui_preview"
 # Generic name used to name session directories.
 SITE_NAME = _cfg["site_name"]
 
-# The site's geographic position (longitude signed, East positive) and the
-# minimum altitude (degrees) for a target to be considered observable — used
-# by scheduler_rosace_2026 for its visibility calculation (AltAz, AstroPy).
+# The site's geographic position (longitude signed, East positive) — a
+# physical fact about the installation, not a plugin setting, even though
+# only scheduler_rosace_2026 reads it today (AltAz visibility calculation).
 SITE_LATITUDE_DEG = _cfg["site_latitude_deg"]
 SITE_LONGITUDE_DEG = _cfg["site_longitude_deg"]
 SITE_ELEVATION_M = _cfg["site_elevation_m"]
-MIN_TARGET_ALTITUDE_DEG = _cfg["min_target_altitude_deg"]
 
 # ── Active hardware configuration ────────────────────────────
 # Name of the YAML file in conf/ (without extension) describing the hardware
@@ -87,18 +86,10 @@ SCHEDULER_RETRY_SECONDS = _cfg["scheduler_retry_seconds"]
 # connectivity check at session start (see hardware_connectivity.py).
 HARDWARE_CONNECT_TIMEOUT_SECONDS = _cfg["hardware_connect_timeout_seconds"]
 
-# ── Science exposure ─────────────────────────────────────
-# Exposure time (mag 0) and max duration of a sub-exposure — see
-# acquisition_helpers.py::compute_exposure_time_and_count().
-EXPOSURE_TIME_MAG0_SECONDS = _cfg["exposure_time_mag0_seconds"]
-MAX_EXPOSURE_TIME_SECONDS = _cfg["max_exposure_time_seconds"]
-
 # ── Darks / bias ──────────────────────────────────────────────
-# Number of images per series, fixed for the whole session. See
-# plugins/sequencer_plugins/dark_acquisition/.
-DARK_COUNT = _cfg["dark_count"]
-BIAS_COUNT = _cfg["bias_count"]
-BIAS_EXPOSURE_TIME_SECONDS = _cfg["bias_exposure_time_seconds"]
+# DARK_LIBRARY_DIR stays a core constant (a directory, same shape/lifecycle
+# as BASE_DATA_DIR/LOG_DIR/... above) even though only dark_acquisition
+# consumes it — see plugins/sequencer_plugins/dark_acquisition/.
 DARK_LIBRARY_DIR = BASE_DATA_DIR / _cfg["dark_library_dir"]
 
 # ── Camera cooldown (INIT_SESSION, sequencer_backend=indi) ──────
@@ -177,10 +168,19 @@ except ValueError as e:
     _log_fatal_startup_error(str(e))
     raise
 
-# ── Observation plan (SCHEDULER) ───────────────────────────────
-# Text file (anywhere on disk, not necessarily under BASE_DATA_DIR) that
-# SCHEDULER reads to pick the next target.
-OBSERVATION_LIST_PATH = Path(_cfg["observation_list_path"]).expanduser()
+# ── Plugin parameters ──────────────────────────────────────────
+# A single generic passthrough for every sub-plugin-specific setting (e.g.
+# DARK/BIAS frame counts, scheduler_rosace_2026's observation list path...).
+# Deliberately the ONLY thing config.py ever does with these: unlike the
+# core constants above, no key here gets its own named constant in this
+# module, since sub-plugins are meant to vary freely per installation and
+# config.py must never need editing again just because a new plugin
+# parameter was introduced. Each consuming sub-plugin reads its own slice
+# (e.g. SUBPLUGIN_PARAMS.get("dark_acquisition", {}).get("count", 5)) and
+# owns its own default — config.py has no opinion on what's inside, or
+# even on whether a given key exists at all. See conf/config.yaml's
+# subplugin_params section and CLAUDE.md's config table.
+SUBPLUGIN_PARAMS: dict = _cfg.get("subplugin_params", {})
 
 # ── Authentication ──────────────────────────────────────────────
 # How long a session (cookie) stays valid before requiring a fresh login.

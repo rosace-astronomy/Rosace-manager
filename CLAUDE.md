@@ -277,6 +277,13 @@ The packaged `conf/config.yaml` is a **demo default**, meant to work out of the 
 
 `config.py` is a thin loader: it resolves which `config.yaml` is active (see above), reads it at import time, and exposes the same constants the rest of the codebase already imports (`from .config import BASE_DATA_DIR, ...`).
 
+`conf/config.yaml` is split into two sections, and the two follow different rules — a deliberate architectural decision (see HISTORY.md): sub-plugins are meant to vary freely per installation/observer (a parameter one program's plugin needs may be meaningless to another), so requiring every installation to declare every plugin's parameters (as a flat, unconditionally-indexed `config.yaml` would) doesn't scale as the sub-plugin catalogue grows.
+
+- **Core** — read directly by `main.py`/`auth.py`/`database.py`, or a selector key needed to pick which plugin family is active (`active_hardware`, `active_scheduler`, `sequencer_backend`) — a plugin can't declare its own selector. Every installation must set these. `config.py` reads each with `_cfg["key"]` (fails fast, at server startup, if missing) and exposes it as its own named constant, one per key — the table below.
+- **Plugin** — everything specific to one or a few sub-plugins (DARK/BIAS frame counts, `scheduler_rosace_2026`'s observation list path...). Lives under one free-form `subplugin_params:` block in `config.yaml`, with no schema enforced. `config.py` exposes exactly one constant for the whole block, `SUBPLUGIN_PARAMS: dict = _cfg.get("subplugin_params", {})` — it is never edited again just because a new plugin parameter was introduced. Each consuming sub-plugin reads its own slice with its own default (e.g. `SUBPLUGIN_PARAMS.get("dark_acquisition", {}).get("count", 5)`), so an installation that doesn't use a given sub-plugin needs no entry for it at all. A parameter read by several interchangeable sub-plugins (e.g. `max_exposure_time_seconds`, read by both `star_spectra_acquisition` and `dark_acquisition`) sits at the *root* of `subplugin_params` rather than nested under one plugin's name — the same "shared, purpose-named key" principle already used for casiers (see the Plugin system section above), applied to config. `DARK_LIBRARY_DIR` is the one exception kept in Core despite being consumed only by `dark_acquisition`: it's a directory, same shape/lifecycle as `BASE_DATA_DIR`/`LOG_DIR` above it, not a tunable behavior.
+
+**Core:**
+
 | Constant | Source key in `config.yaml` | Default | Purpose |
 |---|---|---|---|
 | `BASE_DATA_DIR` | `base_data_dir` | `~/.rosace` | Root for all persistent data (databases, log, session directories) |
@@ -284,27 +291,31 @@ The packaged `conf/config.yaml` is a **demo default**, meant to work out of the 
 | `DB_PATH` | *(derived)* | `~/.rosace/databases/rosace.db` | Sessions + observations DB |
 | `LOG_DIR` | `log_dir` | `~/.rosace/log` | Subdirectory holding the rotating log file (`log_config.py`) |
 | `OBSERVATIONS_DIR` | `observations_dir` | `~/.rosace/observations` | Subdirectory holding one folder per observation night (`INIT_SESSION`) |
+| `DARK_LIBRARY_DIR` | `dark_library_dir` | `~/.rosace/dark_library` | Subdirectory holding the reusable dark-frame library, one folder per temperature bucket — see `dark_acquisition` below. BIAS has no library (see below). |
 | `SITE_NAME` | `site_name` | `"St-Pancrasse"` | Used to name session directories |
-| `SITE_LATITUDE_DEG` / `SITE_LONGITUDE_DEG` / `SITE_ELEVATION_M` | `site_latitude_deg` / `site_longitude_deg` / `site_elevation_m` | `45.0` / `5.0` / `950` | Site location (longitude signed, East positive); `SITE_LATITUDE_DEG`/`SITE_LONGITUDE_DEG` used by `scheduler_rosace_2026`'s altitude check (`astro_math.py`, elevation not needed at this precision) |
-| `MIN_TARGET_ALTITUDE_DEG` | `min_target_altitude_deg` | `10` | Minimum altitude (degrees) for `scheduler_rosace_2026` to consider a target currently observable |
+| `SITE_LATITUDE_DEG` / `SITE_LONGITUDE_DEG` / `SITE_ELEVATION_M` | `site_latitude_deg` / `site_longitude_deg` / `site_elevation_m` | `45.0` / `5.0` / `950` | Site location (longitude signed, East positive) — a physical fact about the installation, kept in Core even though only `scheduler_rosace_2026` reads it today (`astro_math.py`'s altitude check, elevation not needed at this precision) |
 | `ACTIVE_HARDWARE` | `active_hardware` | `"hardware_indi_simu"` | Name (no extension) of the hardware YAML file to use |
 | `HARDWARE_CONFIG_PATH` | *(derived)* | `conf/hardware_indi_simu.yaml` | Full path to the active hardware YAML, parsed by `plugins/hardware_connectivity.py` (`sequencer_backend=indi` only) |
-| `SCHEDULER_RETRY_SECONDS` | `scheduler_retry_seconds` | `60` | Delay before `main.py` asks SCHEDULER again after it reports nothing to observe (`target=None`) |
-| `OBSERVATION_LIST_PATH` | `observation_list_path` | `~/.rosace/ObservationList.txt` | Text file (CSV: `Priority, Program, Star, commentaire`) the `scheduler_rosace_2026` plugin reads to pick the next target — see below. Any location, not necessarily under `BASE_DATA_DIR`. |
 | `ACTIVE_SCHEDULER` | `active_scheduler` | `"scheduler_rosace_2026"` | Name (registry in `plugins/schedulers/__init__.py`) of the active SCHEDULER plugin: `"scheduler_rosace_2026"` (real target selection) or `"blank"` (minimal hardcoded example) |
 | `SEQUENCER_BACKEND` | `sequencer_backend` | `"internal"` | Which SEQUENCER sub-plugin family to load: `"internal"` (simulation, no external dependency) or `"indi"` (real INDI/PHD2 protocol) |
+| `SCHEDULER_RETRY_SECONDS` | `scheduler_retry_seconds` | `60` | Delay before `main.py` asks SCHEDULER again after it reports nothing to observe (`target=None`) |
 | `HARDWARE_CONNECT_TIMEOUT_SECONDS` | `hardware_connect_timeout_seconds` | `5` | `INIT_SESSION` (`sequencer_backend=indi` only): max time to wait for each INDI device / PHD2 to answer |
-| `EXPOSURE_TIME_MAG0_SECONDS` / `MAX_EXPOSURE_TIME_SECONDS` | `exposure_time_mag0_seconds` / `max_exposure_time_seconds` | `1.0` / `300` | Science exposure time for a magnitude-0 target, and the max duration of a single sub-exposure — used by `star_spectra_acquisition.py` when `exposure_time` isn't explicitly set (see `acquisition_helpers.py::compute_exposure_time_and_count()`); `MAX_EXPOSURE_TIME_SECONDS` also doubles as the required DARK exposure time (see `dark_acquisition` below) |
-| `DARK_COUNT` / `BIAS_COUNT` | `dark_count` / `bias_count` | `5` / `5` | Number of DARK/BIAS frames per series, fixed for the whole session (not per-observation/program) — see `dark_acquisition`/`bias_acquisition` below. |
-| `BIAS_EXPOSURE_TIME_SECONDS` | `bias_exposure_time_seconds` | `0.0` | BIAS exposure time — 0 by definition (no integration), overridable for a camera that refuses a literal 0s exposure — see `bias_acquisition` below. |
-| `DARK_LIBRARY_DIR` | `dark_library_dir` | `~/.rosace/dark_library` | Subdirectory holding the reusable dark-frame library, one folder per temperature bucket — see `dark_acquisition` below. BIAS has no library (see below). |
 | `CAMERA_COOLDOWN_TIMEOUT_SECONDS` | `camera_cooldown_timeout_seconds` | `300` | `INIT_SESSION` (`sequencer_backend=indi` only): max time to wait for the science camera to reach its computed cooldown target temperature — see `plugins/camera_cooldown.py` below. |
 | `SESSION_TTL_HOURS` | `session_ttl_hours` | `336` (14 days) | How long a login session (cookie) stays valid — see Authentication above |
 | `SESSION_COOKIE_SECURE` | `session_cookie_secure` | `false` | Whether the session cookie requires HTTPS (the `Secure` attribute) — see Authentication above |
 
 `TARGETS_DB_PATH` is defined in `targets.py` as `DATABASES_DIR / "targets.db"`.
 
-**When adding a new config key**: also update `test_rosace_core.py`'s `_write_tmp_config` test helper, or tests that don't pass the new key will silently use whatever default `config.py` falls back to.
+**Plugin** (`SUBPLUGIN_PARAMS`, `subplugin_params:` in `config.yaml`) — each row below is read inside the named sub-plugin's own module, as its own module-level constant, not in `config.py`:
+
+| Key | Nested under | Default (in the plugin's own code) | Purpose |
+|---|---|---|---|
+| `exposure_time_mag0_seconds` / `max_exposure_time_seconds` | *(root — shared)* | `1.0` / `300` | Science exposure time for a magnitude-0 target, and the max duration of a single sub-exposure — read by `star_spectra_acquisition.py` (both backends) when `exposure_time` isn't explicitly set (see `acquisition_helpers.py::compute_exposure_time_and_count()`); `max_exposure_time_seconds` also doubles as `dark_acquisition`'s required DARK exposure time |
+| `observation_list_path` / `min_target_altitude_deg` | `scheduler_rosace_2026` | `~/.rosace/ObservationList.txt` / `10` | Text file (CSV: `Priority, Program, Star, commentaire`) this scheduler reads to pick the next target (any location, not necessarily under `BASE_DATA_DIR`) — see below; minimum altitude (degrees) for a target to be considered currently observable |
+| `count` | `dark_acquisition` | `5` | Number of DARK frames per series, fixed for the whole session — see `dark_acquisition` below |
+| `count` / `exposure_time_seconds` | `bias_acquisition` | `5` / `0.0` | Number of BIAS frames per series; BIAS exposure time — 0 by definition (no integration), overridable for a camera that refuses a literal 0s exposure — see `bias_acquisition` below |
+
+**When adding a new config key**: if it's read by `main.py`/`auth.py`/`database.py`, or is a plugin-family selector, it's Core — add it to `test_rosace_core.py`'s `_write_tmp_config` test helper too, or tests that don't pass it will fail outright (`config.py` indexes it directly, no fallback). Otherwise it's Plugin — add it under `subplugin_params:` (nested under the plugin's name, or at the root only if genuinely shared by several interchangeable sub-plugins), read it with `.get(key, default)` inside the consuming sub-plugin's own module, and `test_rosace_core.py` needs no change at all.
 
 ### Logging (`log_config.py`, `conf/logging.cfg`)
 

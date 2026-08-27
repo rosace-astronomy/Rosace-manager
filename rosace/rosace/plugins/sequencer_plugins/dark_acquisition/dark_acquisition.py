@@ -45,7 +45,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from ....config import DARK_COUNT, DARK_LIBRARY_DIR, MAX_EXPOSURE_TIME_SECONDS
+from ....config import DARK_LIBRARY_DIR, SUBPLUGIN_PARAMS
 from ....hardware.spectroscope import LightSource
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
@@ -58,6 +58,12 @@ from ..dark_library_helpers import (
 )
 
 log = logging.getLogger("spectro.subplugin.dark_acquisition")
+
+_params = SUBPLUGIN_PARAMS.get("dark_acquisition", {})
+DARK_COUNT = _params.get("count", 5)
+# Shared with star_spectra_acquisition.py -- see conf/config.yaml's
+# subplugin_params section for why this one key sits at the root.
+MAX_EXPOSURE_TIME_SECONDS = SUBPLUGIN_PARAMS.get("max_exposure_time_seconds", 300)
 
 
 class DarkAcquisitionPlugin(SubPlugin):

@@ -2166,24 +2166,17 @@ base_data_dir: {tmp_path / "data"}
 databases_dir: databases
 log_dir: log
 observations_dir: observations
+dark_library_dir: dark_library
 site_name: TestSite
 site_latitude_deg: 45.0
 site_longitude_deg: 5.0
 site_elevation_m: 950
-min_target_altitude_deg: 10
 active_hardware: hardware_indi_simu
-scheduler_retry_seconds: 60
-sequencer_backend: internal
-hardware_connect_timeout_seconds: 5
-exposure_time_mag0_seconds: 1.0
-max_exposure_time_seconds: 300
-dark_count: 5
-bias_count: 5
-bias_exposure_time_seconds: 0.0
-dark_library_dir: dark_library
-camera_cooldown_timeout_seconds: 300
-observation_list_path: {tmp_path / "ObservationList.txt"}
 active_scheduler: blank
+sequencer_backend: internal
+scheduler_retry_seconds: 60
+hardware_connect_timeout_seconds: 5
+camera_cooldown_timeout_seconds: 300
 session_ttl_hours: 336
 session_cookie_secure: false
 """)

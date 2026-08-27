@@ -1,8 +1,11 @@
-# ─────────────────────────────────────────────────────────────
-# Rosace — core application configuration.
-# Loaded once by config.py; each key below becomes a Python constant
-# imported elsewhere in the codebase (e.g. `from .config import SITE_NAME`).
-# ─────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+# Rosace — CORE configuration.
+# Read directly by main.py/auth.py/database.py, or needed to select which
+# plugin family is active. Every installation must set these, regardless
+# of which sub-plugins/programs it actually uses. Loaded once by config.py,
+# each key below becomes a Python constant (e.g. `from .config import
+# SITE_NAME`) — see CLAUDE.md's "Key configuration" table.
+# ═══════════════════════════════════════════════════════════════
 
 # Root directory for all persistent data: databases, logs, observations.
 # Exposed as BASE_DATA_DIR in config.py.
@@ -20,75 +23,53 @@ log_dir: log
 # night, created by INIT_SESSION. Exposed as OBSERVATIONS_DIR in config.py.
 observations_dir: observations
 
+# Subdirectory (under base_data_dir) holding the reusable dark-frame library,
+# one folder per temperature bucket. Kept here (not in subplugin_params)
+# despite being consumed only by dark_acquisition: it's a directory, same
+# shape/lifecycle as the paths above. Exposed as DARK_LIBRARY_DIR.
+dark_library_dir: dark_library
+
 # Human-readable site name, used to name session directories.
 # Exposed as SITE_NAME in config.py.
 site_name: St-Pancrasse
 
-# Site location, used by scheduler_rosace_2026 to compute a target's current
-# altitude. Longitude is signed, East positive (e.g. 5.0 = 5° East).
+# Site location — a physical fact about the installation, not a plugin
+# setting, even though only scheduler_rosace_2026 reads it today. Longitude
+# is signed, East positive (e.g. 5.0 = 5° East).
 # Exposed as SITE_LATITUDE_DEG / SITE_LONGITUDE_DEG / SITE_ELEVATION_M.
 site_latitude_deg: 45.0
 site_longitude_deg: 5.0 # East positive
 site_elevation_m: 950
-
-# Minimum altitude (degrees) for scheduler_rosace_2026 to consider a target
-# currently observable. Exposed as MIN_TARGET_ALTITUDE_DEG in config.py.
-min_target_altitude_deg: 10
 
 # Name (without extension) of the active hardware profile in conf/ — only
 # consulted when sequencer_backend (below) is 'indi'.
 # Exposed as ACTIVE_HARDWARE / HARDWARE_CONFIG_PATH in config.py.
 active_hardware: hardware_indi_72ED-WIFI
 
-# Delay before main.py asks SCHEDULER again after it reports nothing to observe.
-# Exposed as SCHEDULER_RETRY_SECONDS in config.py.
-scheduler_retry_seconds: 60 # If the scheduler replies that no star is to be observed, we try again after this duration
-
-# Which SEQUENCER sub-plugin family to load: 'internal' (simulation, no
-# hardware) or 'indi' (real INDI protocol). Exposed as SEQUENCER_BACKEND.
-sequencer_backend: indi   # Must be 'internal' (for basic demo) or 'indi' (for real world)
-
-# INIT_SESSION (sequencer_backend=indi only): max time to wait for each
-# INDI device / PHD2 to answer. Exposed as HARDWARE_CONNECT_TIMEOUT_SECONDS.
-hardware_connect_timeout_seconds: 5 # INIT_SESSION: max time to wait for each INDI device / PHD2 to answer (sequencer_backend=indi only)
-
-# Science exposure time (seconds) for a magnitude-0 target, and the max
-# duration of a single sub-exposure. Exposed as EXPOSURE_TIME_MAG0_SECONDS /
-# MAX_EXPOSURE_TIME_SECONDS in config.py — used when EXPOSE has to compute
-# exposure_time from magnitude (see acquisition_helpers.py).
-exposure_time_mag0_seconds: 1.0
-max_exposure_time_seconds: 30
-
-# Number of DARK/BIAS frames per series, fixed for the whole session.
-# Exposed as DARK_COUNT / BIAS_COUNT in config.py.
-dark_count: 5
-bias_count: 5
-
-# BIAS exposure time (seconds) -- 0 by definition (no integration), but some
-# cameras refuse a literal 0s exposure -- raise this (e.g. 0.1) if so.
-# Exposed as BIAS_EXPOSURE_TIME_SECONDS in config.py.
-bias_exposure_time_seconds: 0.0
-
-# Subdirectory (under base_data_dir) holding the reusable dark-frame library,
-# one folder per temperature bucket. Exposed as DARK_LIBRARY_DIR in config.py.
-dark_library_dir: dark_library
-
-# INIT_SESSION (sequencer_backend=indi only): max time to wait for the
-# science camera to reach its computed cooldown target temperature.
-# Exposed as CAMERA_COOLDOWN_TIMEOUT_SECONDS in config.py.
-camera_cooldown_timeout_seconds: 300
-
-# Full path (any location, not necessarily under base_data_dir) to the text
-# file SCHEDULER reads to pick the next target — see
-# plugins/schedulers/scheduler_rosace_2026/scheduler.py.
-# Exposed as OBSERVATION_LIST_PATH in config.py.
-observation_list_path: ~/.rosace/ObservationList.txt
-
 # Name (registry in plugins/schedulers/__init__.py) of the active SCHEDULER
 # plugin — each is an interchangeable target-selection algorithm. See
 # plugins/schedulers/blank/scheduler.py for the contract a new one must
-# follow. Exposed as ACTIVE_SCHEDULER in config.py.
+# follow. A selector key, not a plugin setting itself — a plugin can't
+# declare its own selector. Exposed as ACTIVE_SCHEDULER in config.py.
 active_scheduler: scheduler_rosace_2026
+
+# Which SEQUENCER sub-plugin family to load: 'internal' (simulation, no
+# hardware) or 'indi' (real INDI protocol). Same reasoning as
+# active_scheduler above — a selector, not a plugin setting.
+# Exposed as SEQUENCER_BACKEND in config.py.
+sequencer_backend: indi   # Must be 'internal' (for basic demo) or 'indi' (for real world)
+
+# Delay before main.py asks SCHEDULER again after it reports nothing to observe.
+# Read directly by session_runner() in main.py. Exposed as SCHEDULER_RETRY_SECONDS.
+scheduler_retry_seconds: 60
+
+# INIT_SESSION (sequencer_backend=indi only): max time to wait for each
+# INDI device / PHD2 to answer, and for the science camera to reach its
+# computed cooldown target temperature. General hardware infrastructure —
+# not tied to any one plugin's own choices.
+# Exposed as HARDWARE_CONNECT_TIMEOUT_SECONDS / CAMERA_COOLDOWN_TIMEOUT_SECONDS.
+hardware_connect_timeout_seconds: 5
+camera_cooldown_timeout_seconds: 300
 
 # How long a login session (cookie) stays valid before requiring another
 # login. Long by design: the app runs unattended overnight, and a short
@@ -102,3 +83,37 @@ session_ttl_hours: 336 # 336h = 14 days
 # localhost. Only set true if every access path (local included) is
 # guaranteed HTTPS. Exposed as SESSION_COOKIE_SECURE in config.py.
 session_cookie_secure: false
+
+# ═══════════════════════════════════════════════════════════════
+# Rosace — PLUGIN parameters.
+# Free-form: no schema is enforced here, and config.py never grows a new
+# named constant for a key added below (see SUBPLUGIN_PARAMS in config.py).
+# A sub-plugin not used by any of your programs needs no entry at all — its
+# own code falls back to a sensible built-in default. Never read by main.py
+# or any other orchestrator code, only by the sub-plugin(s) concerned.
+# ═══════════════════════════════════════════════════════════════
+
+subplugin_params:
+  # Shared at the root (not nested under one plugin) because several
+  # SEQUENCER sub-plugins read them: star_spectra_acquisition (both) and
+  # dark_acquisition (max_exposure_time_seconds only).
+  exposure_time_mag0_seconds: 1.0
+  max_exposure_time_seconds: 30
+
+  scheduler_rosace_2026:
+    # Full path (any location, not necessarily under base_data_dir) to the
+    # text file SCHEDULER reads to pick the next target.
+    observation_list_path: ~/.rosace/ObservationList.txt
+    # Minimum altitude (degrees) for a target to be considered observable.
+    min_target_altitude_deg: 10
+
+  dark_acquisition:
+    # Number of DARK frames per series, fixed for the whole session.
+    count: 5
+
+  bias_acquisition:
+    # Number of BIAS frames per series, fixed for the whole session.
+    count: 5
+    # BIAS exposure time (seconds) -- 0 by definition (no integration), but
+    # some cameras refuse a literal 0s exposure -- raise this if so.
+    exposure_time_seconds: 0.0

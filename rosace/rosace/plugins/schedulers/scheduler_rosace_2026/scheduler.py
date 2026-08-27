@@ -1,19 +1,23 @@
 import csv
 import logging
+from pathlib import Path
 
 from pydantic import ValidationError
 
 from ....astro_math import altitude_deg
-from ....config import (
-    OBSERVATION_LIST_PATH, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG,
-    MIN_TARGET_ALTITUDE_DEG,
-)
+from ....config import SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, SUBPLUGIN_PARAMS
 from ....database import db_count_observations_for_target
 from ....models import Observation, Target, ExposureConfig
 from ....targets import program_get_by_name, star_get_by_name, program_get_stars
 from .. import SchedulerFatalError
 
 log = logging.getLogger("spectro.plugin.scheduler")
+
+_params = SUBPLUGIN_PARAMS.get("scheduler_rosace_2026", {})
+OBSERVATION_LIST_PATH = Path(
+    _params.get("observation_list_path", "~/.rosace/ObservationList.txt")
+).expanduser()
+MIN_TARGET_ALTITUDE_DEG = _params.get("min_target_altitude_deg", 10)
 
 
 def _target_altitude_deg(ra_deg: float, dec_deg: float) -> float:
