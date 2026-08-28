@@ -5,7 +5,19 @@ Pytest fixtures shared by every test file in the package
 
 import pytest
 
+from rosace import step_progress
 from rosace.models import Observation, Target, ExposureConfig
+
+
+@pytest.fixture(autouse=True)
+def _clear_step_progress():
+    """step_progress._current_steps is process-global, in-memory state (by
+    design -- see step_progress.py's own docstring) -- without this, a test
+    exercising the real SequencerPlugin/ReductionPlugin (which call the real
+    step_progress.set_step, not a mock) leaks an entry that a later,
+    unrelated test on step_progress itself would see."""
+    yield
+    step_progress._current_steps.clear()
 
 
 @pytest.fixture(scope="session", autouse=True)

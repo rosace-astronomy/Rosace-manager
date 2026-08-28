@@ -22,6 +22,8 @@ sub-plugin actually produced the files.
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Science"
+
 import asyncio
 import logging
 from pathlib import Path

@@ -7,6 +7,8 @@ contract (keys set in sequencer_data) as internal/focus.py.
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Focus"
+
 import asyncio
 import logging
 

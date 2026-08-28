@@ -25,6 +25,8 @@ Casier: {"origin": "current_session"|"camera", "flat_files": [...]}.
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Flat"
+
 import logging
 from pathlib import Path
 

@@ -18,6 +18,7 @@ from rosace.plugins.pipeline_loader import (
     list_programs,
     list_subplugins,
     validate_subplugin_catalogue,
+    get_display_names,
 )
 
 
@@ -452,3 +453,104 @@ class TestSubpluginDocstrings:
             if summary == "(no docstring)"
         ]
         assert not missing, f"Sub-plugin(s) missing a module docstring: {missing}"
+
+
+class TestGetDisplayNames:
+    """get_display_names() -- backs GET /subplugins/display-names, used to
+    label step-progress chips in the GUI."""
+
+    @staticmethod
+    def _make_family(root: Path, family: str, files_by_name: dict) -> Path:
+        """files_by_name: {sub-plugin name: <name>.py source, or None to
+        skip writing that file entirely (missing-module case)}."""
+        family_dir = root / family
+        family_dir.mkdir(parents=True)
+        for name, source in files_by_name.items():
+            sub_dir = family_dir / name
+            sub_dir.mkdir()
+            (sub_dir / "__init__.py").touch()
+            if source is not None:
+                (sub_dir / f"{name}.py").write_text(source)
+        return family_dir
+
+    def test_reads_display_name_constant(self, tmp_path, monkeypatch):
+        from rosace.plugins import pipeline_loader
+
+        monkeypatch.setattr(pipeline_loader, "_SUBPLUGIN_FAMILY_DIRS", {
+            "sequencer": self._make_family(tmp_path, "sequencer", {
+                "foo": '"""Docstring."""\n\nDISPLAY_NAME = "Foo"\n',
+            }),
+        })
+
+        assert pipeline_loader.get_display_names(["sequencer"]) == {"sequencer": {"foo": "Foo"}}
+
+    def test_falls_back_to_name_when_display_name_missing(self, tmp_path, monkeypatch):
+        from rosace.plugins import pipeline_loader
+
+        monkeypatch.setattr(pipeline_loader, "_SUBPLUGIN_FAMILY_DIRS", {
+            "sequencer": self._make_family(tmp_path, "sequencer", {"foo": '"""Docstring."""\n'}),
+        })
+
+        assert pipeline_loader.get_display_names(["sequencer"]) == {"sequencer": {"foo": "foo"}}
+
+    def test_falls_back_to_name_when_canonical_module_missing(self, tmp_path, monkeypatch):
+        from rosace.plugins import pipeline_loader
+
+        monkeypatch.setattr(pipeline_loader, "_SUBPLUGIN_FAMILY_DIRS", {
+            "sequencer": self._make_family(tmp_path, "sequencer", {"foo": None}),
+        })
+
+        assert pipeline_loader.get_display_names(["sequencer"]) == {"sequencer": {"foo": "foo"}}
+
+    def test_ignores_non_string_constant(self, tmp_path, monkeypatch):
+        from rosace.plugins import pipeline_loader
+
+        monkeypatch.setattr(pipeline_loader, "_SUBPLUGIN_FAMILY_DIRS", {
+            "sequencer": self._make_family(tmp_path, "sequencer", {
+                "foo": '"""Docstring."""\n\nDISPLAY_NAME = 42\n',
+            }),
+        })
+
+        assert pipeline_loader.get_display_names(["sequencer"]) == {"sequencer": {"foo": "foo"}}
+
+    def test_families_filter_restricts_output(self):
+        assert set(get_display_names(["reduction"])) == {"reduction"}
+
+    def test_no_filter_covers_all_three_families(self):
+        assert set(get_display_names()) == {"sequencer", "reduction", "sharing"}
+
+
+class TestSubpluginDisplayNames:
+    """Not a startup check, same posture as TestSubpluginDocstrings above --
+    a missing DISPLAY_NAME degrades a GUI label, it isn't a correctness
+    risk. Runs against the real, on-disk catalogue specifically to catch a
+    future sub-plugin added without one."""
+
+    def test_every_sequencer_and_reduction_subplugin_has_a_display_name(self):
+        names = get_display_names(["sequencer", "reduction"])
+        missing = [
+            f"{family}/{name}"
+            for family, name, _ in list_subplugins(["sequencer", "reduction"])
+            if names[family][name] == name  # the "no DISPLAY_NAME" fallback
+        ]
+        assert not missing, f"Sub-plugin(s) missing a DISPLAY_NAME: {missing}"
+
+    def test_internal_backend_declares_same_display_name_as_canonical(self):
+        """focus, slew and star_spectra_acquisition each have both a
+        canonical and an _internal.py file, representing one logical step --
+        the GUI must show the same label no matter which SEQUENCER_BACKEND
+        is active."""
+        from rosace.plugins.pipeline_loader import (
+            _SUBPLUGIN_FAMILY_DIRS,
+            _module_display_name,
+            _read_display_name_constant,
+        )
+
+        sequencer_dir = _SUBPLUGIN_FAMILY_DIRS["sequencer"]
+        mismatched = []
+        for name in ("focus", "slew", "star_spectra_acquisition"):
+            canonical = _module_display_name(sequencer_dir, name)
+            internal = _read_display_name_constant(sequencer_dir / name / f"{name}_internal.py")
+            if canonical != internal:
+                mismatched.append(f"{name}: canonical={canonical!r} internal={internal!r}")
+        assert not mismatched, f"DISPLAY_NAME mismatch between backend variants: {mismatched}"

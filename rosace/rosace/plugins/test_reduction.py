@@ -14,12 +14,15 @@ from rosace.models import Observation
 from rosace.plugins.reduction import ReductionPlugin
 
 
-def _make_obs(with_raw_files=True, with_program=True) -> Observation:
+def _make_obs(with_raw_files=True, with_program=True, reduction_steps=()) -> Observation:
     obs = Observation(id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234")
     if with_raw_files:
         obs.sequencer_data["star_spectra_images"] = ["/tmp/spectrum_0001.fits"]
     if with_program:
         obs.scheduler_data["program"] = "demo"
+    # SequencerPlugin always sets this before REDUCTION runs (see main.py's stage order) --
+    # reproduced here since these tests call ReductionPlugin directly, without SEQUENCER.
+    obs.program_steps["reduction"] = list(reduction_steps)
     return obs
 
 
@@ -50,23 +53,25 @@ class TestReductionPlugin:
             await ReductionPlugin().run(obs)
 
     async def test_calls_subplugins_in_order(self, monkeypatch):
+        """Arbitrary generic labels, not real sub-plugin names -- ReductionPlugin
+        must stay agnostic of which sub-plugins actually exist (see CLAUDE.md)."""
         calls: list[str] = []
         fake_pipeline = [
-            FakeSubPlugin("bias", calls),
-            FakeSubPlugin("dark", calls),
-            FakeSubPlugin("flat", calls),
-            FakeSubPlugin("extract", calls),
+            FakeSubPlugin("step_a", calls),
+            FakeSubPlugin("step_b", calls),
+            FakeSubPlugin("step_c", calls),
+            FakeSubPlugin("step_d", calls),
         ]
         monkeypatch.setattr(
             "rosace.plugins.reduction.load_pipelines",
             lambda program: ([], fake_pipeline),
         )
 
-        obs = _make_obs()
+        obs = _make_obs(reduction_steps=["step_a", "step_b", "step_c", "step_d"])
         result = await ReductionPlugin().run(obs)
 
-        assert calls == ["bias", "dark", "flat", "extract"]
-        assert result.reduction_data["order"] == ["bias", "dark", "flat", "extract"]
+        assert calls == ["step_a", "step_b", "step_c", "step_d"]
+        assert result.reduction_data["order"] == ["step_a", "step_b", "step_c", "step_d"]
 
     async def test_loads_pipeline_for_observation_program(self, monkeypatch):
         seen_program = []
@@ -84,19 +89,43 @@ class TestReductionPlugin:
         assert seen_program == ["nova_monitoring"]
 
     async def test_subplugin_error_propagates(self, monkeypatch):
+        """Arbitrary generic labels, not real sub-plugin names -- see
+        test_calls_subplugins_in_order above."""
         calls: list[str] = []
         fake_pipeline = [
-            FakeSubPlugin("bias", calls),
-            FakeSubPlugin("dark", calls, raises=RuntimeError("dark failed")),
-            FakeSubPlugin("flat", calls),
+            FakeSubPlugin("step_a", calls),
+            FakeSubPlugin("step_b", calls, raises=RuntimeError("step_b failed")),
+            FakeSubPlugin("step_c", calls),
         ]
         monkeypatch.setattr(
             "rosace.plugins.reduction.load_pipelines",
             lambda program: ([], fake_pipeline),
         )
 
-        obs = _make_obs()
-        with pytest.raises(RuntimeError, match="dark failed"):
+        obs = _make_obs(reduction_steps=["step_a", "step_b", "step_c"])
+        with pytest.raises(RuntimeError, match="step_b failed"):
             await ReductionPlugin().run(obs)
 
-        assert calls == ["bias", "dark"]  # flat never reached
+        assert calls == ["step_a", "step_b"]  # step_c never reached
+
+    async def test_records_step_progress_before_each_subplugin(self, monkeypatch):
+        """Arbitrary generic labels, not real sub-plugin names -- see
+        test_calls_subplugins_in_order above."""
+        seen = []
+        monkeypatch.setattr(
+            "rosace.plugins.reduction.step_progress.set_step",
+            lambda obs_id, stage, step, steps: seen.append((obs_id, stage, step, steps)),
+        )
+        fake_pipeline = [FakeSubPlugin("step_a", []), FakeSubPlugin("step_b", [])]
+        monkeypatch.setattr(
+            "rosace.plugins.reduction.load_pipelines",
+            lambda program: ([], fake_pipeline),
+        )
+
+        obs = _make_obs(reduction_steps=["step_a", "step_b"])
+        await ReductionPlugin().run(obs)
+
+        assert seen == [
+            ("obs12345", "reduction", "step_a", ["step_a", "step_b"]),
+            ("obs12345", "reduction", "step_b", ["step_a", "step_b"]),
+        ]

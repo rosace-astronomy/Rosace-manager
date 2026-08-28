@@ -24,6 +24,8 @@ append to the same key.
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Science"
+
 import logging
 
 from ....config import SUBPLUGIN_PARAMS

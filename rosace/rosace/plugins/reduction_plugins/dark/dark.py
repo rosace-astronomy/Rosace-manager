@@ -5,6 +5,8 @@ Subtracts the CCD sensor's thermal current, scaled to the exposure time.
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Dark"
+
 import asyncio
 import logging
 from pathlib import Path

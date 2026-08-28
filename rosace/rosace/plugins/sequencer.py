@@ -11,6 +11,7 @@ Structure:
 
 import logging
 
+from .. import step_progress
 from ..models import Observation
 from .pipeline_loader import load_pipelines, load_program_yaml
 
@@ -46,9 +47,10 @@ class SequencerPlugin:
         )
 
         # Each sub-plugin reads/writes obs.sequencer_data directly
-        for sub in seq_pipeline:
+        for step_name, sub in zip(obs.program_steps["sequencer"], seq_pipeline):
             step = sub.__class__.__name__
             log.info(f"[SEQUENCER] → {step}")
+            step_progress.set_step(obs.id, "sequencer", step_name, obs.program_steps["sequencer"])
             try:
                 obs = await sub.execute(obs)
             except Exception as e:

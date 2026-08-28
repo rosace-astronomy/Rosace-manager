@@ -5,6 +5,8 @@ Corrects pixel-to-pixel sensitivity variations and vignetting.
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Flat"
+
 import asyncio
 import logging
 from pathlib import Path

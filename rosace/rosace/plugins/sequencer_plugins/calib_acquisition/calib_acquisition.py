@@ -25,6 +25,8 @@ Casier: {"origin": "current_session"|"camera", "calib_files": [...]}.
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Calib"
+
 import logging
 import re
 from datetime import datetime, timezone

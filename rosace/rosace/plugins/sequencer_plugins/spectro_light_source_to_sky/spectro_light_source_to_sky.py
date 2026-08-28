@@ -10,6 +10,8 @@ into the next observation.
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Sky"
+
 import logging
 
 from ....hardware.spectroscope import LightSource

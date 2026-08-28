@@ -30,6 +30,8 @@ not observation data.
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Home"
+
 import logging
 
 from ....models import Observation

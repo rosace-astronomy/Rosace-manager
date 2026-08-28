@@ -159,7 +159,59 @@ def _module_docstring(family_dir: Path, name: str) -> str | None:
     return ast.get_docstring(tree)
 
 
+def _read_display_name_constant(module_path: Path) -> str | None:
+    """Parses a single module file and returns its top-level DISPLAY_NAME
+    constant, or None if the file doesn't exist or declares none. Uses
+    ast.parse rather than importing -- same reasoning as _module_docstring()
+    above: never triggers a sub-plugin's own import-time side effects, safe
+    regardless of backend. Exposed at module level (rather than inlined in
+    _module_display_name() below) so it can also be pointed at a
+    "<name>_internal.py" file, e.g. to verify both backend variants of the
+    same sub-plugin declare the same label (see TestSubpluginDisplayNames)."""
+    if not module_path.is_file():
+        return None
+    tree = ast.parse(module_path.read_text(encoding="utf-8"))
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "DISPLAY_NAME"
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            return node.value.value
+    return None
+
+
+def _module_display_name(family_dir: Path, name: str) -> str | None:
+    """Reads name's own canonical module (<name>/<name>.py) and returns its
+    DISPLAY_NAME constant (a short, human-readable label for the GUI's
+    step-progress chips), or None if the file is missing or declares none."""
+    return _read_display_name_constant(family_dir / name / f"{name}.py")
+
+
 _FAMILY_ORDER = {family: i for i, family in enumerate(_SUBPLUGIN_FAMILY_DIRS)}
+
+
+def get_display_names(families: Iterable[str] | None = None) -> dict[str, dict[str, str]]:
+    """Returns {family: {name: display_name}} for every discovered
+    sub-plugin in the requested families (default: all three, same
+    families argument convention as list_subplugins()). A sub-plugin
+    missing DISPLAY_NAME falls back to its own raw name -- a missing label
+    degrades a GUI chip, it isn't a correctness risk worth failing on (same
+    posture as list_subplugins()'s "(no docstring)" fallback; see
+    TestSubpluginDisplayNames for the presence check on the real
+    catalogue)."""
+    wanted = list(families) if families is not None else list(_SUBPLUGIN_FAMILY_DIRS)
+    result: dict[str, dict[str, str]] = {}
+    for family in wanted:
+        family_dir = _SUBPLUGIN_FAMILY_DIRS[family]
+        result[family] = {
+            name: _module_display_name(family_dir, name) or name
+            for name in _discover_subplugin_names(family_dir)
+        }
+    return result
 
 
 def list_subplugins(families: Iterable[str] | None = None) -> list[tuple[str, str, str]]:

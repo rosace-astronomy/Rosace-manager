@@ -1988,6 +1988,22 @@ class TestApiEndpoints:
         assert res.status_code == 200
         assert isinstance(res.json(), list)
 
+    def test_observations_steps_endpoint(self):
+        """GET /observations/steps -- see step_progress.py. No fixture setup
+        needed: an empty registry is a perfectly valid response shape."""
+        with self._client() as client:
+            res = client.get("/observations/steps")
+        assert res.status_code == 200
+        assert isinstance(res.json(), dict)
+
+    def test_subplugins_display_names_endpoint(self):
+        with self._client() as client:
+            res = client.get("/subplugins/display-names")
+        assert res.status_code == 200
+        body = res.json()
+        assert set(body) == {"sequencer", "reduction"}
+        assert isinstance(body["sequencer"], dict) and body["sequencer"]
+
     def test_ws_logs_streams_log_records(self, monkeypatch):
         """End-to-end: a spectro.* log record reaches a connected /ws client as log.create."""
         import rosace.log_broadcast as log_broadcast_mod

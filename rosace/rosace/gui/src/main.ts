@@ -1,5 +1,6 @@
 import { VBox, HBox, Button, Label, Application, BoxProps, Image, Listbox, ListItem,
 	SimpleText, SimpleTextArea, Notification, Tag, initTooltips, makeState, asap, EvMessage, HSizer,
+	Component,
 	} from "x4js";
 
 import "./main.scss";
@@ -56,6 +57,20 @@ interface ObsRow {
 }
 
 /**
+ * returned by GET /observations/steps -- see step_progress.py.
+ * Keyed by observation id, then by stage ("sequencer"/"reduction") -- an
+ * entry for a given stage exists once that stage has started for this
+ * observation, and is kept (not cleared) once it finishes, so its line can
+ * still be rendered as "all done" during the post-observation hold window
+ * (see STEP_PROGRESS_HOLD_MS below).
+ */
+
+interface StepProgressEntry {
+    step: string;
+    steps: string[];
+}
+
+/**
  * returned by api server
  */
 
@@ -76,6 +91,7 @@ interface AppData {
 	connected: boolean;
 	status: ApiStatus;
 	observations: ObsRow[];
+	step_progress: Record<string, Record<string, StepProgressEntry>>;
 	settings: {	//saved locally
 		darkMode?: boolean;
 	}
@@ -85,6 +101,7 @@ const app_data = makeState<AppData>( {
 	status: { stage: "idle", is_running: false, session_active: false, completed_count: 0, pending_post_obs_count: 0 },
 	connected: false,
 	observations: [],
+	step_progress: {},
 	settings: {
 	}
 } );
@@ -123,12 +140,25 @@ const OBS_FETCH_TIME = 3000;
 const STATUS_FETCH_TIME = 5000;
 const WS_RETRY_DELAY = 5000;
 
+// How long the SEQUENCER/REDUCTION step-progress lines stay visible, showing
+// their last state ("all done"), after the whole observation finishes
+// (ARCHIVE's own done_at) -- purely a display grace period, not tied to
+// anything server-side; step_progress.py itself never expires an entry.
+const STEP_PROGRESS_HOLD_SECONDS = 10;
+
 // In-browser Journal history cap -- not a real retention limit, rosace.log keeps everything.
 const MAX_JOURNAL_LINES = 1000;
 
 const LOG_CREATE_MSG = "log.create";
 const IMAGE_NEW_MSG = "image.new";
 const AUTH_LOGOUT_MSG = "auth.logout";	// fired locally (Application.fireGlobal) on logout — AppShell listens
+
+// Sub-plugin display names (GET /subplugins/display-names), fetched once at
+// startup -- static for the server's lifetime, unlike app_data's polled
+// fields, so plain module state rather than an app_data/watch()-tracked
+// field is enough: nothing needs to re-render when it arrives, renderObs()
+// just reads it directly whenever a step-progress row is built.
+let subplugin_display_names: Record<string, Record<string, string>> = {};
 
 const STAGE_LABEL: Record<StageType, { text: string, icon: string }> = {	//allow only a value of stages in stage_label
     scheduler: { text: "SCHEDULER", icon: null },
@@ -305,6 +335,7 @@ class MainView extends VBox {
 			this.fetchStatus();
 			this.fetchObs();
 			this.loadDemoImages();
+			this.fetchDisplayNames();
 		});
     }
 
@@ -318,6 +349,22 @@ class MainView extends VBox {
 		const buffer = await ( await fetch( "assets/demo.fits" ) ).arrayBuffer();
 		this.spectre_viewer.loadFits( buffer );
 		this.guidage_viewer.loadFits( buffer );
+	}
+
+	/**
+	 * Fetched once, at startup -- see subplugin_display_names' own comment above.
+	 */
+
+	private async fetchDisplayNames() {
+		try {
+			const res = await fetch( `${API}/subplugins/display-names`, { signal: AbortSignal.timeout(5000) } );
+			if( res.ok ) {
+				subplugin_display_names = await res.json() as Record<string, Record<string, string>>;
+			}
+		}
+		catch( e ) {
+			this.showError( `display-names fetch error`, e.toString() );
+		}
 	}
 
 	/**
@@ -374,6 +421,48 @@ class MainView extends VBox {
 				}
 			});
 
+			// Up to two extra, temporary lines under the primary stage row -- one for
+			// SEQUENCER's own sub-plugin steps, one for REDUCTION's -- each independent
+			// (step_progress.py keeps both stages' entries around, not just the current
+			// one) so a finished SEQUENCER line can still show "all done" while REDUCTION
+			// runs. Both stay visible until STEP_PROGRESS_HOLD_SECONDS after the whole
+			// observation finishes (ARCHIVE's own done_at) -- purely a display grace
+			// period, giving the observer time to see the full pipeline at a glance
+			// before it collapses back to just the primary stage row.
+			const obsSteps    = app_data.step_progress[obs.id] ?? {};
+			const archiveInfo = obs.stages["archive"];
+			const withinHold  = archiveInfo?.status === "done" && !!archiveInfo.done_at
+				&& ( Date.now() - new Date( archiveInfo.done_at ).getTime() ) < STEP_PROGRESS_HOLD_SECONDS * 1000;
+
+			const buildStepLine = ( stage: "sequencer" | "reduction" ): HBox | null => {
+				const entry = obsSteps[stage];
+				const info  = obs.stages[stage];
+				if( !entry || !( info?.status === "running" || withinHold ) ) {
+					return null;
+				}
+
+				const allDone      = info.status === "done";
+				const currentIndex = entry.steps.indexOf( entry.step );
+				const stepNames    = subplugin_display_names[stage] ?? {};
+				const stepChips = entry.steps.map( (name, i) => {
+					const label  = stepNames[name] ?? name;
+					const status = allDone || i < currentIndex ? "done" : i === currentIndex ? "running" : "pending";
+					return new Tag({
+						label,
+						cls:     `substep ${status}`,
+						tooltip: `${label}: ${status}`,
+					});
+				} );
+				return new HBox({ cls: "obs-substeps", content: stepChips });
+			};
+
+			const stagesBox = new HBox({ cls: "obs-stages", content: stages });
+			const stepLines = [ buildStepLine("sequencer"), buildStepLine("reduction") ]
+				.filter( (line): line is HBox => line !== null );
+			const stagesColumn: Component = stepLines.length === 0
+				? stagesBox
+				: new VBox({ cls: "obs-stages-column", content: [ stagesBox, ...stepLines ] });
+
 			// Name used to query the catalogue (e.g. "Vega"), shown in bold; the canonical
 			// name (e.g. "* alf Lyr") follows in parentheses, only when it differs from it.
 			// Both share a single "obs-name" column — the canonical span is just empty text
@@ -395,7 +484,7 @@ class MainView extends VBox {
 					] }),
 					new SimpleText({ cls: "obs-id",        text: obs.id }),
 					new SimpleText({ cls: "obs-time",      text: time }),
-					new HBox({ cls: "obs-stages",  content: stages }),
+					stagesColumn,
 				]
 			}
 
@@ -530,6 +619,23 @@ class MainView extends VBox {
 			}
 
 			const obs = await res.json() as ObsRow[];
+
+			// Fetched alongside observations, same tick, best-effort: a failure here
+			// shouldn't stop the observation list itself from updating -- it just
+			// means the step-progress second line stays stale/empty this poll.
+			try {
+				const stepsRes = await fetch( `${API}/observations/steps`, { signal: AbortSignal.timeout(5000) } );
+				if( stepsRes.ok ) {
+					// Assigned before app_data.observations below -- renderObs() (triggered
+					// by the "observations" watch) reads app_data.step_progress directly at
+					// render time, so it must already be current by then.
+					app_data.step_progress = await stepsRes.json() as Record<string, Record<string, StepProgressEntry>>;
+				}
+			}
+			catch( e ) {
+				this.showError( `step-progress fetch error`, e.toString() );
+			}
+
 			//this.renderObs( obs );
 			app_data.observations = obs;
         }

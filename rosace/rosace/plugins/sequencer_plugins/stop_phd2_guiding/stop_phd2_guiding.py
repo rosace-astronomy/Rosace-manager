@@ -9,6 +9,8 @@ where it can fight that next observation's own mount slews.
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Stop guiding"
+
 import logging
 
 from ....models import Observation

@@ -50,11 +50,13 @@ class TestSequencerPlugin:
             await SequencerPlugin().run(obs)
 
     async def test_calls_subplugins_in_order(self, monkeypatch):
+        """Arbitrary generic labels, not real sub-plugin names -- SequencerPlugin
+        must stay agnostic of which sub-plugins actually exist (see CLAUDE.md)."""
         calls: list[str] = []
         fake_pipeline = [
-            FakeSubPlugin("slew", calls),
-            FakeSubPlugin("focus", calls),
-            FakeSubPlugin("star_spectra_acquisition", calls),
+            FakeSubPlugin("step_a", calls),
+            FakeSubPlugin("step_b", calls),
+            FakeSubPlugin("step_c", calls),
         ]
         monkeypatch.setattr(
             "rosace.plugins.sequencer.load_pipelines",
@@ -64,8 +66,8 @@ class TestSequencerPlugin:
         obs = _make_obs()
         result = await SequencerPlugin().run(obs)
 
-        assert calls == ["slew", "focus", "star_spectra_acquisition"]
-        assert result.sequencer_data["order"] == ["slew", "focus", "star_spectra_acquisition"]
+        assert calls == ["step_a", "step_b", "step_c"]
+        assert result.sequencer_data["order"] == ["step_a", "step_b", "step_c"]
 
     async def test_sets_program_file_and_steps_including_sharing(self, monkeypatch):
         """obs.program_steps must list sequencer, reduction AND sharing —
@@ -102,11 +104,13 @@ class TestSequencerPlugin:
         assert seen_program == ["nova_monitoring"]
 
     async def test_subplugin_error_propagates(self, monkeypatch):
+        """Arbitrary generic labels, not real sub-plugin names -- see
+        test_calls_subplugins_in_order above."""
         calls: list[str] = []
         fake_pipeline = [
-            FakeSubPlugin("slew", calls),
-            FakeSubPlugin("focus", calls, raises=RuntimeError("focus failed")),
-            FakeSubPlugin("star_spectra_acquisition", calls),
+            FakeSubPlugin("step_a", calls),
+            FakeSubPlugin("step_b", calls, raises=RuntimeError("step_b failed")),
+            FakeSubPlugin("step_c", calls),
         ]
         monkeypatch.setattr(
             "rosace.plugins.sequencer.load_pipelines",
@@ -114,7 +118,36 @@ class TestSequencerPlugin:
         )
 
         obs = _make_obs()
-        with pytest.raises(RuntimeError, match="focus failed"):
+        with pytest.raises(RuntimeError, match="step_b failed"):
             await SequencerPlugin().run(obs)
 
-        assert calls == ["slew", "focus"]  # star_spectra_acquisition never reached
+        assert calls == ["step_a", "step_b"]  # step_c never reached
+
+    async def test_records_step_progress_before_each_subplugin(self, monkeypatch):
+        """SequencerPlugin must stay agnostic of which sub-plugins actually
+        exist -- both the declared step names and the pipeline instances are
+        mocked here with arbitrary labels, not real sub-plugin names, so
+        this test only exercises the orchestration mechanism itself."""
+        seen = []
+        monkeypatch.setattr(
+            "rosace.plugins.sequencer.step_progress.set_step",
+            lambda obs_id, stage, step, steps: seen.append((obs_id, stage, step, steps)),
+        )
+        monkeypatch.setattr(
+            "rosace.plugins.sequencer.load_program_yaml",
+            lambda program: {"sequencer": ["step_a", "step_b"], "reduction": [], "sharing": "step_c"},
+        )
+        fake_pipeline = [FakeSubPlugin("step_a", []), FakeSubPlugin("step_b", [])]
+        monkeypatch.setattr(
+            "rosace.plugins.sequencer.load_pipelines",
+            lambda program: (fake_pipeline, []),
+        )
+
+        obs = _make_obs()
+        await SequencerPlugin().run(obs)
+
+        steps = ["step_a", "step_b"]
+        assert seen == [
+            ("obs12345", "sequencer", "step_a", steps),
+            ("obs12345", "sequencer", "step_b", steps),
+        ]

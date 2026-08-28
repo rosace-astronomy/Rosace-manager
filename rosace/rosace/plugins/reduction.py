@@ -11,6 +11,7 @@ Structure:
 
 import logging
 
+from .. import step_progress
 from ..models import Observation
 from .pipeline_loader import load_pipelines
 
@@ -41,9 +42,10 @@ class ReductionPlugin:
         # Each sub-plugin reads/writes obs.reduction_data directly
         # (and reads obs.sequencer_data["star_spectra_images"] set by SEQUENCER as input --
         # a shared key, not the name of the sub-plugin that produced it)
-        for sub in red_pipeline:
+        for step_name, sub in zip(obs.program_steps["reduction"], red_pipeline):
             step = sub.__class__.__name__
             log.info(f"[REDUCTION] → {step}")
+            step_progress.set_step(obs.id, "reduction", step_name, obs.program_steps["reduction"])
             try:
                 obs = await sub.execute(obs)
             except Exception as e:

@@ -46,6 +46,19 @@ or the outcome. Exception: if your sub-plugin has several genuinely
 distinct internal phases (not just one action), a log line per phase is
 legitimate.
 
+DISPLAY_NAME (GUI label)
+--------------------------
+Right after this docstring, every sub-plugin declares its own short
+DISPLAY_NAME constant — a human-readable label (e.g. "Dark", "Pointing")
+used to name this step's chip in the GUI's step-progress display. Kept
+separate from the module docstring, which documents the sub-plugin itself,
+not the UI. Read via ast.parse, exactly like the docstring — never
+imported — so it works regardless of SEQUENCER_BACKEND and never triggers
+a sub-plugin's own import-time side effects. If your sub-plugin has both a
+canonical file and an _internal.py counterpart, both must declare the
+*same* DISPLAY_NAME — they represent one logical step, and the GUI must
+show the same label no matter which backend is active.
+
 BACKEND AXIS (SEQUENCER only)
 -------------------------------
 SEQUENCER sub-plugins are the only family with a backend axis
@@ -68,6 +81,8 @@ TO WRITE YOUR OWN SEQUENCER SUB-PLUGIN
 """
 
 from __future__ import annotations
+
+DISPLAY_NAME = "Blank"
 
 import logging
 

@@ -145,8 +145,10 @@ from .database import (
 )
 from .observation_file import create_observation_file, write_observation_file
 from .plugins  import plugins
+from .plugins.pipeline_loader import get_display_names
 from .plugins.sequencer_plugins.dark_library_helpers import ensure_dark_library_structure
 from .plugins.schedulers import SchedulerFatalError
+from . import step_progress
 from .simbad   import simbad_search, SimbadNotFoundError, SimbadQueryError
 from .targets  import (
     targets_db_init,
@@ -426,6 +428,19 @@ async def list_recent_observations(limit: int | None = None):
     """Returns observations from the current astronomical day, with per-stage statuses and
     timestamps from the database. No limit by default — see db_get_recent_observations()."""
     return await db_get_recent_observations(limit)
+
+@protected.get("/observations/steps")
+async def get_observation_steps():
+    """Live, in-memory sub-plugin progress, per observation and per stage
+    ({obs_id: {"sequencer": {...}, "reduction": {...}}}) -- see step_progress.py.
+    Ephemeral, lost on restart."""
+    return step_progress.get_all()
+
+@protected.get("/subplugins/display-names")
+async def get_subplugin_display_names():
+    """Static, server-lifetime name -> short label mapping for SEQUENCER/REDUCTION
+    sub-plugins, used to label step-progress chips in the GUI (see /observations/steps)."""
+    return get_display_names(["sequencer", "reduction"])
 
 @protected.get("/observations/{obs_id}")
 async def get_observation(obs_id: str):

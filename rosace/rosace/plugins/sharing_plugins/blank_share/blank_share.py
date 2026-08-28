@@ -24,6 +24,15 @@ mechanism deliberately only supports one sub-plugin per program, not a list.
 PLACEHOLDER: the actual distribution logic below is a stand-in (it only logs
 each file) — real email/FTP/API integration is a separate future chantier.
 
+DISPLAY_NAME (GUI label)
+--------------------------
+Right after this docstring, every sub-plugin declares its own short
+DISPLAY_NAME constant — a human-readable label used to name this step in
+the GUI. Not currently displayed for SHARING (a program declares exactly
+one, so there's no "current step" chip row to build) — kept here purely
+for catalogue consistency with SEQUENCER/REDUCTION, same reasoning as the
+module-docstring convention above applying to all three families.
+
 LOGGING
 --------
 The orchestrator already announces which sub-plugin it's calling
@@ -48,6 +57,8 @@ TO WRITE YOUR OWN SHARING SUB-PLUGIN
 """
 
 from __future__ import annotations
+
+DISPLAY_NAME = "Blank"
 
 import asyncio
 import logging

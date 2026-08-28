@@ -9,6 +9,8 @@ sub-plugin becomes a real feature, not just wiring.
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Slew"
+
 import logging
 
 from ....models import Observation

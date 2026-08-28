@@ -16,6 +16,8 @@ instead of varying with slew direction.
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Pointing"
+
 import logging
 
 from astropy.coordinates import SkyCoord

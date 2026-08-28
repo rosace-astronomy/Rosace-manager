@@ -385,6 +385,50 @@ body {
 					}
 				}
 
+				// Temporary second line under .obs-stages, shown only while the stage
+				// step_progress names is still "running" (see renderObs()) -- visually
+				// lighter than .stage above so it doesn't compete with the primary row.
+				.obs-stages-column {
+					gap: 0.2rem;
+				}
+
+				.obs-substeps {
+					gap: 0.24rem;
+					padding: 0 4px;
+					--label-color: var(--muted);
+
+					.x4simpletext {
+						padding: 0;
+						text-transform: lowercase;
+					}
+
+					.x4tag .x4icon {
+						display: none;
+					}
+
+					.substep {
+						border-radius: 4px;
+						font-size: 0.85em;
+						font-weight: 500;
+						background: transparent;
+
+						&.pending {
+							color: var(--muted);
+						}
+
+						&.running {
+							--label-color: var(--text-dk);
+							background: var(--amber);
+							animation: stage-pulse 1.6s ease-in-out infinite;
+						}
+
+						&.done {
+							--label-color: white;
+							background: var(--green);
+						}
+					}
+				}
+
 				.ref-c1 {
 					display: none;
 				}

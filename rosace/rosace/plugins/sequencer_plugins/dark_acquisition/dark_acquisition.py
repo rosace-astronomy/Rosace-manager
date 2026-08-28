@@ -42,6 +42,8 @@ nothing descriptive to add, see CLAUDE.md).
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Dark"
+
 import logging
 from pathlib import Path
 

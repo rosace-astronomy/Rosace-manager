@@ -5,6 +5,8 @@ Extracts the 1D spectrum from the calibrated 2D image and produces the final fil
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Extract"
+
 import asyncio
 import logging
 from pathlib import Path

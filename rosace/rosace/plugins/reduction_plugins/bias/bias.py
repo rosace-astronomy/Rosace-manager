@@ -5,6 +5,8 @@ Subtracts the CCD sensor's bias level from each raw image.
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Bias"
+
 import asyncio
 import logging
 from pathlib import Path

@@ -6,6 +6,8 @@ Backend "internal" — internal simulation, no external dependency.
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Slew"
+
 import asyncio
 import logging
 

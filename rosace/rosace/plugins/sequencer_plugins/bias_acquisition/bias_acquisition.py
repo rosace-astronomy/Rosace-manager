@@ -28,6 +28,8 @@ Casier: {"origin": "current_session"|"camera", "bias_files": [...]}.
 
 from __future__ import annotations
 
+DISPLAY_NAME = "Bias"
+
 import logging
 from pathlib import Path
 

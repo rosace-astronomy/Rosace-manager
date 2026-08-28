@@ -44,6 +44,15 @@ the app. No backend axis either: REDUCTION sub-plugins process
 already-acquired files, no hardware dependency — unlike SEQUENCER, there's
 never a "<name>_internal.py" variant.
 
+DISPLAY_NAME (GUI label)
+--------------------------
+Right after this docstring, every sub-plugin declares its own short
+DISPLAY_NAME constant — a human-readable label (e.g. "Bias", "Extract")
+used to name this step's chip in the GUI's step-progress display. Kept
+separate from the module docstring, which documents the sub-plugin itself,
+not the UI. Read via ast.parse, exactly like the docstring — never
+imported.
+
 LOGGING
 --------
 The orchestrator already announces each step before running it
@@ -67,6 +76,8 @@ TO WRITE YOUR OWN REDUCTION SUB-PLUGIN
 """
 
 from __future__ import annotations
+
+DISPLAY_NAME = "Blank"
 
 import logging
 
