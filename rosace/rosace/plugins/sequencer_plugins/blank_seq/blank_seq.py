@@ -96,7 +96,7 @@ class BlankSeqPlugin(SubPlugin):
     """Minimal example SEQUENCER sub-plugin — see module docstring for the contract."""
 
     async def execute(self, obs: Observation) -> Observation:
-        queried_name = obs.scheduler_data.get("queried_name") or "inconnue"
+        queried_name = obs.scheduler_data.get("queried_name") or "unknown"
 
         log.info(f"[BLANK_SEQ] Example SEQUENCER sub-plugin for {queried_name}")
 

@@ -22,7 +22,7 @@ class SlewPlugin(SubPlugin):
 
     async def execute(self, obs: Observation) -> Observation:
         target = obs.scheduler_data.get("target")
-        queried_name = obs.scheduler_data.get("queried_name") or "inconnue"  # logs: name as requested
+        queried_name = obs.scheduler_data.get("queried_name") or "unknown"  # logs: name as requested
         ra = target.ra if target else 0.0
         dec = target.dec if target else 0.0
 
