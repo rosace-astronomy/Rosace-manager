@@ -10,10 +10,17 @@ from unittest.mock import AsyncMock
 import pytest
 
 from rosace.models import Observation, Target, ExposureConfig
+from rosace.plugins.sequencer_plugins import acquisition_helpers
 from rosace.plugins.sequencer_plugins.star_spectra_acquisition import star_spectra_acquisition_internal as ssa_mod
 from rosace.plugins.sequencer_plugins.star_spectra_acquisition.star_spectra_acquisition_internal import (
     StarSpectraAcquisitionPlugin,
 )
+
+
+class _FrozenDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 8, 7, 14, 30, 22, tzinfo=timezone.utc)
 
 
 def _make_obs(obs_dir=None, exposure=None, target=None) -> Observation:
@@ -101,6 +108,41 @@ class TestStarSpectraAcquisitionPlugin:
         result = await StarSpectraAcquisitionPlugin().execute(obs)
 
         assert len(result.sequencer_data["star_spectra_images"]) == 3
+
+    async def test_filename_follows_the_shared_fits_naming_convention(self, tmp_path, monkeypatch):
+        """Regression test: this sub-plugin used to hardcode "spectrum_0001.fits"
+        instead of build_fits_root_name() (the same convention the indi backend's
+        star_spectra_acquisition.py already uses) -- fixed so demo-mode files look
+        like real ones, not just a generic placeholder name. Timestamp frozen (same
+        pattern as test_acquisition_helpers.py) since build_fits_root_name() stamps
+        the current time and this test calls it a second time to build the expectation."""
+        monkeypatch.setattr(acquisition_helpers, "datetime", _FrozenDatetime)
+        exposure = ExposureConfig(exposure_time=1.0)
+        obs = _make_obs(obs_dir=tmp_path, exposure=exposure, target=Target(name="Vega", ra=1.0, dec=1.0))
+        obs.scheduler_data["queried_name"] = "T CrB"
+
+        result = await StarSpectraAcquisitionPlugin().execute(obs)
+
+        [filename] = result.sequencer_data["star_spectra_images"]
+        assert filename == ssa_mod.build_fits_root_name(
+            "STAR", target_name="T CrB", exposure_time=1.0, num_exposures=1
+        ) + ".fits"
+
+    async def test_series_of_several_files_share_one_root_name_with_index_suffix(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(acquisition_helpers, "datetime", _FrozenDatetime)
+        monkeypatch.setattr(ssa_mod, "MAX_EXPOSURE_TIME_SECONDS", 300)
+        exposure = ExposureConfig(exposure_time=780)  # -> ceil(780/300) = 3x300s
+        obs = _make_obs(obs_dir=tmp_path, exposure=exposure, target=Target(name="Vega", ra=1.0, dec=1.0))
+        obs.scheduler_data["queried_name"] = "Vega"
+
+        result = await StarSpectraAcquisitionPlugin().execute(obs)
+
+        root_name = ssa_mod.build_fits_root_name(
+            "STAR", target_name="Vega", exposure_time=300, num_exposures=3  # 780s split into 3x300s
+        )
+        assert result.sequencer_data["star_spectra_images"] == [
+            f"{root_name}-1.fits", f"{root_name}-2.fits", f"{root_name}-3.fits",
+        ]
 
     async def test_appends_to_star_spectra_images_instead_of_overwriting(self, tmp_path):
         """star_spectra_images is a shared key -- a value already present (e.g.

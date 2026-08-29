@@ -1,15 +1,16 @@
 # ─────────────────────────────────────────────────────────────
 # Rosace — demo container config (docker/Dockerfile, ROSACE_CONFIG).
-# Same keys as rosace/rosace/conf/config.yaml (config.py reads every one of
-# them unconditionally) — only the values that matter for a self-contained,
-# no-hardware demo differ from the packaged defaults:
+# Every Core key rosace/rosace/conf/config.yaml has (config.py reads each
+# one unconditionally — see CLAUDE.md's Core/Plugin config split) — only the
+# values that matter for a self-contained, no-hardware demo differ from the
+# packaged defaults:
 #   - base_data_dir points at /data (the container's VOLUME, so the demo
 #     catalogue/observations survive a restart)
 #   - sequencer_backend is "internal" (simulation — no INDI/PHD2 server to
 #     connect to inside the container)
-#   - observation_list_path lives on that same volume, so someone poking at
-#     the running demo can open/edit it (add a target line) without a shell
-#     into the container's image layer
+#   - subplugin_params.scheduler_rosace_2026.observation_list_path lives on
+#     that same volume, so someone poking at the running demo can open/edit
+#     it (add a target line) without a shell into the container's image layer
 # ─────────────────────────────────────────────────────────────
 
 base_data_dir: /data
@@ -20,28 +21,33 @@ log_dir: log
 
 observations_dir: observations
 
+dark_library_dir: dark_library
+
 site_name: Rosace-Demo
 
 site_latitude_deg: 45.0
 site_longitude_deg: 5.0
 site_elevation_m: 950
-min_target_altitude_deg: 10
 
 active_hardware: hardware_indi_simu
 
-scheduler_retry_seconds: 60
+active_scheduler: scheduler_rosace_2026
 
 sequencer_backend: internal
 
+scheduler_retry_seconds: 60
+
 hardware_connect_timeout_seconds: 5
-
-exposure_time_mag0_seconds: 1.0
-max_exposure_time_seconds: 300
-
-observation_list_path: /data/ObservationList.txt
-
-active_scheduler: scheduler_rosace_2026
+camera_cooldown_timeout_seconds: 300
 
 session_ttl_hours: 336
 
 session_cookie_secure: false
+
+subplugin_params:
+  exposure_time_mag0_seconds: 1.0
+  max_exposure_time_seconds: 300
+
+  scheduler_rosace_2026:
+    observation_list_path: /data/ObservationList.txt
+    min_target_altitude_deg: 10

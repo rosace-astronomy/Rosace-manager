@@ -31,7 +31,7 @@ from pathlib import Path
 from ....config import SUBPLUGIN_PARAMS
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
-from ..acquisition_helpers import compute_exposure_time_and_count
+from ..acquisition_helpers import build_fits_root_name, compute_exposure_time_and_count
 
 log = logging.getLogger("spectro.subplugin.star_spectra_acquisition")
 
@@ -76,19 +76,22 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
 
         log.info("[STAR_SPECTRA_ACQUISITION] Spectroscope set to SKY mode (simulated)")
 
-        fits_prefix = "spectrum"
         simulate_speed = 0.05
 
-        queried_name = obs.scheduler_data.get("queried_name") or "target"
+        queried_name = obs.scheduler_data.get("queried_name")
+        root_name = build_fits_root_name(
+            "STAR", target_name=queried_name, exposure_time=exposure_time, num_exposures=num_exposures
+        )
         raw_files: list[str] = []
 
         log.info(
-            f"[STAR_SPECTRA_ACQUISITION] Target={queried_name}, t={exposure_time}s x {num_exposures}, "
+            f"[STAR_SPECTRA_ACQUISITION] Target={queried_name or 'target'}, t={exposure_time}s x {num_exposures}, "
             f"binning={binning}x, grating={grating}"
         )
 
         for i in range(1, num_exposures + 1):
-            basename = f"{fits_prefix}_{i:04d}.fits"
+            suffix = f"-{i}" if num_exposures > 1 else ""
+            basename = f"{root_name}{suffix}.fits"
             filepath = Path(obs.obs_dir) / basename
             log.info(f"[STAR_SPECTRA_ACQUISITION] Exposure {i}/{num_exposures} -> {basename}")
 
