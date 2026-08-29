@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 The ROSACE project
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """
 Queries the Simbad database (CDS Strasbourg) via the TAP API.
 Returns a star's information as a StarCreate.

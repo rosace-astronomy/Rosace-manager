@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 The ROSACE project
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """
 Global configuration: loads conf/config.yaml and exposes the application's constants.
 """

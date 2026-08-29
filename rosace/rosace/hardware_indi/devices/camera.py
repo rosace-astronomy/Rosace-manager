@@ -1,3 +1,11 @@
+"""
+INDI camera device -- exposure control and image acquisition.
+
+Distant heritage: this file originates from the PANOPTES/POCS observatory
+control software (github.com/panoptes/POCS, MIT license) -- see
+THIRD_PARTY_LICENSES.md at the repository root for the full license text.
+"""
+
 # Basic stuff
 import logging
 

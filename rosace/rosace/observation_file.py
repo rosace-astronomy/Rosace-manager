@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 The ROSACE project
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """
 Observation persistence to disk, in YAML format.
 Plays the same role for the YAML file that database.py plays for SQLite:

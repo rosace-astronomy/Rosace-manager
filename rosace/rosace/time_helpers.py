@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 The ROSACE project
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """
 Shared date/time helpers used across the application (database.py,
 plugins/init_session.py, ...) — kept in one place so the "session boundary"

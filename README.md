@@ -62,3 +62,21 @@ Contents:
 - [Observing file format](https://rosace-astronomy.github.io/rosace-docs/ObsFileFormat.html)
 
 Please send any comment or question to François Cochard ([francois.cochard@shelyak.com](mailto:francois.cochard@shelyak.com))
+
+## License
+
+Rosace is licensed under the GNU General Public License v3.0 or later
+(SPDX: `GPL-3.0-or-later`) — see [LICENSE](LICENSE) for the full text.
+
+Some files are adapted from third-party projects and remain under those
+projects' own license — see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+
+### In plain words
+
+- **Use, modification, distribution**: the software may be freely used, studied, modified, and distributed.
+- **Copyleft**: any modified version that is distributed must also be released under the GPL, with its source code made available.
+- **Attribution**: redistributed copies must keep the license text and existing copyright notices intact.
+- **Patent protection**: GPLv3 includes an explicit patent grant and protection against patent retaliation.
+- **No warranty, limited liability**: the software is provided "as is", with no warranty, and contributors' liability is limited.
+
+This is an informal summary for convenience only — it does not replace, and cannot override, the full license text in [LICENSE](LICENSE).

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 The ROSACE project
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """
 WebSocket broadcast of the spectro logger, for the "Journal" panel in the web GUI.
 Bridges the sync logging.Handler.emit() call to the async WebSocket.send_json() via

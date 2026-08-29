@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 The ROSACE project
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """
 Session (cookie) authentication — user accounts, password hashing, server
 sessions, FastAPI dependencies for protecting routes.

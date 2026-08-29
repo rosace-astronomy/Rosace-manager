@@ -1,3 +1,13 @@
+"""
+INDI device wrapper -- generic property read/write/wait helpers built on top
+of PyIndi, abstracting INDI's number/switch/text/light/BLOB property types.
+
+Distant heritage: this file originates from the PANOPTES/POCS observatory
+control software (github.com/panoptes/POCS, MIT license) -- see
+THIRD_PARTY_LICENSES.md at the repository root for the full license text
+and which parts of hardware_indi/ this covers.
+"""
+
 # Basic stuff
 from collections import deque
 import ctypes

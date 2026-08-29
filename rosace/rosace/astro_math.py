@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 The ROSACE project
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """
 Low-precision spherical-astronomy helpers: altitude above the horizon for an
 ICRS (RA, Dec) position, given a UTC date/time and an observer's site

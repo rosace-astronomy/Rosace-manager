@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 The ROSACE project
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """
 WebSocket broadcast of newly written images, for the Spectre/Guidage panels in the
 web GUI. Sibling to log_broadcast.py's WebSocketLogHandler, but simpler: unlike

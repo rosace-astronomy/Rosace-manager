@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 The ROSACE project
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """
 Centralized application logging configuration (console + rotating file).
 Single entry point: configure_logging(), called at the very start of main.py.

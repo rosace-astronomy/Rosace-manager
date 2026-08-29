@@ -1,3 +1,13 @@
+"""
+INDI client wrapper -- shared-singleton connection to an indiserver, BLOB
+reception, and generic property-vector handler registration.
+
+Distant heritage: this file originates from the PANOPTES/POCS observatory
+control software (github.com/panoptes/POCS, MIT license) -- see
+THIRD_PARTY_LICENSES.md at the repository root for the full license text
+and which parts of hardware_indi/ this covers.
+"""
+
 # Basic stuff
 from contextlib import contextmanager
 import io
@@ -243,7 +253,7 @@ class IndiClient(SingletonIndiClientHolder, PyIndi.BaseClient, Base):
         return f"INDI client connected to {self.remote_host}:{self.remote_port}"
 
     def enable_blob(self, blob_mode=PyIndi.B_ALSO, device_name=None, property_name=None):
-        """
+        r"""
         Sends a signal to the server that tells it, that this client wants to receive L{indiblob} objects.
         If this method is not called, the server will not send any L{indiblob}. The DCD clients calls it each time
         an L{indiblob} is defined.

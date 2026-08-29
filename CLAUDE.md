@@ -8,6 +8,23 @@ This file describes the project **as it is today**: conventions, architecture, h
 
 All code artifacts must be in English: variable names, function names, comments, docstrings, log messages, and any text written to files. This applies even though the user communicates with Claude in French. Conversations happen in French; code is written in English.
 
+## Licensing
+
+Rosace is licensed under the GNU General Public License v3, or (at the
+licensee's option) any later version — see [LICENSE](LICENSE) for the full
+text, and the README's own "License" section for a plain-language summary.
+Some files under `hardware_indi/` (`wrapper/` and most of `devices/`) are
+adapted from the PANOPTES/POCS observatory control software (MIT license,
+see HISTORY.md for the reasoning behind adopting GPLv3 alongside this) —
+see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for the attribution
+and full third-party license text. Those files, plus `main.py` and a
+handful of other core modules, carry their own short license header (the
+full FSF boilerplate on `main.py`, a 2-line SPDX identifier elsewhere) —
+deliberately not applied project-wide (never in `plugins/` or any
+sub-plugin directory, nor in test files), since the root `LICENSE` file
+already covers the whole repository and a header on every one of its ~160
+Python files would be pure repetition for no added legal effect.
+
 ## Project overview
 
 **Rosace** is an async REST API (FastAPI + Python 3.12) that orchestrates spectroscopic observation sessions end-to-end. It is designed to run autonomously at night, cycling through a state machine from target selection to archiving.

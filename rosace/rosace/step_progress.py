@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 The ROSACE project
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """
 In-memory, ephemeral tracking of which sub-plugin step is currently running
 within SEQUENCER/REDUCTION, per observation. Deliberately never persisted to
