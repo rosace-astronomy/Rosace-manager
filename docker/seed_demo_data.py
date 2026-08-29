@@ -21,7 +21,7 @@ import logging
 from pathlib import Path
 
 from rosace.database import db_init
-from rosace.config import OBSERVATION_LIST_PATH
+from rosace.plugins.schedulers.scheduler_rosace_2026.scheduler import OBSERVATION_LIST_PATH
 from rosace.auth import auth_db_init, ensure_first_admin
 from rosace.targets import (
     targets_db_init, program_list,

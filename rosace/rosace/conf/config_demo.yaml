@@ -1,0 +1,72 @@
+# ═══════════════════════════════════════════════════════════════
+# Rosace — DEMO configuration.
+# Activated by `python -m rosace.main --demo-mode`, or by pointing
+# ROSACE_CONFIG at this file directly (see main.py --help). A full sibling
+# of conf/config.yaml — config.py reads every Core key unconditionally, so
+# nothing here can be omitted just because it matches the packaged default.
+#
+# Purpose: let someone who has installed the package on their own machine
+# try Rosace end-to-end (SCHEDULER through ARCHIVE) with zero setup — no
+# INDI server, no PHD2, no hand-edited catalogue. Isolated under its own
+# base_data_dir so it can never mix with a real installation's data. This
+# is the step between the Docker demo (zero install) and the INDI-simulator
+# tier (active_hardware: hardware_indi_simu + sequencer_backend: indi, which
+# does need a real INDI server + PHD2 running).
+# ═══════════════════════════════════════════════════════════════
+
+# Marks this config as the demo config — config.py exposes this as
+# IS_DEMO_MODE, which triggers demo_seed.py's one-time catalogue seeding at
+# startup. Optional everywhere else (defaults to false) — a real
+# installation's config.yaml never needs this key at all.
+is_demo: true
+
+# A dedicated sibling of the real ~/.rosace — own databases, own log, own
+# observations, own ObservationList.txt. Never touches a real install's data.
+base_data_dir: ~/.rosace-demo
+
+databases_dir: databases
+
+log_dir: log
+
+observations_dir: observations
+
+dark_library_dir: dark_library
+
+site_name: Rosace-Demo
+
+site_latitude_deg: 45.0
+site_longitude_deg: 5.0 # East positive
+site_elevation_m: 950
+
+# Never actually consulted: sequencer_backend below is "internal", which
+# skips connect_session_hardware() entirely. Present because it's a Core key.
+active_hardware: hardware_indi_simu
+
+# The real scheduler (not the blank/ template) — exercises the actual
+# catalogue/priority/altitude logic against a small seeded catalogue
+# (demo_seed.py), rather than blank's three hardcoded stars.
+active_scheduler: scheduler_rosace_2026
+
+# Simulation only — no INDI/PHD2 server needed. This is the whole point.
+sequencer_backend: internal
+
+scheduler_retry_seconds: 60
+
+hardware_connect_timeout_seconds: 5
+camera_cooldown_timeout_seconds: 300
+
+session_ttl_hours: 336 # 336h = 14 days
+session_cookie_secure: false
+
+subplugin_params:
+  # Only demo.yaml's steps run under this config (slew/focus/
+  # star_spectra_acquisition, bias/dark/flat/extract) — the DARK/BIAS/
+  # CALIB/FLAT acquisition sub-plugins are indi-only and never load here.
+  exposure_time_mag0_seconds: 1.0
+  max_exposure_time_seconds: 30
+
+  scheduler_rosace_2026:
+    # Seeded by demo_seed.py on first run, alongside the two demo stars —
+    # lives under this config's own base_data_dir, not the real one.
+    observation_list_path: ~/.rosace-demo/ObservationList.txt
+    min_target_altitude_deg: 10

@@ -49,6 +49,10 @@ def _resolve_config_path() -> Path:
 _CONFIG_PATH = _resolve_config_path()
 _cfg = _load_config(_CONFIG_PATH)
 
+# Optional — absent (False) in every normal config.yaml. Only conf/config_demo.yaml
+# sets this, to trigger demo_seed.py's one-time catalogue seeding at startup.
+IS_DEMO_MODE: bool = bool(_cfg.get("is_demo", False))
+
 # ── Directories ───────────────────────────────────────────────
 BASE_DATA_DIR = Path(_cfg["base_data_dir"]).expanduser()
 DATABASES_DIR = BASE_DATA_DIR / _cfg["databases_dir"]

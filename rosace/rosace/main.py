@@ -26,17 +26,25 @@ import os
 import sys
 
 _HELP_TEXT = """\
-Usage: python -m rosace.main [config_path] [--check-config [config_path]] [--create-admin username] [--list-subplugins [family]]
+Usage: python -m rosace.main [config_path] [--demo-mode] [--check-config [config_path]] [--create-admin username] [--list-subplugins [family]]
 
   (no arguments)            Start the server using the active config, resolved in
                             priority order: ROSACE_CONFIG env var > <base_data_dir>/
                             conf/config.yaml (this installation's own config) > the
-                            packaged conf/config.yaml (fresh-install demo default).
+                            packaged conf/config.yaml.
 
   config_path               Start the server against this config.yaml instead of
                             the one that would normally be resolved — e.g. to run
                             a second instrument's config for this launch only.
                             One-off equivalent of setting ROSACE_CONFIG yourself.
+
+  --demo-mode               Start the server against the packaged demo config
+                            (conf/config_demo.yaml) — simulated backend, no INDI/
+                            PHD2 needed, isolated under ~/.rosace-demo, self-seeds
+                            a small illustrative catalogue on first run. For trying
+                            Rosace out after a local install, before touching any
+                            hardware. See also the Docker image for an even
+                            lighter, install-free trial.
 
   --check-config [config_path]
                             Validate a config and exit — never starts the server.
@@ -113,6 +121,15 @@ if __name__ == "__main__":
         for _row_family, _name, _summary in _rows:
             print(f"{_row_family:10s} {_name:20s} {_summary}")
         sys.exit(0)
+    elif "--demo-mode" in _argv:
+        # Pure sugar for ROSACE_CONFIG: resolves the packaged demo config's
+        # path (can't import pathlib.Path yet — os/sys are the only imports
+        # allowed above this block, see the comment at the top of the file)
+        # and falls through to the normal server startup below, same as the
+        # bare config_path branch does. Actual demo behavior (seeding,
+        # isolation) lives entirely in conf/config_demo.yaml + demo_seed.py,
+        # triggered by IS_DEMO_MODE — not by this flag itself.
+        os.environ["ROSACE_CONFIG"] = os.path.join(os.path.dirname(__file__), "conf", "config_demo.yaml")
     elif _argv:
         os.environ["ROSACE_CONFIG"] = _argv[0]
 
@@ -135,7 +152,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .config     import GUI_PREVIEW_DIR, SITE_NAME, SCHEDULER_RETRY_SECONDS, SESSION_COOKIE_SECURE, SESSION_TTL_HOURS
+from .config     import GUI_PREVIEW_DIR, SITE_NAME, SCHEDULER_RETRY_SECONDS, SESSION_COOKIE_SECURE, SESSION_TTL_HOURS, IS_DEMO_MODE
 from .log_config import configure_logging
 
 configure_logging()
@@ -158,6 +175,7 @@ from .database import (
     db_stamp_stage, db_set_error,
     db_set_stage_status, db_get_recent_observations,
 )
+from .demo_seed import seed_demo_data
 from .observation_file import create_observation_file, write_observation_file
 from .plugins  import plugins
 from .plugins.pipeline_loader import get_display_names
@@ -185,6 +203,8 @@ async def lifespan(_app: FastAPI):
     await db_init()
     await targets_db_init()
     await auth_db_init()
+    if IS_DEMO_MODE:
+        await seed_demo_data()
     ensure_dark_library_structure()
     ws_log_handler.bind_loop(asyncio.get_running_loop())
     logging.getLogger("spectro").addHandler(ws_log_handler)

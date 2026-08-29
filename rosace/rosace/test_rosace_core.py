@@ -188,6 +188,35 @@ class TestCheckConfigCLI:
         assert str(missing) in result.stdout
 
 
+class TestDemoModeCLI:
+    """`python -m rosace.main --demo-mode` — sugar for ROSACE_CONFIG pointed at
+    the packaged conf/config_demo.yaml; doesn't exit, falls through to the
+    normal server startup (not exercised here — see the other flags' pattern
+    for why a real server launch isn't subprocess-tested)."""
+
+    def test_demo_config_is_a_valid_config(self):
+        """The packaged demo config itself must satisfy every Core key
+        config.py requires — reuses --check-config to validate it for free."""
+        demo_config_path = Path(__file__).parent / "conf" / "config_demo.yaml"
+        result = subprocess.run(
+            [sys.executable, "-m", "rosace.main", "--check-config", str(demo_config_path)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0
+        assert "[OK]" in result.stdout
+
+    def test_demo_config_sets_is_demo_mode(self):
+        """Run in a fresh subprocess (not importlib.reload) so this can't leak
+        config.py module state into other tests running in this session."""
+        demo_config_path = Path(__file__).parent / "conf" / "config_demo.yaml"
+        env = {**os.environ, "ROSACE_CONFIG": str(demo_config_path)}
+        result = subprocess.run(
+            [sys.executable, "-c", "from rosace.config import IS_DEMO_MODE; print(IS_DEMO_MODE)"],
+            capture_output=True, text=True, env=env,
+        )
+        assert result.stdout.strip() == "True"
+
+
 class TestHelpCLI:
     """`python -m rosace.main --help` / `-h` — prints usage and exits, never starts the server."""
 
@@ -200,6 +229,7 @@ class TestHelpCLI:
         assert result.returncode == 0
         assert "--check-config" in result.stdout
         assert "config_path" in result.stdout
+        assert "--demo-mode" in result.stdout
 
     def test_help_takes_priority_over_check_config(self):
         """--help alongside --check-config prints usage rather than validating."""

@@ -50,6 +50,11 @@ cd rosace
 uvicorn rosace.main:app --host 0.0.0.0 --port 8000
 # or: python -m rosace.main
 
+# Alternative: try it with zero setup (no hardware, no admin bootstrap,
+# self-seeded catalogue, isolated under ~/.rosace-demo) — see "Trying Rosace
+# without hardware" below
+# python -m rosace.main --demo-mode
+
 # Interactive API docs
 # http://localhost:8000/docs
 
@@ -284,17 +289,78 @@ Note: `programs/*.yaml` (scientific program definitions) intentionally live outs
 
 ### Which config.yaml is active (multi-instrument support)
 
-The packaged `conf/config.yaml` is a **demo default**, meant to work out of the box — but a real deployment's own settings (site name, active hardware, observation list...) shouldn't have to live inside the git-tracked code tree, and someone running more than one instrument (e.g. a main telescope plus a demo scope) needs more than one active config. `config.py::_resolve_config_path()` picks the active file in priority order, evaluated once at import time:
+The packaged `conf/config.yaml` ships with **real-world defaults**
+(`sequencer_backend: indi` — it expects a real INDI server) — but a real
+deployment's own settings (site name, active hardware, observation list...)
+shouldn't have to live inside the git-tracked code tree, and someone running
+more than one instrument (e.g. a main telescope plus a demo scope) needs
+more than one active config. `config.py::_resolve_config_path()` picks the
+active file in priority order, evaluated once at import time:
 
-1. **`ROSACE_CONFIG` env var**, if set — an explicit path (any location, `~` expanded), highest priority. `python -m rosace.main <path>` sets this from a positional CLI argument before any other import runs (see `main.py`'s top-of-file CLI handling, required to run before `from .config import ...` triggers `config.py`'s own loading); a `uvicorn rosace.main:app` launch needs the env var set directly instead (`ROSACE_CONFIG=<path> uvicorn ...`). Meant for one-off overrides — a second instrument, a test config — not the everyday case.
+1. **`ROSACE_CONFIG` env var**, if set — an explicit path (any location, `~` expanded), highest priority. `python -m rosace.main <path>` sets this from a positional CLI argument before any other import runs (see `main.py`'s top-of-file CLI handling, required to run before `from .config import ...` triggers `config.py`'s own loading); a `uvicorn rosace.main:app` launch needs the env var set directly instead (`ROSACE_CONFIG=<path> uvicorn ...`). Meant for one-off overrides — a second instrument, a test config, `--demo-mode` (below) — not the everyday case.
 2. **`<base_data_dir>/conf/config.yaml`**, if it exists — where `base_data_dir` comes from `conf/base_data_dir.yaml` (a single-field file, `base_data_dir: ~/.rosace` by default). This is a real installation's own config, found automatically on every launch with no argument needed — the day-to-day case once you've configured your own instrument. `conf/base_data_dir.yaml` itself always lives in the package's own `conf/`: it has to be found before `base_data_dir` is even known, so it can't live under `base_data_dir` itself.
 3. **The packaged `conf/config.yaml`** — used only if neither of the above applies (fresh install, nothing configured yet).
 
 `python -m rosace.main --check-config [path]` validates a config without starting the server: with no argument, it validates whatever step 1–3 above would resolve to; with a path, it validates that file specifically (via the same `ROSACE_CONFIG` mechanism). Prints `[OK]`/`[FAIL]` and exits 0/1 — never reaches `uvicorn.run()` either way, so it's safe to run against a candidate config without risking a real session starting.
 
-`python -m rosace.main --help` (or `-h`) prints this same CLI's usage — the positional `config_path` argument, `--check-config`, `--create-admin`, and `--list-subplugins` — and exits, without starting the server either.
+`python -m rosace.main --help` (or `-h`) prints this same CLI's usage — the positional `config_path` argument, `--demo-mode`, `--check-config`, `--create-admin`, and `--list-subplugins` — and exits, without starting the server either.
 
 `python -m rosace.main --create-admin <username>` bootstraps the first admin account (see Authentication above) and exits — also never starts the server.
+
+### Trying Rosace without hardware (`--demo-mode`)
+
+Onboarding runs in four stages, each a superset of the trust required by the
+last: **Docker demo** (zero install — `docker/`, its own self-contained
+catalogue, see `docker/README.md`) → **`--demo-mode`** (installed locally,
+still zero real/simulated hardware) → **INDI simulators**
+(`sequencer_backend: indi` + `active_hardware: hardware_indi_simu`, needs a
+real INDI server and PHD2 running, but no telescope) → **real hardware**
+(same `indi` backend, `active_hardware` pointed at the real profile, e.g.
+`hardware_indi_72ED-LAN`). Only the last two share one evolving config/
+catalogue — the demo tier is deliberately isolated (see below), so it can
+never interfere with a real installation being built up in parallel.
+
+`python -m rosace.main --demo-mode` is pure sugar: it points `ROSACE_CONFIG`
+at the packaged `conf/config_demo.yaml` and falls through to the normal
+server startup (same mechanism as the positional `config_path` argument,
+just resolved from a known, installation-independent location —
+`Path(__file__).parent / "conf" / "config_demo.yaml"` — so it works
+regardless of where `pip` put the package). `config_demo.yaml` is a full
+sibling of `config.yaml` (every Core key present, same as any config) whose
+values differ specifically to need nothing: `sequencer_backend: internal`
+(no INDI/PHD2 to connect to), `active_scheduler: scheduler_rosace_2026` (the
+real scheduler, not `blank` — see below for why), and
+`base_data_dir: ~/.rosace-demo`, a sibling of the real `~/.rosace` so demo
+and real data can never mix.
+
+What actually triggers the demo behavior is not the CLI flag — it's
+`config_demo.yaml`'s own `is_demo: true` key (optional everywhere else,
+defaults to `false`; exposed as `config.py::IS_DEMO_MODE`), the same
+"config drives behavior" principle used everywhere else in this app. Anyone
+who points `ROSACE_CONFIG` at `config_demo.yaml` by hand — e.g. for a
+`uvicorn` launch — gets the identical behavior, no special-casing on the
+flag. When `IS_DEMO_MODE` is true, `main.py`'s `lifespan()` calls
+`demo_seed.py::seed_demo_data()`: idempotent (no-ops once `targets.db`
+already has a program — same guard as the Docker demo's own seed script), it
+inserts 2 stars (Vega/Arcturus — the same coordinates `plugins/schedulers/
+blank/scheduler.py` already hardcodes, kept consistent rather than inventing
+new example data) under **one program named `"demo"`**, writes a matching
+`ObservationList.txt`, and bootstraps a fixed `rosace`/`rosace` admin
+account (same convention and same "evaluation only, never a real install"
+rationale as the Docker demo's own credential).
+
+The program name `"demo"` is not arbitrary: `scheduler_rosace_2026` sets
+`scheduler_data["program"]` from whatever `targets.db` says, and that value
+is resolved directly to `programs/<name>.yaml` (see the Plugin system
+section above) — `programs/demo.yaml` is the only program YAML that's
+backend-agnostic (its sequencer steps all have an `_internal.py`
+counterpart). This is also why `--demo-mode` uses `scheduler_rosace_2026`
+rather than the `blank` scheduler template: `blank` hardcodes
+`_PROGRAM = "Be_stars"` as a placeholder label, which would resolve to the
+real, `indi`-only `programs/Be_stars.yaml` and fail under
+`sequencer_backend: internal` — harmless today since nothing pairs `blank`
+with `internal`, but worth knowing if `blank` is ever reused for something
+demo-shaped.
 
 ### Key configuration (`config.py` loads `conf/config.yaml`)
 
@@ -302,7 +368,7 @@ The packaged `conf/config.yaml` is a **demo default**, meant to work out of the 
 
 `conf/config.yaml` is split into two sections, and the two follow different rules — a deliberate architectural decision (see HISTORY.md): sub-plugins are meant to vary freely per installation/observer (a parameter one program's plugin needs may be meaningless to another), so requiring every installation to declare every plugin's parameters (as a flat, unconditionally-indexed `config.yaml` would) doesn't scale as the sub-plugin catalogue grows.
 
-- **Core** — read directly by `main.py`/`auth.py`/`database.py`, or a selector key needed to pick which plugin family is active (`active_hardware`, `active_scheduler`, `sequencer_backend`) — a plugin can't declare its own selector. Every installation must set these. `config.py` reads each with `_cfg["key"]` (fails fast, at server startup, if missing) and exposes it as its own named constant, one per key — the table below.
+- **Core** — read directly by `main.py`/`auth.py`/`database.py`, or a selector key needed to pick which plugin family is active (`active_hardware`, `active_scheduler`, `sequencer_backend`) — a plugin can't declare its own selector. Every installation must set these. `config.py` reads each with `_cfg["key"]` (fails fast, at server startup, if missing) and exposes it as its own named constant, one per key — the table below. `is_demo`/`IS_DEMO_MODE` is the one deliberate exception: read with `.get("is_demo", False)`, since it's meaningful only to `conf/config_demo.yaml` — every other config simply omits it.
 - **Plugin** — everything specific to one or a few sub-plugins (DARK/BIAS frame counts, `scheduler_rosace_2026`'s observation list path...). Lives under one free-form `subplugin_params:` block in `config.yaml`, with no schema enforced. `config.py` exposes exactly one constant for the whole block, `SUBPLUGIN_PARAMS: dict = _cfg.get("subplugin_params", {})` — it is never edited again just because a new plugin parameter was introduced. Each consuming sub-plugin reads its own slice with its own default (e.g. `SUBPLUGIN_PARAMS.get("dark_acquisition", {}).get("count", 5)`), so an installation that doesn't use a given sub-plugin needs no entry for it at all. A parameter read by several interchangeable sub-plugins (e.g. `max_exposure_time_seconds`, read by both `star_spectra_acquisition` and `dark_acquisition`) sits at the *root* of `subplugin_params` rather than nested under one plugin's name — the same "shared, purpose-named key" principle already used for casiers (see the Plugin system section above), applied to config. `DARK_LIBRARY_DIR` is the one exception kept in Core despite being consumed only by `dark_acquisition`: it's a directory, same shape/lifecycle as `BASE_DATA_DIR`/`LOG_DIR` above it, not a tunable behavior.
 
 **Core:**
@@ -320,12 +386,13 @@ The packaged `conf/config.yaml` is a **demo default**, meant to work out of the 
 | `ACTIVE_HARDWARE` | `active_hardware` | `"hardware_indi_simu"` | Name (no extension) of the hardware YAML file to use |
 | `HARDWARE_CONFIG_PATH` | *(derived)* | `conf/hardware_indi_simu.yaml` | Full path to the active hardware YAML, parsed by `plugins/hardware_connectivity.py` (`sequencer_backend=indi` only) |
 | `ACTIVE_SCHEDULER` | `active_scheduler` | `"scheduler_rosace_2026"` | Name (registry in `plugins/schedulers/__init__.py`) of the active SCHEDULER plugin: `"scheduler_rosace_2026"` (real target selection) or `"blank"` (minimal hardcoded example) |
-| `SEQUENCER_BACKEND` | `sequencer_backend` | `"internal"` | Which SEQUENCER sub-plugin family to load: `"internal"` (simulation, no external dependency) or `"indi"` (real INDI/PHD2 protocol) |
+| `SEQUENCER_BACKEND` | `sequencer_backend` | `"indi"` | Which SEQUENCER sub-plugin family to load: `"internal"` (simulation, no external dependency — the packaged `conf/config_demo.yaml` forces this, see `--demo-mode` above) or `"indi"` (real INDI/PHD2 protocol) |
 | `SCHEDULER_RETRY_SECONDS` | `scheduler_retry_seconds` | `60` | Delay before `main.py` asks SCHEDULER again after it reports nothing to observe (`target=None`) |
 | `HARDWARE_CONNECT_TIMEOUT_SECONDS` | `hardware_connect_timeout_seconds` | `5` | `INIT_SESSION` (`sequencer_backend=indi` only): max time to wait for each INDI device / PHD2 to answer |
 | `CAMERA_COOLDOWN_TIMEOUT_SECONDS` | `camera_cooldown_timeout_seconds` | `300` | `INIT_SESSION` (`sequencer_backend=indi` only): max time to wait for the science camera to reach its computed cooldown target temperature — see `plugins/camera_cooldown.py` below. |
 | `SESSION_TTL_HOURS` | `session_ttl_hours` | `336` (14 days) | How long a login session (cookie) stays valid — see Authentication above |
 | `SESSION_COOKIE_SECURE` | `session_cookie_secure` | `false` | Whether the session cookie requires HTTPS (the `Secure` attribute) — see Authentication above |
+| `IS_DEMO_MODE` | `is_demo` | `false` | Optional — absent (so `false`) in every normal config; only `conf/config_demo.yaml` sets it, to trigger `demo_seed.py`'s one-time catalogue seeding — see `--demo-mode` above |
 
 `TARGETS_DB_PATH` is defined in `targets.py` as `DATABASES_DIR / "targets.db"`.
 
