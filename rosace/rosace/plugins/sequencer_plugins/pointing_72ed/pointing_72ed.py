@@ -22,12 +22,24 @@ import logging
 
 from astropy.coordinates import SkyCoord
 
+from ....config import SUBPLUGIN_PARAMS
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
 from ..acquisition_helpers import capture_guide_image
 from ..plate_solve_helper import solve_result, solve_wcs, world_to_pixel
 
 log = logging.getLogger("spectro.subplugin.pointing_72ed")
+
+# Phase 2's solve already has a precise position hint (corrected_coord, just
+# slewed to and stamped into the image header) -- unlike Phase 1, which has
+# only the raw target position to search around, so it keeps solve_wcs()'s
+# own wider default (5 deg). A tighter cone here means less for solve-field
+# to search, directly cutting the real wall-clock time of this synchronous
+# plate-solve -- found 2026-08-30 to be the actual cause of a multi-second
+# gap observed live between PHD2's guiding starting and its lock position
+# actually being corrected (see HISTORY.md).
+_params = SUBPLUGIN_PARAMS.get("pointing_72ed", {})
+PHASE2_SEARCH_RADIUS_DEG = _params.get("phase2_search_radius_deg", 1.0)
 
 
 async def _slew_with_backlash_approach(mount, coord: SkyCoord, offset_deg: float) -> None:
@@ -134,8 +146,11 @@ class Pointing72edPlugin(SubPlugin):
         lock_x, lock_y = await phd2.get_lock_position()
 
         # Step 11: plate solve this 2nd image, without recording the error this time
-        # (the pointing is already corrected, mount accuracy isn't what's being measured here)
-        await solve_wcs(str(corrected_guide_image), sampling_arcsec=sampling_arcsec)
+        # (the pointing is already corrected, mount accuracy isn't what's being measured here) --
+        # a tighter search radius than Phase 1's (see PHASE2_SEARCH_RADIUS_DEG above)
+        await solve_wcs(
+            str(corrected_guide_image), sampling_arcsec=sampling_arcsec, radius_deg=PHASE2_SEARCH_RADIUS_DEG,
+        )
 
         # Step 12: pixel position, in this 2nd image, of the real target star (target_coord,
         # not corrected_coord -- corrected_coord is only the artificial point we aimed the

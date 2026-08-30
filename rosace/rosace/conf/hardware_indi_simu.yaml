@@ -100,7 +100,7 @@ PHD2_config:
     do_calibration: False
     # profile_name: St-Pancrasse
     # profile_name: Nomade 72ED Alpy
-    profile_name: Simulator
+    profile_name: Simulators
     exposure_time_sec: 0.3
     settle:
         pixels: 7

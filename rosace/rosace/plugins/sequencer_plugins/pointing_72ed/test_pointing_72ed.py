@@ -164,6 +164,8 @@ class TestPointing72edPlugin:
         assert first_call.kwargs["sampling_arcsec"] == SAMPLING_ARCSEC
         assert first_call.kwargs["record_error"] is True
         assert first_call.kwargs["observation_id"] == obs.id
+        # Phase 1 has no precise position hint yet -- keeps solve_wcs()'s own wider default.
+        assert "radius_deg" not in first_call.kwargs
 
     async def test_second_solve_does_not_record_pointing_error(self, mock_dependencies):
         obs = _make_obs()
@@ -173,6 +175,17 @@ class TestPointing72edPlugin:
         second_call = mock_dependencies["solve_wcs"].await_args_list[1]
         assert second_call.kwargs["sampling_arcsec"] == SAMPLING_ARCSEC
         assert second_call.kwargs.get("record_error", False) is False
+
+    async def test_second_solve_uses_a_tighter_search_radius(self, mock_dependencies):
+        """Phase 2 already has a precise position hint (corrected_coord, just
+        slewed to) -- a tighter cone than Phase 1's default cuts the real
+        wall-clock cost of this synchronous plate-solve."""
+        obs = _make_obs()
+
+        await Pointing72edPlugin().execute(obs)
+
+        second_call = mock_dependencies["solve_wcs"].await_args_list[1]
+        assert second_call.kwargs["radius_deg"] == pointing_72ed.PHASE2_SEARCH_RADIUS_DEG
 
     async def test_starts_phd2_guiding_twice(self):
         obs = _make_obs()
