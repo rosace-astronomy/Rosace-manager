@@ -3,7 +3,8 @@ Tests for the CLOSE_SESSION plugin (CloseSessionPlugin).
 Run: pytest plugins/test_close_session.py -v
 """
 
-from unittest.mock import AsyncMock
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -16,6 +17,18 @@ def fast_sleep(monkeypatch):
     """Avoids waiting out the simulated sleep(7.0) (telescope parking)."""
     mock = AsyncMock(return_value=None)
     monkeypatch.setattr("rosace.plugins.close_session.asyncio.sleep", mock)
+    return mock
+
+
+@pytest.fixture(autouse=True)
+def mock_extract_session_log(monkeypatch):
+    """extract_session_log's own behavior is covered by
+    test_session_log_extractor.py -- these tests only cover that
+    CloseSessionPlugin calls it, and survives it failing. Every test in
+    this file uses SessionContext(site_name=...) with no session_dir, which
+    the real function can't write to anyway."""
+    mock = MagicMock(return_value=Path("/tmp/fake/session.log"))
+    monkeypatch.setattr("rosace.plugins.close_session.extract_session_log", mock)
     return mock
 
 
@@ -120,3 +133,19 @@ class TestCloseSessionPlugin:
         await CloseSessionPlugin().run(ctx)
 
         assert calls == ["park", "disconnect"]
+
+    async def test_extracts_session_log(self, mock_extract_session_log):
+        ctx = SessionContext(site_name="St-Pancrasse")
+
+        await CloseSessionPlugin().run(ctx)
+
+        mock_extract_session_log.assert_called_once_with(ctx)
+
+    async def test_session_log_extraction_failure_does_not_block_closing(self, mock_extract_session_log):
+        mock_extract_session_log.side_effect = RuntimeError("boom")
+        ctx = SessionContext(site_name="St-Pancrasse")
+        ctx.hardware = {"mount": AsyncMock()}
+
+        await CloseSessionPlugin().run(ctx)  # must not raise
+
+        ctx.hardware["mount"].disconnect.assert_awaited_once()

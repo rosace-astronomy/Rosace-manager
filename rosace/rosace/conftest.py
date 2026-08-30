@@ -45,6 +45,8 @@ def tmp_data_dir(tmp_path_factory):
     auth_mod.DB_PATH = tmp / "rosace.db"
     import rosace.log_config as log_cfg_mod
     log_cfg_mod.LOG_DIR = tmp
+    import rosace.session_log_extractor as session_log_mod
+    session_log_mod.LOG_DIR = tmp
     import rosace.plugins.init_session as init_session_mod
     init_session_mod.OBSERVATIONS_DIR = tmp / "observations"
     import rosace.plugins.sequencer_plugins.acquisition_helpers as acq_helpers_mod
