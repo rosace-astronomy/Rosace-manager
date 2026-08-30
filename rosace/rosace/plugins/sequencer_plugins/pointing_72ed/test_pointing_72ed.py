@@ -49,6 +49,7 @@ def _make_obs() -> Observation:
     obs.scheduler_data["target"] = Target(name=TARGET_NAME, ra=TARGET_RA, dec=TARGET_DEC)
     obs.scheduler_data["queried_name"] = QUERIED_NAME
     obs.hardware["mount"] = AsyncMock()
+    obs.hardware["mount"].get_position.return_value = (TARGET_RA, TARGET_DEC)
     obs.hardware["guiding_camera"] = AsyncMock()
     obs.hardware["phd2"] = AsyncMock()
     obs.hardware["phd2"].get_lock_position.return_value = (LOCK_X, LOCK_Y)
@@ -106,6 +107,15 @@ class TestPointing72edPlugin:
         await Pointing72edPlugin().execute(obs)
 
         obs.hardware["phd2"].stop_capture.assert_awaited_once_with()
+
+    async def test_reads_back_mount_position_after_each_slew(self):
+        """DEBUG-only diagnostic added 2026-08-30 -- only checks the mount is
+        actually queried after both slews, not the log content itself."""
+        obs = _make_obs()
+
+        await Pointing72edPlugin().execute(obs)
+
+        assert obs.hardware["mount"].get_position.await_count == 2
 
     async def test_two_step_slew_toward_target_then_corrected_position(self):
         obs = _make_obs()

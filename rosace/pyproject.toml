@@ -34,6 +34,10 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    # fastapi.testclient (starlette.testclient under the hood) now prefers this
+    # over httpx for its TestClient -- falls back to httpx with a deprecation
+    # warning if absent. Only exercised by TestClient in tests, hence dev-only.
+    "httpx2>=2.0",
 ]
 
 [tool.setuptools.packages.find]

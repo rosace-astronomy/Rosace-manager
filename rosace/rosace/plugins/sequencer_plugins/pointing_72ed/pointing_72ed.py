@@ -74,6 +74,15 @@ class Pointing72edPlugin(SubPlugin):
         target_coord = SkyCoord(ra=target.ra, dec=target.dec, unit="deg", frame="icrs")
         log.info(f"[POINTING_72ED] Initial pointing toward {queried_name}")
         await _slew_with_backlash_approach(mount, target_coord, backlash_offset_deg)
+        # DEBUG only, added 2026-08-30 while investigating a large initial pointing miss --
+        # distinguishes the mount executing the GOTO inaccurately (reported position would
+        # then differ from commanded) from the commanded position itself already being off
+        # (reported would match commanded, but the real sky position still wouldn't).
+        reported_ra, reported_dec = await mount.get_position()
+        log.debug(
+            f"[POINTING_72ED] Initial slew: commanded ({target_coord.ra.deg:.5f}, {target_coord.dec.deg:.5f}), "
+            f"mount reports ({reported_ra:.5f}, {reported_dec:.5f})"
+        )
 
         # Step 2: guide image, taken directly (not through PHD2)
         initial_guide_image = await capture_guide_image(
@@ -101,6 +110,11 @@ class Pointing72edPlugin(SubPlugin):
         # Step 7: two-step slew toward the corrected target
         log.info(f"[POINTING_72ED] Corrected re-pointing toward {queried_name}")
         await _slew_with_backlash_approach(mount, corrected_coord, backlash_offset_deg)
+        reported_ra, reported_dec = await mount.get_position()
+        log.debug(
+            f"[POINTING_72ED] Corrected slew: commanded ({corrected_coord.ra.deg:.5f}, {corrected_coord.dec.deg:.5f}), "
+            f"mount reports ({reported_ra:.5f}, {reported_dec:.5f})"
+        )
 
         # ── Phase 2: PHD2-guiding-precision refinement ──
 
@@ -131,6 +145,7 @@ class Pointing72edPlugin(SubPlugin):
         # 1's own pointing-error correction) -- then residual vs. the slit
         target_pixel_x, target_pixel_y = world_to_pixel(str(corrected_guide_image), target_coord)
         dx, dy = target_pixel_x - slit_x, target_pixel_y - slit_y
+        log.debug(f"[POINTING_72ED] Phase 2 residual vs slit for {queried_name}: dx={dx:.1f}px dy={dy:.1f}px")
 
         # Step 13: shift PHD2's lock position by the same offset as the desired field shift --
         # PHD2 will itself move the mount until its own star reaches this new position,
