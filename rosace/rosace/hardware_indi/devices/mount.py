@@ -47,7 +47,7 @@ class IndiMount(IndiDevice):
             PIER_WEST : Mount on the West side of pier (Pointing East).
     """
     def __init__(self, config=None, logger=None, connect_on_create=False):
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger("spectro.indi.mount")
 
         assert (config is not None) and (type(config) == dict), ("Please provide config as dictionary, with indi_name")
         device_name = config['indi_name']

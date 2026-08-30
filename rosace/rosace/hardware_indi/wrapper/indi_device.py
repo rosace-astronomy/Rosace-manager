@@ -24,7 +24,7 @@ from .indi_client import defaultTimeout, IndiClient
 from .indi_web_manager_client import IndiWebManagerClient
 from .errors import BLOBError, IndiClientPredicateTimeoutError
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("spectro.indi.indi_device")
 
 class IndiDevice(Base):
     __prop_getter = {

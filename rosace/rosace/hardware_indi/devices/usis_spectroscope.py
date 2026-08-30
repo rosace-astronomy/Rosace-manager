@@ -11,7 +11,7 @@ from ..wrapper.indi_device import IndiDevice
 
 class IndiUsisSpectro(IndiDevice):
     def __init__(self, config=None, logger=None, connect_on_create=False):
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger("spectro.indi.usis_spectroscope")
 
         if config is None:
             config = dict(

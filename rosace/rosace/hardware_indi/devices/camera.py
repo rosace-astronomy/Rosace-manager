@@ -31,7 +31,7 @@ class IndiCamera(IndiDevice):
     READOUT_TIME_MARGIN = 300
 
     def __init__(self, logger=None, config=None, connect_on_create=True):
-        logger = logger or logging.getLogger(__name__)
+        logger = logger or logging.getLogger("spectro.indi.camera")
 
         if config is None:
             # TODO: dead fallback, never exercised in Rosace -- config is always

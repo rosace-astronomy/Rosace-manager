@@ -19,7 +19,7 @@ from ...hardware.spectroscope import LightSource
 
 class SpectroscopePlaceholder:
     def __init__(self, config=None, logger=None, connect_on_create: bool = False) -> None:
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger("spectro.indi.spectroscope_placeholder")
         self._light_source = LightSource.SKY
         if connect_on_create:
             self.connect()

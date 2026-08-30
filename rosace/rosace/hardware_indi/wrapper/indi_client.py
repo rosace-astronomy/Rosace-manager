@@ -28,7 +28,7 @@ from .base import Base
 from .indi_web_manager_client import IndiWebManagerClient, IndiWebManagerDummy
 from .errors import BLOBError, IndiClientPredicateTimeoutError
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("spectro.indi.indi_client")
 
 defaultTimeout = 30
 

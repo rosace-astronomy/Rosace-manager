@@ -41,7 +41,7 @@ class IndiWebManagerDummy:
 class IndiWebManagerClient:
 
     def __init__(self, config, indi_config=None):
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger("spectro.indi.indi_web_manager_client")
         if config is None:
             config = dict(
                 module="IndiWebManagedClient",

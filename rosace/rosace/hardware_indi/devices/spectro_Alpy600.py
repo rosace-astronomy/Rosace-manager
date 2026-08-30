@@ -35,7 +35,7 @@ _SOURCE_BY_STATE = {state: source for source, state in _STATE_BY_SOURCE.items()}
 
 class IndiSpectroAlpy600(IndiDevice):
     def __init__(self, config=None, logger=None, connect_on_create=False):
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger("spectro.indi.spectro_alpy600")
 
         if config is None:
             config = dict(

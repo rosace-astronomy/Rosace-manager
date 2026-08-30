@@ -16,4 +16,9 @@ class Base:
     """Common base for INDI wrapper/device classes: just a logger."""
 
     def __init__(self, *args, **kwargs):
-        self.logger = kwargs.get("logger") or logging.getLogger(self.__class__.__name__)
+        # "spectro.indi." prefix: without it, these records propagate to the root
+        # logger (WARNING-level console only, see conf/logging.cfg) instead of the
+        # spectro handler set (rotating file + GUI Journal) -- see CLAUDE.md's Logging
+        # section, "Known gap". Per-class suffix kept (e.g. "IndiMount", "IndiCamera")
+        # so different device types stay distinguishable in the log.
+        self.logger = kwargs.get("logger") or logging.getLogger(f"spectro.indi.{self.__class__.__name__}")

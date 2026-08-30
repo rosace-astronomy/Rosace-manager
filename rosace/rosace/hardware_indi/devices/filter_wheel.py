@@ -14,7 +14,7 @@ from ..wrapper.indi_device import IndiDevice
 
 class IndiFilterWheel(IndiDevice):
     def __init__(self, config=None, logger=None, connect_on_create=False):
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger("spectro.indi.filter_wheel")
 
         if config is None:
             config = dict(
