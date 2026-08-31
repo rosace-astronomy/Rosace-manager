@@ -37,9 +37,9 @@ site_name: St-Pancrasse
 # setting, even though only scheduler_rosace_2026 reads it today. Longitude
 # is signed, East positive (e.g. 5.0 = 5° East).
 # Exposed as SITE_LATITUDE_DEG / SITE_LONGITUDE_DEG / SITE_ELEVATION_M.
-site_latitude_deg: 45.0
-site_longitude_deg: 5.0 # East positive
-site_elevation_m: 950
+site_latitude_deg: 45.2895
+site_longitude_deg: 5.855 # East positive
+site_elevation_m: 955
 
 # Name (without extension) of the active hardware profile in conf/ — only
 # consulted when sequencer_backend (below) is 'indi'.
