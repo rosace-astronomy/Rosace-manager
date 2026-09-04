@@ -19,6 +19,7 @@ from __future__ import annotations
 DISPLAY_NAME = "Pointing"
 
 import logging
+import time
 
 from astropy.coordinates import SkyCoord
 
@@ -63,7 +64,6 @@ class Pointing72edPlugin(SubPlugin):
 
         queried_name = obs.scheduler_data.get("queried_name")
         mount = obs.hardware["mount"]
-        guiding_camera = obs.hardware["guiding_camera"]
         phd2 = obs.hardware["phd2"]
 
         mount_config = obs.hardware_config["mount"]
@@ -98,7 +98,7 @@ class Pointing72edPlugin(SubPlugin):
 
         # Step 2: guide image, taken directly (not through PHD2)
         initial_guide_image = await capture_guide_image(
-            guiding_camera, exposure_seconds, obs.obs_dir,
+            obs, exposure_seconds,
             ra_deg=target_coord.ra.deg, dec_deg=target_coord.dec.deg, target_name=queried_name,
             image_to_gui=True,
         )
@@ -132,25 +132,40 @@ class Pointing72edPlugin(SubPlugin):
 
         # Step 8: new guide image, taken directly (not through PHD2), at the corrected position
         corrected_guide_image = await capture_guide_image(
-            guiding_camera, exposure_seconds, obs.obs_dir,
+            obs, exposure_seconds,
             ra_deg=corrected_coord.ra.deg, dec_deg=corrected_coord.dec.deg, target_name=queried_name,
             image_to_gui=True,
         )
         log.info(f"[POINTING_72ED] Guiding image acquisition: {corrected_guide_image.name}")
 
-        # Step 9: start PHD2 guiding (auto-selects a guide star), waits for settle
+        # Step 9: start PHD2 guiding (auto-selects a guide star), waits for settle.
+        # DEBUG timing added 2026-09-02 while investigating the real residual: this settle
+        # is on the *current* position (no new mount target commanded), so it's expected to
+        # be fast -- logged to confirm that against real timings rather than assume it.
         log.info(f"[POINTING_72ED] Starting PHD2 guiding on {queried_name}")
+        settle_start = time.monotonic()
         await phd2.start_guiding()
+        log.debug(f"[POINTING_72ED] PHD2 first settle took {time.monotonic() - settle_start:.1f}s")
 
-        # Step 10: lock position PHD2 chose (its own guide star, generally not the target itself)
+        # Step 10: lock position PHD2 chose (its own guide star, generally not the target itself).
+        # DEBUG log added 2026-09-02: needed to later cross-check PHD2's own pixel-coordinate
+        # convention against the plate-solve's (astropy, zero-indexed) -- see
+        # project field-test notes for the 3-way comparison (PHD2 / Demetra / plate-solve)
+        # this value feeds.
         lock_x, lock_y = await phd2.get_lock_position()
+        log.debug(f"[POINTING_72ED] PHD2 lock position for {queried_name}: ({lock_x:.2f}, {lock_y:.2f})")
 
         # Step 11: plate solve this 2nd image, without recording the error this time
         # (the pointing is already corrected, mount accuracy isn't what's being measured here) --
-        # a tighter search radius than Phase 1's (see PHASE2_SEARCH_RADIUS_DEG above)
+        # a tighter search radius than Phase 1's (see PHASE2_SEARCH_RADIUS_DEG above).
+        # DEBUG timing added 2026-09-02, same investigation: this synchronous solve is the
+        # other candidate for where the real wall-clock time between capturing this image and
+        # actually applying its residual to PHD2 goes (see HISTORY.md's 2026-08-30 entry).
+        solve_start = time.monotonic()
         await solve_wcs(
             str(corrected_guide_image), sampling_arcsec=sampling_arcsec, radius_deg=PHASE2_SEARCH_RADIUS_DEG,
         )
+        log.debug(f"[POINTING_72ED] Phase 2 plate-solve took {time.monotonic() - solve_start:.1f}s")
 
         # Step 12: pixel position, in this 2nd image, of the real target star (target_coord,
         # not corrected_coord -- corrected_coord is only the artificial point we aimed the
@@ -169,7 +184,9 @@ class Pointing72edPlugin(SubPlugin):
 
         # Step 14: wait for the new settle around the corrected lock position
         log.info(f"[POINTING_72ED] Refining PHD2 lock position on {queried_name}")
+        settle_start = time.monotonic()
         await phd2.start_guiding()
+        log.debug(f"[POINTING_72ED] PHD2 refine settle took {time.monotonic() - settle_start:.1f}s")
 
         # Step 15: done -- star in the slit, guiding active. No "target" (already in
         # scheduler_data) or "guiding_started" flag (process info, not descriptive --

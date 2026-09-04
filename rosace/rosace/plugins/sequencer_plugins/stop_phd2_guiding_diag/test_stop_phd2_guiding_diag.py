@@ -92,10 +92,9 @@ class TestStopPhd2GuidingDiagPlugin:
         calls = mock_dependencies["capture_guide_image"].await_args_list
         assert len(calls) == SHOT_COUNT
         for call in calls:
-            camera, exposure, obs_dir = call.args
-            assert camera is obs.hardware["guiding_camera"]
+            passed_obs, exposure = call.args
+            assert passed_obs is obs
             assert exposure == EXPOSURE_SECONDS
-            assert obs_dir == obs.obs_dir
             assert call.kwargs["ra_deg"] == pytest.approx(TARGET_RA)
             assert call.kwargs["dec_deg"] == pytest.approx(TARGET_DEC)
             assert call.kwargs["target_name"] == QUERIED_NAME

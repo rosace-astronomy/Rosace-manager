@@ -16,7 +16,9 @@ from pathlib import Path
 from typing import Any
 
 from ...config import GUI_PREVIEW_DIR
+from ...hardware.spectroscope import LightSource
 from ...image_broadcast import ws_image_broadcaster
+from ...models import Observation
 
 ALLOWED_IMAGE_TYPES = {"STAR", "BIAS", "DARK", "FLAT", "CALIB", "GUIDING"}
 
@@ -32,20 +34,31 @@ _UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]")
 
 
 async def capture_guide_image(
-    camera: Any,
+    obs: Observation,
     exposure_time: float,
-    obs_dir: str,
     filename: str | None = None,
     ra_deg: float | None = None,
     dec_deg: float | None = None,
     target_name: str | None = None,
     image_to_gui: bool = False,
 ) -> Path:
-    """Exposes a guiding-role camera for exposure_time seconds and writes the
-    resulting FITS image to obs_dir/filename. Returns the written path. Same
-    expose()-then-writeto() pattern expose.py already uses for the science
-    camera (see hardware/camera.py for the generic Camera contract). filename
-    defaults to build_fits_root_name("GUIDING", target_name=target_name,
+    """Switches obs.hardware["spectroscope"] to LightSource.SKY, then exposes
+    obs.hardware["guiding_camera"] for exposure_time seconds and writes the
+    resulting FITS image to obs.obs_dir/filename. Returns the written path.
+
+    The SKY switch is unconditional -- every guide image needs it, with no
+    exception, so it isn't a parameter a caller could pass wrong or forget:
+    a caller only ever hands over obs itself, exactly as it already does for
+    obs.obs_dir. Added 2026-09-04 after a real incident the night before: a
+    disconnect during dark_acquisition left the spectroscope on DARK, and the
+    next guide image captured (by a different sub-plugin, later, after a
+    session restart) came out solid black -- nothing upstream of this
+    function can be trusted to have already put the spectroscope in the
+    right state, so this is the one place it's guaranteed instead.
+
+    Same expose()-then-writeto() pattern expose.py already uses for the
+    science camera (see hardware/camera.py for the generic Camera contract).
+    filename defaults to build_fits_root_name("GUIDING", target_name=target_name,
     exposure_time=exposure_time) + ".fits" (e.g. "GUIDING_Vega_0_30s_....fits"
     when target_name is given, "GUIDING_0_30s_....fits" without it) — pass
     an explicit filename to override (e.g. in tests).
@@ -79,14 +92,15 @@ async def capture_guide_image(
         raise ValueError("capture_guide_image: ra_deg and dec_deg must be given together, or both omitted")
     if filename is None:
         filename = build_fits_root_name("GUIDING", target_name=target_name, exposure_time=exposure_time) + ".fits"
-    image = await camera.expose(exposure_time)
+    await obs.hardware["spectroscope"].set_light_source(LightSource.SKY)
+    image = await obs.hardware["guiding_camera"].expose(exposure_time)
     if ra_deg is not None:
         image[0].header["RA"] = (ra_deg, "J2000, stamped by Rosace")
         image[0].header["DEC"] = (dec_deg, "J2000, stamped by Rosace")
         image[0].header["EQUINOX"] = (2000, "Equinox of RA and DEC above, stamped by Rosace")
     if target_name is not None:
         image[0].header["OBJECT"] = (target_name, "Queried name, stamped by Rosace")
-    path = Path(obs_dir) / filename
+    path = Path(obs.obs_dir) / filename
     image.writeto(path, overwrite=True)
     if image_to_gui:
         GUI_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)

@@ -55,7 +55,6 @@ class StopPhd2GuidingDiagPlugin(SubPlugin):
 
         target = obs.scheduler_data.get("target")
         queried_name = obs.scheduler_data.get("queried_name")
-        guiding_camera = obs.hardware["guiding_camera"]
         camera_config = obs.hardware_config["guiding_camera"]
         exposure_seconds = camera_config["exposure_seconds"]
         sampling_arcsec = camera_config.get("sampling_arcsec")
@@ -67,7 +66,7 @@ class StopPhd2GuidingDiagPlugin(SubPlugin):
         shots = []
         for i in range(1, SHOT_COUNT + 1):
             image = await capture_guide_image(
-                guiding_camera, exposure_seconds, obs.obs_dir,
+                obs, exposure_seconds,
                 filename=f"{root_name}-{i}.fits",
                 ra_deg=target.ra, dec_deg=target.dec, target_name=queried_name,
                 image_to_gui=True,

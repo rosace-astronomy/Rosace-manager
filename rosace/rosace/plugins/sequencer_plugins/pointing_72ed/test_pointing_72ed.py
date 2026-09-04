@@ -51,6 +51,7 @@ def _make_obs() -> Observation:
     obs.hardware["mount"] = AsyncMock()
     obs.hardware["mount"].get_position.return_value = (TARGET_RA, TARGET_DEC)
     obs.hardware["guiding_camera"] = AsyncMock()
+    obs.hardware["spectroscope"] = AsyncMock()
     obs.hardware["phd2"] = AsyncMock()
     obs.hardware["phd2"].get_lock_position.return_value = (LOCK_X, LOCK_Y)
     obs.hardware_config["mount"] = {"backlash_offset_deg": BACKLASH_OFFSET_DEG}
@@ -142,10 +143,9 @@ class TestPointing72edPlugin:
 
         calls = mock_dependencies["capture_guide_image"].await_args_list
         assert len(calls) == 2
-        camera, exposure, obs_dir = calls[0].args
-        assert camera is obs.hardware["guiding_camera"]
+        passed_obs, exposure = calls[0].args
+        assert passed_obs is obs
         assert exposure == EXPOSURE_SECONDS
-        assert obs_dir == obs.obs_dir
         assert calls[0].kwargs["ra_deg"] == pytest.approx(TARGET_RA)
         assert calls[0].kwargs["dec_deg"] == pytest.approx(TARGET_DEC)
         assert calls[0].kwargs["target_name"] == QUERIED_NAME

@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from astropy.io import fits
 
+from rosace.hardware.spectroscope import LightSource
+from rosace.models import Observation
 from rosace.plugins.sequencer_plugins import acquisition_helpers
 from rosace.plugins.sequencer_plugins.acquisition_helpers import (
     build_fits_root_name,
@@ -18,6 +20,15 @@ from rosace.plugins.sequencer_plugins.acquisition_helpers import (
 )
 
 FIXED_TS = "20260807_143022"
+
+
+def _make_obs(tmp_path) -> Observation:
+    obs = Observation(
+        id="obs1", created_at=datetime.now(timezone.utc), session_id="sess1", obs_dir=str(tmp_path),
+    )
+    obs.hardware["guiding_camera"] = AsyncMock()
+    obs.hardware["spectroscope"] = AsyncMock()
+    return obs
 
 
 class _FrozenDatetime(datetime):
@@ -38,19 +49,30 @@ def freeze_fits_timestamp(monkeypatch):
 class TestCaptureGuideImage:
 
     async def test_exposes_camera_for_given_duration(self, tmp_path):
-        camera = AsyncMock()
-        camera.expose.return_value = MagicMock()
+        obs = _make_obs(tmp_path)
+        obs.hardware["guiding_camera"].expose.return_value = MagicMock()
 
-        await capture_guide_image(camera, 0.3, str(tmp_path))
+        await capture_guide_image(obs, 0.3)
 
-        camera.expose.assert_awaited_once_with(0.3)
+        obs.hardware["guiding_camera"].expose.assert_awaited_once_with(0.3)
+
+    async def test_switches_spectroscope_to_sky_before_exposing(self, tmp_path):
+        """Unconditional -- see the function's own docstring for the
+        2026-09-03 incident (a stuck DARK spectroscope position producing a
+        black guide image) this guards against."""
+        obs = _make_obs(tmp_path)
+        obs.hardware["guiding_camera"].expose.return_value = MagicMock()
+
+        await capture_guide_image(obs, 0.3)
+
+        obs.hardware["spectroscope"].set_light_source.assert_awaited_once_with(LightSource.SKY)
 
     async def test_writes_fits_and_returns_path(self, tmp_path, freeze_fits_timestamp):
         fake_image = MagicMock()
-        camera = AsyncMock()
-        camera.expose.return_value = fake_image
+        obs = _make_obs(tmp_path)
+        obs.hardware["guiding_camera"].expose.return_value = fake_image
 
-        result = await capture_guide_image(camera, 0.3, str(tmp_path))
+        result = await capture_guide_image(obs, 0.3)
 
         expected_path = tmp_path / f"GUIDING_0_30s_{FIXED_TS}.fits"
         fake_image.writeto.assert_called_once_with(expected_path, overwrite=True)
@@ -58,19 +80,19 @@ class TestCaptureGuideImage:
 
     async def test_filename_includes_target_name_when_given(self, tmp_path, freeze_fits_timestamp):
         fake_image = MagicMock()
-        camera = AsyncMock()
-        camera.expose.return_value = fake_image
+        obs = _make_obs(tmp_path)
+        obs.hardware["guiding_camera"].expose.return_value = fake_image
 
-        result = await capture_guide_image(camera, 0.3, str(tmp_path), target_name="Vega")
+        result = await capture_guide_image(obs, 0.3, target_name="Vega")
 
         assert result == tmp_path / f"GUIDING_Vega_0_30s_{FIXED_TS}.fits"
 
     async def test_uses_custom_filename(self, tmp_path):
         fake_image = MagicMock()
-        camera = AsyncMock()
-        camera.expose.return_value = fake_image
+        obs = _make_obs(tmp_path)
+        obs.hardware["guiding_camera"].expose.return_value = fake_image
 
-        result = await capture_guide_image(camera, 0.3, str(tmp_path), filename="check.fits")
+        result = await capture_guide_image(obs, 0.3, filename="check.fits")
 
         assert result == tmp_path / "check.fits"
 
@@ -78,10 +100,10 @@ class TestCaptureGuideImage:
         fake_image = MagicMock()
         fake_header = fits.Header()
         fake_image.__getitem__.return_value.header = fake_header
-        camera = AsyncMock()
-        camera.expose.return_value = fake_image
+        obs = _make_obs(tmp_path)
+        obs.hardware["guiding_camera"].expose.return_value = fake_image
 
-        await capture_guide_image(camera, 0.3, str(tmp_path), ra_deg=279.23, dec_deg=38.78)
+        await capture_guide_image(obs, 0.3, ra_deg=279.23, dec_deg=38.78)
 
         assert fake_header["RA"] == 279.23
         assert fake_header["DEC"] == 38.78
@@ -96,10 +118,10 @@ class TestCaptureGuideImage:
         fake_image = MagicMock()
         fake_header = fits.Header()
         fake_image.__getitem__.return_value.header = fake_header
-        camera = AsyncMock()
-        camera.expose.return_value = fake_image
+        obs = _make_obs(tmp_path)
+        obs.hardware["guiding_camera"].expose.return_value = fake_image
 
-        await capture_guide_image(camera, 0.3, str(tmp_path), target_name="Vega")
+        await capture_guide_image(obs, 0.3, target_name="Vega")
 
         assert fake_header["OBJECT"] == "Vega"
         assert "Rosace" in fake_header.comments["OBJECT"]
@@ -108,10 +130,10 @@ class TestCaptureGuideImage:
         fake_image = MagicMock()
         fake_header = fits.Header()
         fake_image.__getitem__.return_value.header = fake_header
-        camera = AsyncMock()
-        camera.expose.return_value = fake_image
+        obs = _make_obs(tmp_path)
+        obs.hardware["guiding_camera"].expose.return_value = fake_image
 
-        await capture_guide_image(camera, 0.3, str(tmp_path), target_name="Vega")
+        await capture_guide_image(obs, 0.3, target_name="Vega")
 
         assert "EQUINOX" not in fake_header
 
@@ -119,17 +141,17 @@ class TestCaptureGuideImage:
         fake_image = MagicMock()
         fake_header = fits.Header()
         fake_image.__getitem__.return_value.header = fake_header
-        camera = AsyncMock()
-        camera.expose.return_value = fake_image
+        obs = _make_obs(tmp_path)
+        obs.hardware["guiding_camera"].expose.return_value = fake_image
 
-        await capture_guide_image(camera, 0.3, str(tmp_path))
+        await capture_guide_image(obs, 0.3)
 
         assert len(fake_header) == 0
 
     async def test_rejects_ra_deg_without_dec_deg(self, tmp_path):
-        camera = AsyncMock()
+        obs = _make_obs(tmp_path)
         with pytest.raises(ValueError, match="ra_deg and dec_deg"):
-            await capture_guide_image(camera, 0.3, str(tmp_path), ra_deg=279.23)
+            await capture_guide_image(obs, 0.3, ra_deg=279.23)
 
     async def test_image_to_gui_false_by_default_no_extra_write_no_broadcast(self, tmp_path, monkeypatch):
         gui_dir = tmp_path / "gui_preview"
@@ -137,10 +159,10 @@ class TestCaptureGuideImage:
         broadcast_mock = AsyncMock()
         monkeypatch.setattr(acquisition_helpers.ws_image_broadcaster, "broadcast", broadcast_mock)
         fake_image = MagicMock()
-        camera = AsyncMock()
-        camera.expose.return_value = fake_image
+        obs = _make_obs(tmp_path)
+        obs.hardware["guiding_camera"].expose.return_value = fake_image
 
-        await capture_guide_image(camera, 0.3, str(tmp_path))
+        await capture_guide_image(obs, 0.3)
 
         assert fake_image.writeto.call_count == 1
         broadcast_mock.assert_not_awaited()
@@ -152,10 +174,10 @@ class TestCaptureGuideImage:
         broadcast_mock = AsyncMock()
         monkeypatch.setattr(acquisition_helpers.ws_image_broadcaster, "broadcast", broadcast_mock)
         fake_image = MagicMock()
-        camera = AsyncMock()
-        camera.expose.return_value = fake_image
+        obs = _make_obs(tmp_path)
+        obs.hardware["guiding_camera"].expose.return_value = fake_image
 
-        await capture_guide_image(camera, 0.3, str(tmp_path), image_to_gui=True)
+        await capture_guide_image(obs, 0.3, image_to_gui=True)
 
         assert fake_image.writeto.call_count == 2
         fake_image.writeto.assert_any_call(gui_dir / "guidage.fits", overwrite=True)
