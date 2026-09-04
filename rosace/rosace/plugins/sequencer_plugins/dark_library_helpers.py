@@ -104,7 +104,7 @@ def find_usable_frame_series(
     temp_c: float,
     count_required: int,
     exposure_time_required: float,
-    sensor_size: tuple[int, int],
+    frame_size: tuple[int, int],
 ) -> list[str] | None:
     """Looks for a usable DARK or BIAS series in `directory` (the session
     directory, or -- DARK only -- one dark-library temperature bucket, same
@@ -115,11 +115,14 @@ def find_usable_frame_series(
     "..._-5deg_...", see acquisition_helpers.py -- not read from the FITS
     header, which carries no temperature card of its own), whose first
     file's FITS header (read alone, not the pixel data) reports the same
-    sensor size (NAXIS1/NAXIS2) as sensor_size and an EXPTIME at least
-    exposure_time_required minus EXPOSURE_TIME_TOLERANCE_SECONDS. Returns the
-    first count_required matching filenames (sorted -- the trailing
-    timestamp in each name makes this chronological), or None if no usable
-    series was found. Never opens more than one file's header."""
+    frame size (NAXIS1/NAXIS2) as frame_size (the camera's *currently
+    configured* CCD_FRAME, sub-framed or not -- see
+    hardware/camera.py::Camera.get_frame_size(), not the sensor's maximum
+    capability) and an EXPTIME at least exposure_time_required minus
+    EXPOSURE_TIME_TOLERANCE_SECONDS. Returns the first count_required
+    matching filenames (sorted -- the trailing timestamp in each name makes
+    this chronological), or None if no usable series was found. Never opens
+    more than one file's header."""
     if not directory.is_dir():
         return None
 
@@ -135,7 +138,7 @@ def find_usable_frame_series(
 
     selected = candidates[:count_required]
     header = fits.getheader(selected[0])
-    if (header.get("NAXIS1"), header.get("NAXIS2")) != tuple(sensor_size):
+    if (header.get("NAXIS1"), header.get("NAXIS2")) != tuple(frame_size):
         return None
     exptime = header.get("EXPTIME")
     if exptime is None or exptime < exposure_time_required - EXPOSURE_TIME_TOLERANCE_SECONDS:

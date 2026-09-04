@@ -13,10 +13,14 @@ sub-plugin never re-sets or re-checks the camera's temperature itself: it
 trusts INIT_SESSION already got it there.
 
 Producing a full dark series is slow, so three origins are tried in order,
-each cheaper than the next -- the sensor size used to validate a candidate
-series always comes straight from the camera itself (get_sensor_size()),
-never from an already-acquired science image, so this step's position in
-the program YAML relative to star_spectra_acquisition doesn't matter:
+each cheaper than the next -- the frame size used to validate a candidate
+series always comes straight from the camera's own currently configured
+CCD_FRAME (get_frame_size()), never from an already-acquired science
+image, so this step's position in the program YAML relative to
+star_spectra_acquisition doesn't matter -- and it works equally whether
+the camera is set to full-frame or a deliberately sub-framed (windowed)
+acquisition, since either way it's compared against whatever the camera is
+*currently* configured to produce, not a fixed "full sensor" assumption:
 
 - current_session: a usable series already sits in this session's own
   directory (e.g. made for an earlier observation tonight).
@@ -31,8 +35,9 @@ the program YAML relative to star_spectra_acquisition doesn't matter:
 
 "Usable" (dark_library_helpers.py::find_usable_dark_series()) means: at
 least DARK_COUNT files at the right temperature, whose first file reports
-the camera's own sensor size and an exposure time >= MAX_EXPOSURE_TIME_SECONDS
--- a longer library exposure is accepted, a shorter one is not.
+the camera's own currently configured frame size and an exposure time
+>= MAX_EXPOSURE_TIME_SECONDS -- a longer library exposure is accepted, a
+shorter one is not.
 
 Casier: {"origin": "current_session"|"library"|"camera", "dark_files": [...]}
 -- both are genuinely produced by this step (which files were retained, and
@@ -84,12 +89,12 @@ class DarkAcquisitionPlugin(SubPlugin):
 
         camera = obs.hardware["science_camera"]
         target_temp = obs.camera_target_temperature_deg_c
-        sensor_size = await camera.get_sensor_size()
+        frame_size = await camera.get_frame_size()
 
         # current_session: reuse a usable series already sitting in this session's own directory.
         files = find_usable_frame_series(
             Path(obs.obs_dir), image_type="DARK", temp_c=target_temp, count_required=DARK_COUNT,
-            exposure_time_required=MAX_EXPOSURE_TIME_SECONDS, sensor_size=sensor_size,
+            exposure_time_required=MAX_EXPOSURE_TIME_SECONDS, frame_size=frame_size,
         )
         origin = "current_session"
 
@@ -98,7 +103,7 @@ class DarkAcquisitionPlugin(SubPlugin):
             library_dir = DARK_LIBRARY_DIR / temperature_bucket_dirname(target_temp)
             library_files = find_usable_frame_series(
                 library_dir, image_type="DARK", temp_c=target_temp, count_required=DARK_COUNT,
-                exposure_time_required=MAX_EXPOSURE_TIME_SECONDS, sensor_size=sensor_size,
+                exposure_time_required=MAX_EXPOSURE_TIME_SECONDS, frame_size=frame_size,
             )
             if library_files is not None:
                 files = copy_darks_from_library(library_dir, library_files, Path(obs.obs_dir))

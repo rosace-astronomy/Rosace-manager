@@ -70,12 +70,12 @@ class TestCameraAdapter:
 
         assert await adapter.get_temperature() == -14.7
 
-    async def test_get_sensor_size_returns_width_height_tuple(self):
+    async def test_get_frame_size_returns_width_height_tuple(self):
         indi_camera = MagicMock()
-        indi_camera.get_sensor_size.return_value = {"CCD_MAX_X": 3096, "CCD_MAX_Y": 2080}
+        indi_camera.get_roi.return_value = {"X": 0, "Y": 0, "WIDTH": 3096, "HEIGHT": 2080}
         adapter = CameraAdapter(indi_camera)
 
-        assert await adapter.get_sensor_size() == (3096, 2080)
+        assert await adapter.get_frame_size() == (3096, 2080)
 
     async def test_set_cooling_on_calls_indi_camera(self):
         indi_camera = MagicMock()

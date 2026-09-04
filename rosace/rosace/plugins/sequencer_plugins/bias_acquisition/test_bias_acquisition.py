@@ -19,7 +19,7 @@ from rosace.plugins.sequencer_plugins import acquisition_helpers
 from rosace.plugins.sequencer_plugins.bias_acquisition import bias_acquisition as ba_mod
 from rosace.plugins.sequencer_plugins.bias_acquisition.bias_acquisition import BiasAcquisitionPlugin
 
-SENSOR_SIZE = (100, 80)
+FRAME_SIZE = (100, 80)
 TARGET_TEMP = -5
 
 
@@ -49,7 +49,7 @@ def fixed_bias_exposure_time(monkeypatch):
     monkeypatch.setattr(ba_mod, "BIAS_EXPOSURE_TIME_SECONDS", 0.0)
 
 
-def _write_bias_fits(directory, *, temp_c=TARGET_TEMP, exptime=0.0, naxis=SENSOR_SIZE, index=1):
+def _write_bias_fits(directory, *, temp_c=TARGET_TEMP, exptime=0.0, naxis=FRAME_SIZE, index=1):
     directory.mkdir(parents=True, exist_ok=True)
     width, height = naxis
     data = np.zeros((height, width), dtype=np.uint16)
@@ -67,7 +67,7 @@ def _make_obs(obs_dir, *, camera=None, spectroscope=None, stop_check=None, targe
         stop_check=stop_check,
     )
     camera = camera if camera is not None else AsyncMock()
-    camera.get_sensor_size.return_value = SENSOR_SIZE
+    camera.get_frame_size.return_value = FRAME_SIZE
     obs.hardware["science_camera"] = camera
     obs.hardware["spectroscope"] = spectroscope if spectroscope is not None else AsyncMock()
     return obs

@@ -63,12 +63,12 @@ class BiasAcquisitionPlugin(SubPlugin):
 
         camera = obs.hardware["science_camera"]
         target_temp = obs.camera_target_temperature_deg_c
-        sensor_size = await camera.get_sensor_size()
+        frame_size = await camera.get_frame_size()
 
         # current_session: reuse a usable series already sitting in this session's own directory.
         files = find_usable_frame_series(
             Path(obs.obs_dir), image_type="BIAS", temp_c=target_temp, count_required=BIAS_COUNT,
-            exposure_time_required=BIAS_EXPOSURE_TIME_SECONDS, sensor_size=sensor_size,
+            exposure_time_required=BIAS_EXPOSURE_TIME_SECONDS, frame_size=frame_size,
         )
         origin = "current_session"
 

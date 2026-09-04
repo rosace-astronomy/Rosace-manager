@@ -51,13 +51,14 @@ def _find_usable_flat_series(
     *,
     count_required: int,
     exposure_time_required: float,
-    sensor_size: tuple[int, int],
+    frame_size: tuple[int, int],
 ) -> list[str] | None:
     """Looks for a usable FLAT series in `directory` (the session
     directory): at least count_required FLAT_*.fits files whose first
     file's FITS header (read alone, not the pixel data) reports the same
-    sensor size as sensor_size and an EXPTIME at least
-    exposure_time_required minus EXPOSURE_TIME_TOLERANCE_SECONDS. No
+    frame size as frame_size (the camera's currently configured CCD_FRAME,
+    see hardware/camera.py::Camera.get_frame_size()) and an EXPTIME at
+    least exposure_time_required minus EXPOSURE_TIME_TOLERANCE_SECONDS. No
     staleness check at all, unlike DARK/BIAS (temperature-tolerant, see
     find_usable_frame_series() in dark_library_helpers.py) or CALIB
     (age-based) -- flat-field correction depends on neither, so once a
@@ -70,7 +71,7 @@ def _find_usable_flat_series(
 
     selected = candidates[:count_required]
     header = fits.getheader(selected[0])
-    if (header.get("NAXIS1"), header.get("NAXIS2")) != tuple(sensor_size):
+    if (header.get("NAXIS1"), header.get("NAXIS2")) != tuple(frame_size):
         return None
     exptime = header.get("EXPTIME")
     if exptime is None or exptime < exposure_time_required - EXPOSURE_TIME_TOLERANCE_SECONDS:
@@ -89,11 +90,11 @@ class FlatAcquisitionPlugin(SubPlugin):
             raise RuntimeError("FLAT_ACQUISITION: observation directory (obs_dir) not set")
 
         camera = obs.hardware["science_camera"]
-        sensor_size = await camera.get_sensor_size()
+        frame_size = await camera.get_frame_size()
 
         files = _find_usable_flat_series(
             Path(obs.obs_dir), count_required=FLAT_COUNT,
-            exposure_time_required=FLAT_EXPOSURE_TIME_SECONDS, sensor_size=sensor_size,
+            exposure_time_required=FLAT_EXPOSURE_TIME_SECONDS, frame_size=frame_size,
         )
         origin = "current_session"
 

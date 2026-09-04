@@ -51,12 +51,12 @@ class CameraAdapter:
         except Exception as e:
             raise DeviceCommandError(f"get_temperature() failed: {e}") from e
 
-    async def get_sensor_size(self) -> tuple[int, int]:
+    async def get_frame_size(self) -> tuple[int, int]:
         try:
-            size = await asyncio.to_thread(self._indi_camera.get_sensor_size)
-            return int(size["CCD_MAX_X"]), int(size["CCD_MAX_Y"])
+            roi = await asyncio.to_thread(self._indi_camera.get_roi)
+            return int(roi["WIDTH"]), int(roi["HEIGHT"])
         except Exception as e:
-            raise DeviceCommandError(f"get_sensor_size() failed: {e}") from e
+            raise DeviceCommandError(f"get_frame_size() failed: {e}") from e
 
     async def set_cooling_on(self) -> None:
         try:

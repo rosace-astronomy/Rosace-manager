@@ -26,9 +26,13 @@ class Camera(Protocol):
         """Current sensor temperature, in degrees Celsius."""
         ...
 
-    async def get_sensor_size(self) -> tuple[int, int]:
-        """(width, height) in pixels -- the full sensor resolution, i.e. the
-        NAXIS1/NAXIS2 of an image acquired with no ROI cropping applied."""
+    async def get_frame_size(self) -> tuple[int, int]:
+        """(width, height) in pixels of the currently configured frame (the
+        driver's own ROI/CCD_FRAME) -- the NAXIS1/NAXIS2 an image acquired
+        right now would have. Not necessarily the full sensor: a sub-framed
+        (windowed) acquisition is a legitimate, deliberate configuration,
+        not an error condition -- see acquisition sub-plugins that validate
+        an existing dark/bias/calib/flat series against this value."""
         ...
 
     async def set_cooling_on(self) -> None:

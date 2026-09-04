@@ -62,16 +62,17 @@ def _find_usable_calib_series(
     count_required: int,
     exposure_time_required: float,
     max_age_hours: float,
-    sensor_size: tuple[int, int],
+    frame_size: tuple[int, int],
     now: datetime,
 ) -> list[str] | None:
     """Looks for a usable CALIB series in `directory` (the session
     directory): the most recent batch of CALIB_*.fits files sharing the
     same embedded capture timestamp -- at least count_required files,
     younger than max_age_hours, whose first file's FITS header (read
-    alone, not the pixel data) reports the same sensor size as sensor_size
-    and an EXPTIME at least exposure_time_required minus
-    EXPOSURE_TIME_TOLERANCE_SECONDS.
+    alone, not the pixel data) reports the same frame size as frame_size
+    (the camera's currently configured CCD_FRAME, see
+    hardware/camera.py::Camera.get_frame_size()) and an EXPTIME at least
+    exposure_time_required minus EXPOSURE_TIME_TOLERANCE_SECONDS.
 
     Unlike find_usable_frame_series() (DARK/BIAS, dark_library_helpers.py),
     age -- not temperature -- is what makes an existing series stale here,
@@ -102,7 +103,7 @@ def _find_usable_calib_series(
 
     selected = batch[:count_required]
     header = fits.getheader(selected[0])
-    if (header.get("NAXIS1"), header.get("NAXIS2")) != tuple(sensor_size):
+    if (header.get("NAXIS1"), header.get("NAXIS2")) != tuple(frame_size):
         return None
     exptime = header.get("EXPTIME")
     if exptime is None or exptime < exposure_time_required - EXPOSURE_TIME_TOLERANCE_SECONDS:
@@ -121,12 +122,12 @@ class CalibAcquisitionPlugin(SubPlugin):
             raise RuntimeError("CALIB_ACQUISITION: observation directory (obs_dir) not set")
 
         camera = obs.hardware["science_camera"]
-        sensor_size = await camera.get_sensor_size()
+        frame_size = await camera.get_frame_size()
 
         files = _find_usable_calib_series(
             Path(obs.obs_dir), count_required=CALIB_COUNT,
             exposure_time_required=CALIB_EXPOSURE_TIME_SECONDS,
-            max_age_hours=CALIB_MAX_AGE_HOURS, sensor_size=sensor_size,
+            max_age_hours=CALIB_MAX_AGE_HOURS, frame_size=frame_size,
             now=datetime.now(timezone.utc),
         )
         origin = "current_session"

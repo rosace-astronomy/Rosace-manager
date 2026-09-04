@@ -20,7 +20,7 @@ from rosace.plugins.sequencer_plugins import acquisition_helpers
 from rosace.plugins.sequencer_plugins.dark_acquisition import dark_acquisition as da_mod
 from rosace.plugins.sequencer_plugins.dark_acquisition.dark_acquisition import DarkAcquisitionPlugin
 
-SENSOR_SIZE = (100, 80)
+FRAME_SIZE = (100, 80)
 TARGET_TEMP = -5
 
 
@@ -54,7 +54,7 @@ def library_under_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(da_mod, "DARK_LIBRARY_DIR", tmp_path / "dark_library")
 
 
-def _write_dark_fits(directory, *, temp_c=TARGET_TEMP, exptime=300, naxis=SENSOR_SIZE, index=1):
+def _write_dark_fits(directory, *, temp_c=TARGET_TEMP, exptime=300, naxis=FRAME_SIZE, index=1):
     directory.mkdir(parents=True, exist_ok=True)
     width, height = naxis
     data = np.zeros((height, width), dtype=np.uint16)
@@ -72,7 +72,7 @@ def _make_obs(obs_dir, *, camera=None, spectroscope=None, stop_check=None, targe
         stop_check=stop_check,
     )
     camera = camera if camera is not None else AsyncMock()
-    camera.get_sensor_size.return_value = SENSOR_SIZE
+    camera.get_frame_size.return_value = FRAME_SIZE
     obs.hardware["science_camera"] = camera
     obs.hardware["spectroscope"] = spectroscope if spectroscope is not None else AsyncMock()
     return obs

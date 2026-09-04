@@ -97,7 +97,7 @@ class TestFindUsableFrameSeries:
     def test_returns_none_if_directory_missing(self, tmp_path):
         assert find_usable_frame_series(
             tmp_path / "missing", image_type="DARK", temp_c=-5, count_required=3,
-            exposure_time_required=300, sensor_size=(100, 80),
+            exposure_time_required=300, frame_size=(100, 80),
         ) is None
 
     def test_returns_none_if_not_enough_files(self, tmp_path):
@@ -105,7 +105,7 @@ class TestFindUsableFrameSeries:
         _write_frame_fits(tmp_path, index=2)
         assert find_usable_frame_series(
             tmp_path, image_type="DARK", temp_c=-5, count_required=3,
-            exposure_time_required=300, sensor_size=(100, 80),
+            exposure_time_required=300, frame_size=(100, 80),
         ) is None
 
     def test_ignores_files_at_a_different_temperature(self, tmp_path):
@@ -113,7 +113,7 @@ class TestFindUsableFrameSeries:
         _write_frame_fits(tmp_path, temp_c=0, index=2)
         assert find_usable_frame_series(
             tmp_path, image_type="DARK", temp_c=-5, count_required=2,
-            exposure_time_required=300, sensor_size=(100, 80),
+            exposure_time_required=300, frame_size=(100, 80),
         ) is None
 
     def test_accepts_a_file_within_the_temperature_tolerance(self, tmp_path):
@@ -124,7 +124,7 @@ class TestFindUsableFrameSeries:
         _write_frame_fits(tmp_path, temp_c=-3, index=2)
         result = find_usable_frame_series(
             tmp_path, image_type="DARK", temp_c=-5, count_required=2,
-            exposure_time_required=300, sensor_size=(100, 80),
+            exposure_time_required=300, frame_size=(100, 80),
         )
         assert result is not None
 
@@ -133,15 +133,15 @@ class TestFindUsableFrameSeries:
         _write_frame_fits(tmp_path, temp_c=-2, index=2)
         assert find_usable_frame_series(
             tmp_path, image_type="DARK", temp_c=-5, count_required=2,
-            exposure_time_required=300, sensor_size=(100, 80),
+            exposure_time_required=300, frame_size=(100, 80),
         ) is None
 
-    def test_returns_none_if_sensor_size_does_not_match(self, tmp_path):
+    def test_returns_none_if_frame_size_does_not_match(self, tmp_path):
         _write_frame_fits(tmp_path, naxis1=100, naxis2=80, index=1)
         _write_frame_fits(tmp_path, naxis1=100, naxis2=80, index=2)
         assert find_usable_frame_series(
             tmp_path, image_type="DARK", temp_c=-5, count_required=2,
-            exposure_time_required=300, sensor_size=(200, 160),
+            exposure_time_required=300, frame_size=(200, 160),
         ) is None
 
     def test_returns_none_if_exposure_time_too_short(self, tmp_path):
@@ -149,7 +149,7 @@ class TestFindUsableFrameSeries:
         _write_frame_fits(tmp_path, exptime=100, index=2)
         assert find_usable_frame_series(
             tmp_path, image_type="DARK", temp_c=-5, count_required=2,
-            exposure_time_required=300, sensor_size=(100, 80),
+            exposure_time_required=300, frame_size=(100, 80),
         ) is None
 
     def test_accepts_a_file_within_the_exposure_time_tolerance(self, tmp_path):
@@ -160,7 +160,7 @@ class TestFindUsableFrameSeries:
         _write_frame_fits(tmp_path, exptime=299.5, index=2)
         result = find_usable_frame_series(
             tmp_path, image_type="DARK", temp_c=-5, count_required=2,
-            exposure_time_required=300, sensor_size=(100, 80),
+            exposure_time_required=300, frame_size=(100, 80),
         )
         assert result is not None
 
@@ -169,7 +169,7 @@ class TestFindUsableFrameSeries:
         _write_frame_fits(tmp_path, exptime=298.5, index=2)
         assert find_usable_frame_series(
             tmp_path, image_type="DARK", temp_c=-5, count_required=2,
-            exposure_time_required=300, sensor_size=(100, 80),
+            exposure_time_required=300, frame_size=(100, 80),
         ) is None
 
     def test_accepts_a_longer_exposure_time_than_required(self, tmp_path):
@@ -177,7 +177,7 @@ class TestFindUsableFrameSeries:
         _write_frame_fits(tmp_path, exptime=600, index=2)
         result = find_usable_frame_series(
             tmp_path, image_type="DARK", temp_c=-5, count_required=2,
-            exposure_time_required=300, sensor_size=(100, 80),
+            exposure_time_required=300, frame_size=(100, 80),
         )
         assert result is not None
         assert len(result) == 2
@@ -187,7 +187,7 @@ class TestFindUsableFrameSeries:
             _write_frame_fits(tmp_path, index=i)
         result = find_usable_frame_series(
             tmp_path, image_type="DARK", temp_c=-5, count_required=3,
-            exposure_time_required=300, sensor_size=(100, 80),
+            exposure_time_required=300, frame_size=(100, 80),
         )
         assert result is not None
         assert len(result) == 3
@@ -197,7 +197,7 @@ class TestFindUsableFrameSeries:
         _write_frame_fits(tmp_path, image_type="DARK", exptime=0, index=2)
         assert find_usable_frame_series(
             tmp_path, image_type="BIAS", temp_c=-5, count_required=2,
-            exposure_time_required=0, sensor_size=(100, 80),
+            exposure_time_required=0, frame_size=(100, 80),
         ) is None
 
     def test_finds_a_bias_series(self, tmp_path):
@@ -205,7 +205,7 @@ class TestFindUsableFrameSeries:
         _write_frame_fits(tmp_path, image_type="BIAS", exptime=0, index=2)
         result = find_usable_frame_series(
             tmp_path, image_type="BIAS", temp_c=-5, count_required=2,
-            exposure_time_required=0, sensor_size=(100, 80),
+            exposure_time_required=0, frame_size=(100, 80),
         )
         assert result is not None
         assert len(result) == 2

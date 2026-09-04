@@ -23,7 +23,7 @@ from rosace.plugins.sequencer_plugins.flat_acquisition.flat_acquisition import (
     _find_usable_flat_series,
 )
 
-SENSOR_SIZE = (100, 80)
+FRAME_SIZE = (100, 80)
 
 
 class _FrozenDatetime(datetime):
@@ -49,7 +49,7 @@ def fixed_flat_exposure_time(monkeypatch):
     monkeypatch.setattr(fa_mod, "FLAT_EXPOSURE_TIME_SECONDS", 3.0)
 
 
-def _write_flat_fits(directory, *, exptime=3.0, naxis=SENSOR_SIZE, index=1):
+def _write_flat_fits(directory, *, exptime=3.0, naxis=FRAME_SIZE, index=1):
     directory.mkdir(parents=True, exist_ok=True)
     width, height = naxis
     data = np.zeros((height, width), dtype=np.uint16)
@@ -64,14 +64,14 @@ class TestFindUsableFlatSeries:
 
     def test_returns_none_if_directory_missing(self, tmp_path):
         result = _find_usable_flat_series(
-            tmp_path / "nope", count_required=2, exposure_time_required=3.0, sensor_size=SENSOR_SIZE,
+            tmp_path / "nope", count_required=2, exposure_time_required=3.0, frame_size=FRAME_SIZE,
         )
         assert result is None
 
     def test_returns_none_if_not_enough_files(self, tmp_path):
         _write_flat_fits(tmp_path, index=1)
         result = _find_usable_flat_series(
-            tmp_path, count_required=2, exposure_time_required=3.0, sensor_size=SENSOR_SIZE,
+            tmp_path, count_required=2, exposure_time_required=3.0, frame_size=FRAME_SIZE,
         )
         assert result is None
 
@@ -79,16 +79,16 @@ class TestFindUsableFlatSeries:
         _write_flat_fits(tmp_path, index=1)
         _write_flat_fits(tmp_path, index=2)
         result = _find_usable_flat_series(
-            tmp_path, count_required=2, exposure_time_required=3.0, sensor_size=SENSOR_SIZE,
+            tmp_path, count_required=2, exposure_time_required=3.0, frame_size=FRAME_SIZE,
         )
         assert result is not None
         assert len(result) == 2
 
-    def test_returns_none_if_sensor_size_does_not_match(self, tmp_path):
+    def test_returns_none_if_frame_size_does_not_match(self, tmp_path):
         _write_flat_fits(tmp_path, index=1, naxis=(50, 40))
         _write_flat_fits(tmp_path, index=2, naxis=(50, 40))
         result = _find_usable_flat_series(
-            tmp_path, count_required=2, exposure_time_required=3.0, sensor_size=SENSOR_SIZE,
+            tmp_path, count_required=2, exposure_time_required=3.0, frame_size=FRAME_SIZE,
         )
         assert result is None
 
@@ -96,7 +96,7 @@ class TestFindUsableFlatSeries:
         _write_flat_fits(tmp_path, index=1, exptime=1.0)
         _write_flat_fits(tmp_path, index=2, exptime=1.0)
         result = _find_usable_flat_series(
-            tmp_path, count_required=2, exposure_time_required=3.0, sensor_size=SENSOR_SIZE,
+            tmp_path, count_required=2, exposure_time_required=3.0, frame_size=FRAME_SIZE,
         )
         assert result is None
 
@@ -104,7 +104,7 @@ class TestFindUsableFlatSeries:
         _write_flat_fits(tmp_path, index=1, exptime=5.0)
         _write_flat_fits(tmp_path, index=2, exptime=5.0)
         result = _find_usable_flat_series(
-            tmp_path, count_required=2, exposure_time_required=3.0, sensor_size=SENSOR_SIZE,
+            tmp_path, count_required=2, exposure_time_required=3.0, frame_size=FRAME_SIZE,
         )
         assert result is not None
 
@@ -115,7 +115,7 @@ def _make_obs(obs_dir, *, camera=None, spectroscope=None, stop_check=None):
         obs_dir=str(obs_dir), stop_check=stop_check,
     )
     camera = camera if camera is not None else AsyncMock()
-    camera.get_sensor_size.return_value = SENSOR_SIZE
+    camera.get_frame_size.return_value = FRAME_SIZE
     obs.hardware["science_camera"] = camera
     obs.hardware["spectroscope"] = spectroscope if spectroscope is not None else AsyncMock()
     return obs

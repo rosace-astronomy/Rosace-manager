@@ -26,7 +26,7 @@ from rosace.plugins.sequencer_plugins.calib_acquisition.calib_acquisition import
     _find_usable_calib_series,
 )
 
-SENSOR_SIZE = (100, 80)
+FRAME_SIZE = (100, 80)
 NOW = datetime(2026, 8, 27, 22, 0, 0, tzinfo=timezone.utc)
 
 
@@ -60,7 +60,7 @@ def fixed_max_age_hours(monkeypatch):
     monkeypatch.setattr(ca_mod, "CALIB_MAX_AGE_HOURS", 24.0)
 
 
-def _write_calib_fits(directory, *, timestamp, exptime=3.0, naxis=SENSOR_SIZE, index=1, count=2):
+def _write_calib_fits(directory, *, timestamp, exptime=3.0, naxis=FRAME_SIZE, index=1, count=2):
     directory.mkdir(parents=True, exist_ok=True)
     root = build_fits_root_name("CALIB", exposure_time=exptime, num_exposures=count, timestamp=timestamp)
     suffix = f"-{index}" if count > 1 else ""
@@ -78,7 +78,7 @@ class TestFindUsableCalibSeries:
     def test_returns_none_if_directory_missing(self, tmp_path):
         result = _find_usable_calib_series(
             tmp_path / "nope", count_required=2, exposure_time_required=3.0,
-            max_age_hours=24.0, sensor_size=SENSOR_SIZE, now=NOW,
+            max_age_hours=24.0, frame_size=FRAME_SIZE, now=NOW,
         )
         assert result is None
 
@@ -86,7 +86,7 @@ class TestFindUsableCalibSeries:
         _write_calib_fits(tmp_path, timestamp=NOW - timedelta(hours=1), index=1)
         result = _find_usable_calib_series(
             tmp_path, count_required=2, exposure_time_required=3.0,
-            max_age_hours=24.0, sensor_size=SENSOR_SIZE, now=NOW,
+            max_age_hours=24.0, frame_size=FRAME_SIZE, now=NOW,
         )
         assert result is None
 
@@ -95,7 +95,7 @@ class TestFindUsableCalibSeries:
         _write_calib_fits(tmp_path, timestamp=NOW - timedelta(hours=1), index=2)
         result = _find_usable_calib_series(
             tmp_path, count_required=2, exposure_time_required=3.0,
-            max_age_hours=24.0, sensor_size=SENSOR_SIZE, now=NOW,
+            max_age_hours=24.0, frame_size=FRAME_SIZE, now=NOW,
         )
         assert result is not None
         assert len(result) == 2
@@ -105,7 +105,7 @@ class TestFindUsableCalibSeries:
         _write_calib_fits(tmp_path, timestamp=NOW - timedelta(hours=25), index=2)
         result = _find_usable_calib_series(
             tmp_path, count_required=2, exposure_time_required=3.0,
-            max_age_hours=24.0, sensor_size=SENSOR_SIZE, now=NOW,
+            max_age_hours=24.0, frame_size=FRAME_SIZE, now=NOW,
         )
         assert result is None
 
@@ -117,17 +117,17 @@ class TestFindUsableCalibSeries:
 
         result = _find_usable_calib_series(
             tmp_path, count_required=2, exposure_time_required=3.0,
-            max_age_hours=24.0, sensor_size=SENSOR_SIZE, now=NOW,
+            max_age_hours=24.0, frame_size=FRAME_SIZE, now=NOW,
         )
 
         assert sorted(result) == sorted([fresh_1, fresh_2])
 
-    def test_returns_none_if_sensor_size_does_not_match(self, tmp_path):
+    def test_returns_none_if_frame_size_does_not_match(self, tmp_path):
         _write_calib_fits(tmp_path, timestamp=NOW - timedelta(hours=1), index=1, naxis=(50, 40))
         _write_calib_fits(tmp_path, timestamp=NOW - timedelta(hours=1), index=2, naxis=(50, 40))
         result = _find_usable_calib_series(
             tmp_path, count_required=2, exposure_time_required=3.0,
-            max_age_hours=24.0, sensor_size=SENSOR_SIZE, now=NOW,
+            max_age_hours=24.0, frame_size=FRAME_SIZE, now=NOW,
         )
         assert result is None
 
@@ -136,7 +136,7 @@ class TestFindUsableCalibSeries:
         _write_calib_fits(tmp_path, timestamp=NOW - timedelta(hours=1), index=2, exptime=1.0)
         result = _find_usable_calib_series(
             tmp_path, count_required=2, exposure_time_required=3.0,
-            max_age_hours=24.0, sensor_size=SENSOR_SIZE, now=NOW,
+            max_age_hours=24.0, frame_size=FRAME_SIZE, now=NOW,
         )
         assert result is None
 
@@ -145,7 +145,7 @@ class TestFindUsableCalibSeries:
         _write_calib_fits(tmp_path, timestamp=NOW - timedelta(hours=1), index=2, exptime=5.0)
         result = _find_usable_calib_series(
             tmp_path, count_required=2, exposure_time_required=3.0,
-            max_age_hours=24.0, sensor_size=SENSOR_SIZE, now=NOW,
+            max_age_hours=24.0, frame_size=FRAME_SIZE, now=NOW,
         )
         assert result is not None
 
@@ -156,7 +156,7 @@ def _make_obs(obs_dir, *, camera=None, spectroscope=None, stop_check=None):
         obs_dir=str(obs_dir), stop_check=stop_check,
     )
     camera = camera if camera is not None else AsyncMock()
-    camera.get_sensor_size.return_value = SENSOR_SIZE
+    camera.get_frame_size.return_value = FRAME_SIZE
     obs.hardware["science_camera"] = camera
     obs.hardware["spectroscope"] = spectroscope if spectroscope is not None else AsyncMock()
     return obs
