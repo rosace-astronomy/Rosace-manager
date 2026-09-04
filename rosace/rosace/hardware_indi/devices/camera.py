@@ -26,7 +26,14 @@ class IndiCamera(IndiDevice):
         'local': 'UPLOAD_LOCAL',
         'client': 'UPLOAD_CLIENT',
         'both': 'UPLOAD_BOTH'}
-    DEFAULT_EXP_TIME_SEC = 5
+    # sanitize_exp_time()'s fallback for an invalid or literal-zero requested
+    # exposure -- was 5s (POCS heritage: 0 there meant "caller forgot to set
+    # a value"), which silently turned every BIAS_ACQUISITION exposure
+    # (0.0s by design -- see bias_acquisition.py) into a real 5s exposure.
+    # 0.1s keeps a small nonzero floor (some camera drivers refuse a literal
+    # 0s exposure) without materially delaying an actual BIAS series. Found
+    # 2026-09-04, real BIAS frames on the 72ED coming out at 5s.
+    DEFAULT_EXP_TIME_SEC = 0.1
     MAXIMUM_EXP_TIME_SEC = 3601
     READOUT_TIME_MARGIN = 300
 
