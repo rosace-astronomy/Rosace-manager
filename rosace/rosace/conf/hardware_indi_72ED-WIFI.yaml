@@ -115,6 +115,6 @@ PHD2_config:
     profile_name: 72ED Stellarmate
     exposure_time_sec: 0.3
     settle:
-        pixels: 2
+        pixels: 1.2
         time: 3
         timeout: 180
