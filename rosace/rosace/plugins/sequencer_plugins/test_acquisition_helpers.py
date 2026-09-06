@@ -6,6 +6,7 @@ Run: pytest plugins/sequencer_plugins/test_acquisition_helpers.py -v
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
+import numpy as np
 import pytest
 from astropy.io import fits
 
@@ -21,14 +22,47 @@ from rosace.plugins.sequencer_plugins.acquisition_helpers import (
 
 FIXED_TS = "20260807_143022"
 
+_DEFAULT_FRAME = (4, 4)
 
-def _make_obs(tmp_path) -> Observation:
+
+def _make_obs(tmp_path, dark_value: int | None = 0) -> Observation:
+    """dark_value=None registers no guiding-dark median at all -- for
+    testing the "missing dark raises" error and subtract_dark=False, which
+    needs none. Otherwise writes a small constant-valued median dark FITS
+    and registers it in sequencer_data, so every other test's correction is
+    a predictable, simple subtraction (0 by default -- a no-op, exercising
+    the real arithmetic without needing each test to account for it)."""
     obs = Observation(
         id="obs1", created_at=datetime.now(timezone.utc), session_id="sess1", obs_dir=str(tmp_path),
     )
     obs.hardware["guiding_camera"] = AsyncMock()
     obs.hardware["spectroscope"] = AsyncMock()
+    if dark_value is not None:
+        dark_path = tmp_path / "GUIDINGDARK_median.fits"
+        fits.PrimaryHDU(np.full(_DEFAULT_FRAME, dark_value, dtype=np.uint16)).writeto(dark_path, overwrite=True)
+        obs.sequencer_data["guiding_dark_acquisition"] = {"median_dark_file": dark_path.name}
     return obs
+
+
+def _fake_image(data: np.ndarray | None = None) -> MagicMock:
+    """A MagicMock standing in for an astropy HDUList, with a *real* header
+    and pixel array on [0] (capture_guide_image() reads and mutates
+    image[0].data for dark subtraction, which a bare MagicMock can't
+    support) and a writeto() that actually writes to disk -- so tests can
+    check real file contents, not just call counts."""
+    if data is None:
+        data = np.full(_DEFAULT_FRAME, 100, dtype=np.uint16)
+    hdu0 = MagicMock()
+    hdu0.header = fits.Header()
+    hdu0.data = data
+    image = MagicMock()
+    image.__getitem__.return_value = hdu0
+
+    def _writeto(path, overwrite=True):
+        fits.PrimaryHDU(hdu0.data.copy(), header=hdu0.header.copy()).writeto(path, overwrite=overwrite)
+
+    image.writeto.side_effect = _writeto
+    return image
 
 
 class _FrozenDatetime(datetime):
@@ -50,7 +84,7 @@ class TestCaptureGuideImage:
 
     async def test_exposes_camera_for_given_duration(self, tmp_path):
         obs = _make_obs(tmp_path)
-        obs.hardware["guiding_camera"].expose.return_value = MagicMock()
+        obs.hardware["guiding_camera"].expose.return_value = _fake_image()
 
         await capture_guide_image(obs, 0.3)
 
@@ -61,92 +95,89 @@ class TestCaptureGuideImage:
         2026-09-03 incident (a stuck DARK spectroscope position producing a
         black guide image) this guards against."""
         obs = _make_obs(tmp_path)
-        obs.hardware["guiding_camera"].expose.return_value = MagicMock()
+        obs.hardware["guiding_camera"].expose.return_value = _fake_image()
 
         await capture_guide_image(obs, 0.3)
 
         obs.hardware["spectroscope"].set_light_source.assert_awaited_once_with(LightSource.SKY)
 
-    async def test_writes_fits_and_returns_path(self, tmp_path, freeze_fits_timestamp):
-        fake_image = MagicMock()
+    async def test_writes_raw_and_corrected_fits_and_returns_corrected_path(self, tmp_path, freeze_fits_timestamp):
         obs = _make_obs(tmp_path)
-        obs.hardware["guiding_camera"].expose.return_value = fake_image
+        obs.hardware["guiding_camera"].expose.return_value = _fake_image()
 
         result = await capture_guide_image(obs, 0.3)
 
-        expected_path = tmp_path / f"GUIDING_0_30s_{FIXED_TS}.fits"
-        fake_image.writeto.assert_called_once_with(expected_path, overwrite=True)
-        assert result == expected_path
+        expected_raw = tmp_path / f"GUIDING_RAW_0_30s_{FIXED_TS}.fits"
+        expected_corrected = tmp_path / f"GUIDING_0_30s_{FIXED_TS}.fits"
+        assert expected_raw.exists()
+        assert expected_corrected.exists()
+        assert result == expected_corrected
 
     async def test_filename_includes_target_name_when_given(self, tmp_path, freeze_fits_timestamp):
-        fake_image = MagicMock()
         obs = _make_obs(tmp_path)
-        obs.hardware["guiding_camera"].expose.return_value = fake_image
+        obs.hardware["guiding_camera"].expose.return_value = _fake_image()
 
         result = await capture_guide_image(obs, 0.3, target_name="Vega")
 
         assert result == tmp_path / f"GUIDING_Vega_0_30s_{FIXED_TS}.fits"
+        assert (tmp_path / f"GUIDING_RAW_Vega_0_30s_{FIXED_TS}.fits").exists()
 
     async def test_uses_custom_filename(self, tmp_path):
-        fake_image = MagicMock()
         obs = _make_obs(tmp_path)
-        obs.hardware["guiding_camera"].expose.return_value = fake_image
+        obs.hardware["guiding_camera"].expose.return_value = _fake_image()
 
         result = await capture_guide_image(obs, 0.3, filename="check.fits")
 
         assert result == tmp_path / "check.fits"
+        # "check.fits" doesn't start with "GUIDING_" -- _raw_variant_filename()
+        # falls back to a plain "RAW_" prefix (see its own docstring).
+        assert (tmp_path / "RAW_check.fits").exists()
 
     async def test_stamps_ra_dec_equinox_when_given(self, tmp_path):
-        fake_image = MagicMock()
-        fake_header = fits.Header()
-        fake_image.__getitem__.return_value.header = fake_header
+        fake_image = _fake_image()
         obs = _make_obs(tmp_path)
         obs.hardware["guiding_camera"].expose.return_value = fake_image
 
         await capture_guide_image(obs, 0.3, ra_deg=279.23, dec_deg=38.78)
 
-        assert fake_header["RA"] == 279.23
-        assert fake_header["DEC"] == 38.78
-        assert fake_header["EQUINOX"] == 2000
+        header = fake_image[0].header
+        assert header["RA"] == 279.23
+        assert header["DEC"] == 38.78
+        assert header["EQUINOX"] == 2000
         # Every stamped card must credit Rosace, so a reader can tell it
         # wasn't left over from the camera driver's own snoop.
-        assert "Rosace" in fake_header.comments["RA"]
-        assert "Rosace" in fake_header.comments["DEC"]
-        assert "Rosace" in fake_header.comments["EQUINOX"]
+        assert "Rosace" in header.comments["RA"]
+        assert "Rosace" in header.comments["DEC"]
+        assert "Rosace" in header.comments["EQUINOX"]
 
     async def test_stamps_object_when_target_name_given(self, tmp_path):
-        fake_image = MagicMock()
-        fake_header = fits.Header()
-        fake_image.__getitem__.return_value.header = fake_header
+        fake_image = _fake_image()
         obs = _make_obs(tmp_path)
         obs.hardware["guiding_camera"].expose.return_value = fake_image
 
         await capture_guide_image(obs, 0.3, target_name="Vega")
 
-        assert fake_header["OBJECT"] == "Vega"
-        assert "Rosace" in fake_header.comments["OBJECT"]
+        header = fake_image[0].header
+        assert header["OBJECT"] == "Vega"
+        assert "Rosace" in header.comments["OBJECT"]
 
     async def test_no_equinox_without_ra_dec(self, tmp_path):
-        fake_image = MagicMock()
-        fake_header = fits.Header()
-        fake_image.__getitem__.return_value.header = fake_header
+        fake_image = _fake_image()
         obs = _make_obs(tmp_path)
         obs.hardware["guiding_camera"].expose.return_value = fake_image
 
         await capture_guide_image(obs, 0.3, target_name="Vega")
 
-        assert "EQUINOX" not in fake_header
+        assert "EQUINOX" not in fake_image[0].header
 
     async def test_no_header_stamps_by_default(self, tmp_path):
-        fake_image = MagicMock()
-        fake_header = fits.Header()
-        fake_image.__getitem__.return_value.header = fake_header
+        fake_image = _fake_image()
         obs = _make_obs(tmp_path)
         obs.hardware["guiding_camera"].expose.return_value = fake_image
 
         await capture_guide_image(obs, 0.3)
 
-        assert len(fake_header) == 0
+        assert len(fake_image[0].header) == 0
 
     async def test_rejects_ra_deg_without_dec_deg(self, tmp_path):
         obs = _make_obs(tmp_path)
@@ -158,13 +189,13 @@ class TestCaptureGuideImage:
         monkeypatch.setattr(acquisition_helpers, "GUI_PREVIEW_DIR", gui_dir)
         broadcast_mock = AsyncMock()
         monkeypatch.setattr(acquisition_helpers.ws_image_broadcaster, "broadcast", broadcast_mock)
-        fake_image = MagicMock()
+        fake_image = _fake_image()
         obs = _make_obs(tmp_path)
         obs.hardware["guiding_camera"].expose.return_value = fake_image
 
         await capture_guide_image(obs, 0.3)
 
-        assert fake_image.writeto.call_count == 1
+        assert fake_image.writeto.call_count == 2  # raw + corrected
         broadcast_mock.assert_not_awaited()
         assert not gui_dir.exists()
 
@@ -173,15 +204,67 @@ class TestCaptureGuideImage:
         monkeypatch.setattr(acquisition_helpers, "GUI_PREVIEW_DIR", gui_dir)
         broadcast_mock = AsyncMock()
         monkeypatch.setattr(acquisition_helpers.ws_image_broadcaster, "broadcast", broadcast_mock)
-        fake_image = MagicMock()
+        fake_image = _fake_image()
         obs = _make_obs(tmp_path)
         obs.hardware["guiding_camera"].expose.return_value = fake_image
 
         await capture_guide_image(obs, 0.3, image_to_gui=True)
 
-        assert fake_image.writeto.call_count == 2
+        assert fake_image.writeto.call_count == 3  # raw + corrected + gui preview
         fake_image.writeto.assert_any_call(gui_dir / "guidage.fits", overwrite=True)
         broadcast_mock.assert_awaited_once_with("guidage")
+
+
+class TestCaptureGuideImageDarkSubtraction:
+
+    async def test_raises_if_no_guiding_dark_available(self, tmp_path):
+        obs = _make_obs(tmp_path, dark_value=None)
+        obs.hardware["guiding_camera"].expose.return_value = _fake_image()
+
+        with pytest.raises(RuntimeError, match="guiding_dark_acquisition"):
+            await capture_guide_image(obs, 0.3)
+
+    async def test_corrected_file_has_dark_subtracted(self, tmp_path):
+        obs = _make_obs(tmp_path, dark_value=30)
+        raw_data = np.full(_DEFAULT_FRAME, 100, dtype=np.uint16)
+        obs.hardware["guiding_camera"].expose.return_value = _fake_image(raw_data)
+
+        result = await capture_guide_image(obs, 0.3)
+
+        assert (fits.getdata(result) == 70).all()
+
+    async def test_raw_file_keeps_original_uncorrected_data(self, tmp_path, freeze_fits_timestamp):
+        obs = _make_obs(tmp_path, dark_value=30)
+        raw_data = np.full(_DEFAULT_FRAME, 100, dtype=np.uint16)
+        obs.hardware["guiding_camera"].expose.return_value = _fake_image(raw_data)
+
+        await capture_guide_image(obs, 0.3)
+
+        raw_written = fits.getdata(tmp_path / f"GUIDING_RAW_0_30s_{FIXED_TS}.fits")
+        assert (raw_written == 100).all()
+
+    async def test_clips_negative_values_to_zero(self, tmp_path):
+        obs = _make_obs(tmp_path, dark_value=200)
+        raw_data = np.full(_DEFAULT_FRAME, 50, dtype=np.uint16)
+        obs.hardware["guiding_camera"].expose.return_value = _fake_image(raw_data)
+
+        result = await capture_guide_image(obs, 0.3)
+
+        assert (fits.getdata(result) == 0).all()
+
+    async def test_subtract_dark_false_needs_no_guiding_dark_and_only_writes_raw(self, tmp_path, freeze_fits_timestamp):
+        obs = _make_obs(tmp_path, dark_value=None)  # no guiding dark registered at all
+        fake_image = _fake_image()
+        obs.hardware["guiding_camera"].expose.return_value = fake_image
+
+        result = await capture_guide_image(obs, 0.3, subtract_dark=False)
+
+        expected_raw = tmp_path / f"GUIDING_RAW_0_30s_{FIXED_TS}.fits"
+        expected_corrected = tmp_path / f"GUIDING_0_30s_{FIXED_TS}.fits"
+        assert result == expected_raw
+        assert expected_raw.exists()
+        assert not expected_corrected.exists()
+        assert fake_image.writeto.call_count == 1
 
 
 class TestComputeExposureTimeAndCount:
@@ -321,6 +404,15 @@ class TestBuildFitsRootName:
         result = build_fits_root_name("guiding", exposure_time=0.3, timestamp=self.FIXED_TS)
 
         assert result == "GUIDING_0_30s_20260807_143022"
+
+    def test_guidingdark_is_a_plain_prefix_like_dark_bias(self):
+        """Deliberately a separate literal prefix from "DARK" (not a nested
+        variant of it) -- so find_usable_frame_series()'s "DARK_*.fits" glob
+        (used by the science-camera dark_acquisition) can never accidentally
+        match a guiding-camera dark file, or vice versa."""
+        result = build_fits_root_name("GUIDINGDARK", exposure_time=10, num_exposures=7, timestamp=self.FIXED_TS)
+
+        assert result == "GUIDINGDARK_7x10s_20260807_143022"
 
     def test_strips_unsafe_characters_from_target_name(self):
         result = build_fits_root_name("STAR", target_name="HD 12345*", exposure_time=30, timestamp=self.FIXED_TS)

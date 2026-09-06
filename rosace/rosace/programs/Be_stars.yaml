@@ -7,6 +7,7 @@ description: "Spectral monitoring of Be stars — Hα emission and profile varia
 
 sequencer:
   - home_sync_am3                # AM3 mount re-homing (once per session)
+  - guiding_dark_acquisition     # Guiding-camera dark median (session/camera) -- before pointing
   - pointing_72ed                # Telescope pointing
   # - focus                      # Automatic focusing
   - star_spectra_acquisition     # Science exposure acquisition (switches spectro to SKY)

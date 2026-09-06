@@ -138,7 +138,7 @@ For a sub-plugin whose own work spans several internal steps (e.g. `star_spectra
 
   Sub-plugin directory names must additionally be all-lowercase (PEP8: modules/packages are all-lowercase) and unique across the three families (sequencer_plugins/, reduction_plugins/, sharing_plugins/) — both checked once at server startup by `pipeline_loader.py::validate_subplugin_catalogue()` (called from `plugins/__init__.py`), which raises a `RuntimeError` naming the offending director(y/ies) rather than letting either mistake surface later as a confusing `ModuleNotFoundError` mid-observation or an ambiguous program YAML/observation dossier. Lowercase matters because `build_pipeline()`/`load_sharing_plugin()` lowercase whatever name a program YAML declares before resolving it to a module path — an uppercase directory could never be found that way. Cross-family uniqueness matters for human readability, not correctness: `sequencer_data`, `reduction_data` and `sharing_data` are separate casiers, so e.g. a sequencer sub-plugin and a reduction sub-plugin sharing a name would never actually collide in code — but they would make every program YAML and every observation dossier ambiguous to a reader (is `dark` the capture step or the processing step?). This is also why the three copyable templates are named `blank_seq`/`blank_red`/`blank_share`, not a bare `blank` reused three times.
 
-- Sequencer sub-plugins: `plugins/sequencer_plugins/<name>/` (`slew`, `focus`, `star_spectra_acquisition`, `dark_acquisition`, `bias_acquisition`, `calib_acquisition`, `flat_acquisition`, `home_sync_am3`, `pointing_72ed`, `spectro_light_source_to_sky`, `stop_phd2_guiding`) — read/write `obs.sequencer_data`, read `obs.scheduler_data` for target/exposure. The only sub-plugin family with a backend axis (`SEQUENCER_BACKEND`, `config.py`), resolved **inside each sub-plugin's own directory** rather than as a separate directory tree:
+- Sequencer sub-plugins: `plugins/sequencer_plugins/<name>/` (`slew`, `focus`, `star_spectra_acquisition`, `dark_acquisition`, `bias_acquisition`, `calib_acquisition`, `flat_acquisition`, `guiding_dark_acquisition`, `home_sync_am3`, `pointing_72ed`, `spectro_light_source_to_sky`, `stop_phd2_guiding`) — read/write `obs.sequencer_data`, read `obs.scheduler_data` for target/exposure. The only sub-plugin family with a backend axis (`SEQUENCER_BACKEND`, `config.py`), resolved **inside each sub-plugin's own directory** rather than as a separate directory tree:
   - `<name>/<name>.py` — the canonical, no-suffix filename, used whenever there's no backend ambiguity: always for REDUCTION, and for SEQUENCER when `SEQUENCER_BACKEND="indi"`. `focus.py` is still a **placeholder** (`sleep(1)`, same contract as the demo version) — no autofocus algorithm exists yet.
   - `<name>/<name>_internal.py` — a **deliberate, narrow exception**, not a first-class backend: used only when `SEQUENCER_BACKEND="internal"` (simulation, level-1 demonstrator). Since `internal` exists purely as a demo, **only the sub-plugins actually needed for the demo program have an `_internal.py` file** — its absence for a given sub-plugin is normal, not a gap. Nesting `internal`/`indi` as a subdirectory inside each sub-plugin (`slew/internal/slew.py`) was explicitly rejected (see HISTORY.md). `star_spectra_acquisition_internal.py` still names its produced files via `acquisition_helpers.py::build_fits_root_name()` — same convention as the `indi` backend (see below) — even though it only `touch()`s an empty placeholder file, not a real FITS image; a plain simulation-only filename was tried first and dropped once `--demo-mode` made these files visible to an actual observer trying the app (see HISTORY.md).
   - `pipeline_loader.py::_resolve_module_and_class()` does this resolution; `SequencerPlugin.run()` itself stays agnostic of the backend.
@@ -260,6 +260,73 @@ Never re-sets or re-checks the camera's temperature itself — trusts the once-p
 
 **`flat_acquisition`** (`plugins/sequencer_plugins/flat_acquisition/`, same naming reasoning as the other three) is the simplest of the four: same `current_session`/`camera` two-origin shape, no library, but **no staleness check at all** — neither temperature (DARK/BIAS) nor age (CALIB). Flat-field correction is about optical vignetting/sensor uniformity, not sensor temperature or lamp drift, so once a usable `FLAT_COUNT`-frame series exists anywhere in the session directory it's reused for the rest of that session, indefinitely — shot at most once per session. `_find_usable_flat_series()` (module-local, not added to `dark_library_helpers.py` since nothing else shares it) still checks sensor size and `EXPTIME` (same `EXPOSURE_TIME_TOLERANCE_SECONDS` tolerance the DARK/BIAS/CALIB checks use), just no temperature or age filter. Like `calib_acquisition`, never reads or requires `obs.camera_target_temperature_deg_c`. `camera` (otherwise) switches the spectroscope to `LightSource.FLAT` and shoots a fresh series at `FLAT_EXPOSURE_TIME_SECONDS`. Casier: `sequencer_data["flat_acquisition"] = {"origin": ..., "flat_files": [...]}`. Wired into `Be_stars.yaml` right after `calib_acquisition`, same before-the-`SKY`-reset positioning and same `demo.yaml` exclusion.
 
+### Guiding-camera dark subtraction (`guiding_dark_acquisition`, `capture_guide_image()`)
+
+Found 2026-09-05: the guiding camera carries several fixed hot/defective
+pixels, present at near-identical values in every exposure regardless of
+where the telescope is pointed (confirmed by comparing the same pixel
+coordinates across completely unrelated fields the same night). These land
+among the brightest "sources" `solve-field`'s extractor ranks and tries to
+match first, and were found to be the actual cause of most of one night's
+plate-solve timeouts in `pointing_72ed`/`stop_phd2_guiding_diag` — see
+HISTORY.md for the investigation. Same family reasoning as the science
+camera's DARK/BIAS/CALIB/FLAT acquisition above, applied to the guiding
+camera instead.
+
+**`guiding_dark_acquisition`** (`plugins/sequencer_plugins/guiding_dark_acquisition/`,
+backend `indi` only, no `_internal.py`) resolves a usable guiding-camera
+dark **median** for the session, same `current_session`/`camera`
+two-origin shape as `flat_acquisition` — no staleness check at all: the
+guiding camera is uncooled (`hardware_indi_72ED-WIFI.yaml`'s
+`guiding_camera.cooling: FALSE`), so there's no temperature to bucket, and
+the fixed defects this exists to remove don't drift meaningfully within
+one session. `current_session` reuses an existing
+`GUIDINGDARK_*_median.fits` file already sitting in the session directory;
+`camera` otherwise switches the spectroscope to `LightSource.DARK`, shoots
+a fresh `GUIDING_DARK_COUNT`-frame series (`subplugin_params.guiding_dark_acquisition.count`,
+default 7) with the guiding camera at
+`hardware_config["guiding_camera"]["exposure_seconds"]` (the same duration
+every real guide image uses — deliberately not a separate config value, so
+the dark's exposure time can never drift out of sync with the images it
+corrects), and median-combines them (plain per-pixel `numpy.median`,
+computed in `float64` then cast back to the sensor's own dtype) into one
+file. Casier: `sequencer_data["guiding_dark_acquisition"] = {"origin":
+"current_session"|"camera", "dark_files": [...raw frames, empty on
+reuse...], "median_dark_file": "<combined median filename>"}`. Wired into
+`Be_stars.yaml` right after `home_sync_am3`, before `pointing_72ed` — it
+must run before anything captures a guide image. Deliberately **not**
+added to `demo.yaml` (backend-agnostic, no real guiding camera to shoot
+darks with).
+
+Deliberately its own sub-plugin rather than folded into
+`capture_guide_image()` itself (considered and rejected, see HISTORY.md):
+keeps the acquisition visible as its own step in the GUI's live progress
+and the orchestrator's own per-step logging, keeps it independently
+testable, and keeps `acquisition_helpers.py` a plain-functions module with
+no casier of its own, consistent with every other sub-plugin in this
+codebase.
+
+**`capture_guide_image()`** (`acquisition_helpers.py`) is where the actual
+correction happens, consumed by every guide-image caller
+(`pointing_72ed.py`, `stop_phd2_guiding_diag.py`) with no changes needed on
+their side. It always writes the untouched raw exposure first — named
+`build_fits_root_name("GUIDING", ...)` with `RAW_` inserted right after
+`GUIDING_` (e.g. `GUIDING_RAW_Vega_10s_....fits` alongside
+`GUIDING_Vega_10s_....fits`) — never touched again afterward. A new
+`subtract_dark: bool = True` parameter then controls what else happens:
+`True` (the default, matching every real caller's actual need) reads
+`sequencer_data["guiding_dark_acquisition"]["median_dark_file"]`, subtracts
+it from the raw data (clipped to `>= 0`, cast back to the sensor's dtype),
+and writes that as the plain `GUIDING_...` file — the one every downstream
+plate-solve call already worked from before this raw/corrected split
+existed, so `solve_wcs()` and its callers needed zero changes. Raises
+`RuntimeError` if `guiding_dark_acquisition` hasn't run yet — no silent
+fallback that skips the correction. `subtract_dark=False` skips the dark
+lookup and the second file entirely (a byte-identical "corrected" copy
+next to the raw one would be pure waste) and returns the raw path instead.
+`image_to_gui` (unchanged behavior) writes whichever file the call
+actually returns to the GUI's live "Guidage" panel.
+
 ### Coordinate frame convention: J2000/ICRS everywhere
 
 Every coordinate that crosses a module boundary in Rosace — `Target.ra`/`dec` (`targets.py`, sourced from Simbad's `basic.ra`/`dec`, themselves ICRS), `hardware/mount.py::Mount.slew_to(ra, dec)`'s arguments, `scheduler_data["target"]` — is **J2000/ICRS, always**, in degrees. This is a deliberate, app-wide decision: mixing J2000 and JNow would misdirect the mount by an amount that matters at Rosace's targeting precision (well under a pixel of tolerance), so consistency across the whole chain is load-bearing, not cosmetic.
@@ -268,7 +335,7 @@ JNow (equatorial coordinates "of date", precessed/nutated for today) exists **on
 
 `solve-field` (astrometry.net, see the plate-solve chantier) solves against index files built from a J2000/ICRS catalogue and writes a J2000 WCS (`RADESYS`/`EQUINOX` in the resulting FITS header) — consistent with the rest of the chain, no conversion needed when comparing a plate-solved position to a catalogue target position.
 
-`acquisition_helpers.py::capture_guide_image()` unconditionally switches `obs.hardware["spectroscope"]` to `LightSource.SKY` before every exposure — not a parameter a caller passes, since there is no guide image for which any other light source would ever be correct, and nothing upstream (a previous sub-plugin, an interrupted session) can be trusted to have already left the spectroscope there. Added 2026-09-04 after a real incident: a disconnect mid-`dark_acquisition` left the spectroscope on `DARK`, and a guide image captured afterward (by a different sub-plugin, in a later session) came out solid black. This is also why the function takes the whole `obs: Observation` rather than a bare `camera` — it needs both `obs.hardware["guiding_camera"]` and `obs.hardware["spectroscope"]`, and `obs.obs_dir` besides, so passing `obs` itself is simpler than threading three separate arguments through every caller. It stamps `RA`/`DEC`/`EQUINOX`/`OBJECT` into every guide image it writes, whenever the caller passes `ra_deg`/`dec_deg`/`target_name` (`pointing_72ed` always does). This exists because the camera driver may already have written its *own* `RA`/`DEC`/`OBJCTRA`/`OBJCTDEC`/`EQUINOX` via mount-snooping (e.g. INDI's CCD Simulator does, labelled J2000) — but that value isn't trusted app-wide: a different camera driver, especially on real hardware, could just as easily copy the mount's raw `EQUATORIAL_EOD_COORD` (JNow) verbatim without converting it. So Rosace always overwrites these keys with its own value — the RA/DEC it actually commanded or computed (`pointing_72ed`'s aimed-at or corrected target position, see above), never the driver's. Every stamped card's comment ends "stamped by Rosace" so a human reading the header later can tell which value the app itself vouches for — comments deliberately never contain a literal `/` character (KStars' FITS header viewer truncates a comment at the first `/`, even one that's just part of the comment text and not a real FITS delimiter — the FITS standard itself only treats the *first* `/` after the value as the comment separator, but KStars doesn't respect that).
+`acquisition_helpers.py::capture_guide_image()` (see also "Guiding-camera dark subtraction" above, for the raw/dark-corrected file split this function writes) unconditionally switches `obs.hardware["spectroscope"]` to `LightSource.SKY` before every exposure — not a parameter a caller passes, since there is no guide image for which any other light source would ever be correct, and nothing upstream (a previous sub-plugin, an interrupted session) can be trusted to have already left the spectroscope there. Added 2026-09-04 after a real incident: a disconnect mid-`dark_acquisition` left the spectroscope on `DARK`, and a guide image captured afterward (by a different sub-plugin, in a later session) came out solid black. This is also why the function takes the whole `obs: Observation` rather than a bare `camera` — it needs both `obs.hardware["guiding_camera"]` and `obs.hardware["spectroscope"]`, and `obs.obs_dir` besides, so passing `obs` itself is simpler than threading three separate arguments through every caller. It stamps `RA`/`DEC`/`EQUINOX`/`OBJECT` into every guide image it writes, whenever the caller passes `ra_deg`/`dec_deg`/`target_name` (`pointing_72ed` always does). This exists because the camera driver may already have written its *own* `RA`/`DEC`/`OBJCTRA`/`OBJCTDEC`/`EQUINOX` via mount-snooping (e.g. INDI's CCD Simulator does, labelled J2000) — but that value isn't trusted app-wide: a different camera driver, especially on real hardware, could just as easily copy the mount's raw `EQUATORIAL_EOD_COORD` (JNow) verbatim without converting it. So Rosace always overwrites these keys with its own value — the RA/DEC it actually commanded or computed (`pointing_72ed`'s aimed-at or corrected target position, see above), never the driver's. Every stamped card's comment ends "stamped by Rosace" so a human reading the header later can tell which value the app itself vouches for — comments deliberately never contain a literal `/` character (KStars' FITS header viewer truncates a comment at the first `/`, even one that's just part of the comment text and not a real FITS delimiter — the FITS standard itself only treats the *first* `/` after the value as the comment separator, but KStars doesn't respect that).
 
 ### Simbad client (`simbad.py`)
 
@@ -404,6 +471,7 @@ demo-shaped.
 | `observation_list_path` / `min_target_altitude_deg` | `scheduler_rosace_2026` | `~/.rosace/ObservationList.txt` / `10` | Text file (CSV: `Priority, Program, Star, commentaire`) this scheduler reads to pick the next target (any location, not necessarily under `BASE_DATA_DIR`) — see below; minimum altitude (degrees) for a target to be considered currently observable |
 | `count` | `dark_acquisition` | `5` | Number of DARK frames per series, fixed for the whole session — see `dark_acquisition` below |
 | `count` / `exposure_time_seconds` | `bias_acquisition` | `5` / `0.0` | Number of BIAS frames per series; BIAS exposure time — 0 by definition (no integration), overridable for a camera that refuses a literal 0s exposure — see `bias_acquisition` below |
+| `count` | `guiding_dark_acquisition` | `7` | Number of guiding-camera dark frames median-combined per session — no separate exposure-time key, deliberately: it always reuses `hardware_config["guiding_camera"]["exposure_seconds"]`, the same duration every real guide image uses — see `guiding_dark_acquisition` above |
 | `phase2_search_radius_deg` | `pointing_72ed` | `1.0` | `solve-field` search-cone radius (degrees) for Phase 2's plate solve only — Phase 1 keeps `solve_wcs()`'s own wider default (5°), since Phase 2 already has a precise position hint (the just-slewed-to `corrected_coord`) and a tighter cone directly cuts this synchronous solve's real wall-clock cost — see `pointing_72ed` below |
 
 **When adding a new config key**: if it's read by `main.py`/`auth.py`/`database.py`, or is a plugin-family selector, it's Core — add it to `test_rosace_core.py`'s `_write_tmp_config` test helper too, or tests that don't pass it will fail outright (`config.py` indexes it directly, no fallback). Otherwise it's Plugin — add it under `subplugin_params:` (nested under the plugin's name, or at the root only if genuinely shared by several interchangeable sub-plugins), read it with `.get(key, default)` inside the consuming sub-plugin's own module, and `test_rosace_core.py` needs no change at all.

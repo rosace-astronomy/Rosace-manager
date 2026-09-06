@@ -15,12 +15,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+from astropy.io import fits
+
 from ...config import GUI_PREVIEW_DIR
 from ...hardware.spectroscope import LightSource
 from ...image_broadcast import ws_image_broadcaster
 from ...models import Observation
 
-ALLOWED_IMAGE_TYPES = {"STAR", "BIAS", "DARK", "FLAT", "CALIB", "GUIDING"}
+ALLOWED_IMAGE_TYPES = {"STAR", "BIAS", "DARK", "FLAT", "CALIB", "GUIDING", "GUIDINGDARK"}
 
 _TEMP_ALLOWED_TYPES = {"DARK", "BIAS"}
 
@@ -33,6 +36,18 @@ _TARGET_NAME_APPEND_TYPES = {"GUIDING"}
 _UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]")
 
 
+def _raw_variant_filename(filename: str) -> str:
+    """Derives the untouched, dark-uncorrected sibling filename for a guide
+    image: "GUIDING_..." -> "GUIDING_RAW_...", so the two stay obviously
+    paired (same target/exposure/timestamp fields) and easy to grep for
+    together. Falls back to a plain "RAW_" prefix for a caller-overridden
+    filename that doesn't start with "GUIDING_" (only ever the case in
+    tests -- see capture_guide_image()'s own filename override)."""
+    if filename.startswith("GUIDING_"):
+        return "GUIDING_RAW_" + filename[len("GUIDING_"):]
+    return "RAW_" + filename
+
+
 async def capture_guide_image(
     obs: Observation,
     exposure_time: float,
@@ -41,32 +56,50 @@ async def capture_guide_image(
     dec_deg: float | None = None,
     target_name: str | None = None,
     image_to_gui: bool = False,
+    subtract_dark: bool = True,
 ) -> Path:
-    """Switches obs.hardware["spectroscope"] to LightSource.SKY, then exposes
-    obs.hardware["guiding_camera"] for exposure_time seconds and writes the
-    resulting FITS image to obs.obs_dir/filename. Returns the written path.
+    """Switches obs.hardware["spectroscope"] to LightSource.SKY, exposes
+    obs.hardware["guiding_camera"] for exposure_time seconds, and writes the
+    untouched raw exposure to disk. Returns the written path -- of the
+    dark-corrected copy described below when subtract_dark=True (the
+    default), of the raw file itself when subtract_dark=False.
 
-    The SKY switch is unconditional -- every guide image needs it, with no
-    exception, so it isn't a parameter a caller could pass wrong or forget:
-    a caller only ever hands over obs itself, exactly as it already does for
-    obs.obs_dir. Added 2026-09-04 after a real incident the night before: a
-    disconnect during dark_acquisition left the spectroscope on DARK, and the
-    next guide image captured (by a different sub-plugin, later, after a
-    session restart) came out solid black -- nothing upstream of this
-    function can be trusted to have already put the spectroscope in the
-    right state, so this is the one place it's guaranteed instead.
+    The raw file is named build_fits_root_name("GUIDING", ...) with "RAW_"
+    inserted right after "GUIDING_" (see _raw_variant_filename() above) --
+    e.g. "GUIDING_RAW_Vega_10s_....fits" -- and is written once, never
+    touched again, regardless of subtract_dark.
 
-    Same expose()-then-writeto() pattern expose.py already uses for the
-    science camera (see hardware/camera.py for the generic Camera contract).
-    filename defaults to build_fits_root_name("GUIDING", target_name=target_name,
-    exposure_time=exposure_time) + ".fits" (e.g. "GUIDING_Vega_0_30s_....fits"
-    when target_name is given, "GUIDING_0_30s_....fits" without it) — pass
-    an explicit filename to override (e.g. in tests).
+    subtract_dark=True (the default) additionally writes a second file, the
+    plain build_fits_root_name(...) name (e.g. "GUIDING_Vega_10s_....fits",
+    same name this function always wrote before this raw/corrected split
+    existed): the raw exposure with
+    obs.sequencer_data["guiding_dark_acquisition"]["median_dark_file"] (the
+    per-session guiding-camera master dark, see
+    plugins/sequencer_plugins/guiding_dark_acquisition/ -- built from real
+    guiding exposures at different pointings, median-combined to cancel
+    real stars while keeping the sensor's own fixed hot/defective pixels,
+    found 2026-09-05 to routinely break solve-field's star matching)
+    subtracted, clipped to >= 0 (a raw pixel can be fainter than the dark
+    median at that same pixel) and cast back to the sensor's own dtype.
+    Raises RuntimeError if guiding_dark_acquisition hasn't run yet for this
+    session -- no silent fallback that skips the correction, since an
+    uncorrected image is exactly the failure mode this mechanism exists to
+    prevent. Every actual caller today (pointing_72ed.py,
+    stop_phd2_guiding_diag.py) needs the corrected copy for plate-solving,
+    hence the True default -- an existing caller that doesn't pass this
+    parameter keeps getting exactly that.
+
+    subtract_dark=False skips the dark lookup and the second file entirely
+    (writing a byte-identical "corrected" copy next to the raw one would be
+    pure waste) -- for a caller that only ever wants the raw exposure
+    itself, with no guiding-dark dependency at all.
 
     ra_deg/dec_deg (J2000 degrees, must be given together or both omitted)
     and target_name, when given, are stamped into the image's own header
-    (RA/DEC/EQUINOX/OBJECT keywords) before it's written — this is what
-    makes the image self-sufficient for plate_solve_helper.py::solve_wcs()'s record_error,
+    (RA/DEC/EQUINOX/OBJECT keywords) before any file is written -- the raw
+    and corrected copies always carry identical header metadata, only the
+    pixel data differs. This is what makes the corrected image
+    self-sufficient for plate_solve_helper.py::solve_wcs()'s record_error,
     which reads exactly these keys back. Every stamped card's comment ends
     "stamped by Rosace" — the camera driver may already have written its
     own RA/DEC/OBJCTRA/OBJCTDEC/EQUINOX (e.g. via INDI's mount-snooping),
@@ -82,16 +115,37 @@ async def capture_guide_image(
     that doesn't pass them keeps writing a plain, unstamped image,
     unchanged.
 
-    image_to_gui=True additionally writes the same (already stamped) image to
-    GUI_PREVIEW_DIR/"guidage.fits" -- a fixed name, overwritten by each call --
-    and notifies connected GUI clients over the WebSocket (image_broadcast.py),
-    so the web GUI's "Guidage" panel can fetch and display it. False by
-    default: an existing caller that doesn't pass it keeps behaving exactly
-    as before, no extra write, no notification."""
+    Same expose()-then-writeto() pattern expose.py already uses for the
+    science camera (see hardware/camera.py for the generic Camera contract).
+    filename (the *corrected* file's name when subtract_dark=True, the raw
+    file's own name otherwise) defaults to build_fits_root_name("GUIDING",
+    target_name=target_name, exposure_time=exposure_time) + ".fits" (e.g.
+    "GUIDING_Vega_0_30s_....fits" when target_name is given,
+    "GUIDING_0_30s_....fits" without it) — pass an explicit filename to
+    override (e.g. in tests).
+
+    image_to_gui=True additionally writes the returned image (the corrected
+    one when subtract_dark=True, the raw one otherwise -- always the same
+    file this function returns the path of) to
+    GUI_PREVIEW_DIR/"guidage.fits" -- a fixed name, overwritten by each call
+    -- and notifies connected GUI clients over the WebSocket
+    (image_broadcast.py), so the web GUI's "Guidage" panel can fetch and
+    display it. False by default: an existing caller that doesn't pass it
+    keeps behaving exactly as before, no extra write, no notification."""
     if (ra_deg is None) != (dec_deg is None):
         raise ValueError("capture_guide_image: ra_deg and dec_deg must be given together, or both omitted")
     if filename is None:
         filename = build_fits_root_name("GUIDING", target_name=target_name, exposure_time=exposure_time) + ".fits"
+
+    if subtract_dark:
+        dark_info = obs.sequencer_data.get("guiding_dark_acquisition")
+        if not dark_info or not dark_info.get("median_dark_file"):
+            raise RuntimeError(
+                "CAPTURE_GUIDE_IMAGE: sequencer_data['guiding_dark_acquisition'] missing -- "
+                "guiding_dark_acquisition must run before capturing guide images"
+            )
+        dark_median = fits.getdata(Path(obs.obs_dir) / dark_info["median_dark_file"])
+
     await obs.hardware["spectroscope"].set_light_source(LightSource.SKY)
     image = await obs.hardware["guiding_camera"].expose(exposure_time)
     if ra_deg is not None:
@@ -100,8 +154,19 @@ async def capture_guide_image(
         image[0].header["EQUINOX"] = (2000, "Equinox of RA and DEC above, stamped by Rosace")
     if target_name is not None:
         image[0].header["OBJECT"] = (target_name, "Queried name, stamped by Rosace")
-    path = Path(obs.obs_dir) / filename
-    image.writeto(path, overwrite=True)
+
+    raw_path = Path(obs.obs_dir) / _raw_variant_filename(filename)
+    image.writeto(raw_path, overwrite=True)
+
+    if subtract_dark:
+        raw_data = image[0].data
+        corrected = np.clip(raw_data.astype(np.float64) - dark_median.astype(np.float64), 0, None)
+        image[0].data = corrected.astype(raw_data.dtype)
+        path = Path(obs.obs_dir) / filename
+        image.writeto(path, overwrite=True)
+    else:
+        path = raw_path
+
     if image_to_gui:
         GUI_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
         image.writeto(GUI_PREVIEW_DIR / "guidage.fits", overwrite=True)
