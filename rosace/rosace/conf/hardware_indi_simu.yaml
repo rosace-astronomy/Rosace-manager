@@ -11,22 +11,10 @@ INDI_drivers:
             indi_port : 7624
         cooling : true
         cooling_capability : -20
-        # 206265 * (PIXSIZE_um / 1000) / FOCALLEN_mm, from the CCD Simulator's
-        # own configured pixel size (9um) and focal length (1624mm) -- verify
-        # against those two settings again if either one ever changes.
-        sampling_arcsec : 1.143
-        # Exposure time (seconds) for a direct guiding-camera capture.
-        exposure_seconds : 3.0
-        # Spectrograph slit position in this camera's field, in pixels.
-        # Zero-indexed (pixel (0,0) = center of the first pixel, matching
-        # astropy's WCS.pixel_to_world()) -- if read off a FITS viewer such
-        # as DS9 (one-indexed), subtract 1 from each axis first.
-        # Placeholder values, no real slit in the simulator -- picked well
-        # inside the 1000x1000 simulated frame (not the (0,0) corner) so the
-        # pointing_72ed Phase 2 residual stays a small, plausible guiding
-        # correction instead of ~half the frame.
-        slit_x : 520
-        slit_y : 370
+        # sampling_arcsec / exposure_seconds / slit_x / slit_y for this camera
+        # now live in the active config.yaml's subplugin_params.guiding_camera
+        # -- they describe the whole telescope+spectro+camera assembly, not
+        # this device in isolation (see CLAUDE.md, HISTORY.md 2026-09-06).
 
     science_camera:
         role: camera

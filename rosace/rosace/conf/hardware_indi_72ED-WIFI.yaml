@@ -15,18 +15,10 @@ INDI_drivers:
             indi_port : 7624
         cooling : FALSE
         # cooling_capability : -20
-        sampling_arcsec : 1.75
-        # Exposure time (seconds) for a direct guiding-camera capture.
-        exposure_seconds : 10
-        # Spectrograph slit position in this camera's field, in pixels.
-        # Zero-indexed (pixel (0,0) = center of the first pixel, matching
-        # astropy's WCS.pixel_to_world()) -- if read off a FITS viewer such
-        # as DS9 (one-indexed), subtract 1 from each axis first.
-        # Measured by eye in KStars (one-indexed: KStars' first pixel is
-        # (1,1), confirmed 2026-09-04) as (614, 617), converted here to
-        # Rosace's zero-indexed convention (-1 per axis).
-        slit_x : 613
-        slit_y : 616
+        # sampling_arcsec / exposure_seconds / slit_x / slit_y for this camera
+        # now live in the active config.yaml's subplugin_params.guiding_camera
+        # -- they describe the whole telescope+spectro+camera assembly, not
+        # this device in isolation (see CLAUDE.md, HISTORY.md 2026-09-06).
 
     science_camera:
         role: camera

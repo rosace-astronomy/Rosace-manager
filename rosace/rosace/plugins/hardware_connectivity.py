@@ -119,7 +119,7 @@ def _extract_device_params(device_name: str, device_cfg: dict) -> dict:
     """Validates that device_cfg declares every plumbing field (_PLUMBING_KEYS),
     raising ValueError naming exactly what's missing if not, then returns
     everything else verbatim -- whatever a hardware YAML entry declares beyond
-    the plumbing fields (cooling, sampling_arcsec, slit_x, port, focus_range...)
+    the plumbing fields (cooling, cooling_capability, port, focus_range...)
     becomes that device's params, with no field named here. This is what lets
     a new hardware YAML field reach SEQUENCER sub-plugins without ever
     touching this module."""

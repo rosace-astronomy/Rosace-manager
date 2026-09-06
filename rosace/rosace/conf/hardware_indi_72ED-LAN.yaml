@@ -15,16 +15,12 @@ INDI_drivers:
             indi_port : 7624
         cooling : true
         cooling_capability : -20
-        sampling_arcsec : 1.75
-        # Exposure time (seconds) for a direct guiding-camera capture.
-        exposure_seconds : 3
-        # Spectrograph slit position in this camera's field, in pixels.
-        # Zero-indexed (pixel (0,0) = center of the first pixel, matching
-        # astropy's WCS.pixel_to_world()) -- if read off a FITS viewer such
-        # as DS9 (one-indexed), subtract 1 from each axis first.
-        # TODO placeholder values below, not yet calibrated for this instrument.
-        slit_x : 200
-        slit_y : 230
+        # sampling_arcsec / exposure_seconds / slit_x / slit_y for this camera
+        # now live in the active config.yaml's subplugin_params.guiding_camera
+        # -- they describe the whole telescope+spectro+camera assembly (the
+        # same physical 72ED instrument as -WIFI.yaml, just reached over a
+        # different network path), not this device in isolation (see
+        # CLAUDE.md, HISTORY.md 2026-09-06).
     science_camera:
         role: camera
         module: camera

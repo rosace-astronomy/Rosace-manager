@@ -24,6 +24,7 @@ import logging
 
 from astropy.coordinates import SkyCoord
 
+from ....config import SUBPLUGIN_PARAMS
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
 from ..acquisition_helpers import build_fits_root_name, capture_guide_image
@@ -55,11 +56,11 @@ class StopPhd2GuidingDiagPlugin(SubPlugin):
 
         target = obs.scheduler_data.get("target")
         queried_name = obs.scheduler_data.get("queried_name")
-        camera_config = obs.hardware_config["guiding_camera"]
-        exposure_seconds = camera_config["exposure_seconds"]
-        sampling_arcsec = camera_config.get("sampling_arcsec")
-        slit_x = camera_config["slit_x"]
-        slit_y = camera_config["slit_y"]
+        guiding_params = SUBPLUGIN_PARAMS.get("guiding", {})
+        exposure_seconds = guiding_params["exposure_seconds"]
+        sampling_arcsec = guiding_params.get("sampling_arcsec")
+        slit_x = guiding_params["slit_x"]
+        slit_y = guiding_params["slit_y"]
         target_coord = SkyCoord(ra=target.ra, dec=target.dec, unit="deg", frame="icrs")
 
         root_name = build_fits_root_name("GUIDING", target_name=queried_name, exposure_time=exposure_seconds)

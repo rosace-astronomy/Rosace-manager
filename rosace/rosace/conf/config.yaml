@@ -100,6 +100,28 @@ subplugin_params:
   exposure_time_mag0_seconds: 1.0
   max_exposure_time_seconds: 30
 
+  # Also shared at the root -- read by pointing_72ed, stop_phd2_guiding_diag
+  # (all four) and guiding_dark_acquisition (exposure_seconds only). Grouped
+  # under one key since they describe a single coherent concept: the optical
+  # alignment/plate-scale of the whole telescope+spectro+guiding-camera
+  # assembly, not a property of the guiding camera device in isolation --
+  # which is why they live here rather than in the active hardware profile
+  # (see CLAUDE.md, HISTORY.md 2026-09-06). sampling_arcsec matches the CCD
+  # Simulator's own actually configured pixel size/focal length
+  # (sampling_arcsec = 206265 * (PIXSIZE_um / 1000) / FOCALLEN_mm; confirmed
+  # 2026-09-06 from a captured image's own SCALE/PIXSIZE/FOCALLEN FITS header
+  # keys as 5.2um/420mm = 2.554 -- the 1624mm/9um figure previously assumed
+  # here was wrong and caused every plate-solve to time out, see HISTORY.md).
+  # slit_x/slit_y are placeholders (no real slit in the simulator), picked
+  # well inside the 1000x1000 simulated frame so the pointing_72ed Phase 2
+  # residual stays a small, plausible guiding correction instead of ~half
+  # the frame.
+  guiding:
+    exposure_seconds: 3.0
+    sampling_arcsec: 2.554
+    slit_x: 520
+    slit_y: 370
+
   scheduler_rosace_2026:
     # Full path (any location, not necessarily under base_data_dir) to the
     # text file SCHEDULER reads to pick the next target.

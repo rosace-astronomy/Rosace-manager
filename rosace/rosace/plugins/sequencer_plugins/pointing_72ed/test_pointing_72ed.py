@@ -55,10 +55,6 @@ def _make_obs() -> Observation:
     obs.hardware["phd2"] = AsyncMock()
     obs.hardware["phd2"].get_lock_position.return_value = (LOCK_X, LOCK_Y)
     obs.hardware_config["mount"] = {"backlash_offset_deg": BACKLASH_OFFSET_DEG}
-    obs.hardware_config["guiding_camera"] = {
-        "exposure_seconds": EXPOSURE_SECONDS, "sampling_arcsec": SAMPLING_ARCSEC,
-        "slit_x": SLIT_X, "slit_y": SLIT_Y,
-    }
     return obs
 
 
@@ -80,6 +76,12 @@ def mock_dependencies(monkeypatch):
     monkeypatch.setattr(pointing_72ed, "solve_wcs", solve_wcs_mock)
     monkeypatch.setattr(pointing_72ed, "solve_result", solve_result_mock)
     monkeypatch.setattr(pointing_72ed, "world_to_pixel", world_to_pixel_mock)
+    monkeypatch.setattr(pointing_72ed, "SUBPLUGIN_PARAMS", {
+        "guiding": {
+            "exposure_seconds": EXPOSURE_SECONDS, "sampling_arcsec": SAMPLING_ARCSEC,
+            "slit_x": SLIT_X, "slit_y": SLIT_Y,
+        },
+    })
     return {
         "capture_guide_image": capture_mock, "solve_wcs": solve_wcs_mock,
         "solve_result": solve_result_mock, "world_to_pixel": world_to_pixel_mock,

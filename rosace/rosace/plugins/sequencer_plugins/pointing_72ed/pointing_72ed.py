@@ -67,12 +67,12 @@ class Pointing72edPlugin(SubPlugin):
         phd2 = obs.hardware["phd2"]
 
         mount_config = obs.hardware_config["mount"]
-        camera_config = obs.hardware_config["guiding_camera"]
+        guiding_params = SUBPLUGIN_PARAMS.get("guiding", {})
         backlash_offset_deg = mount_config["backlash_offset_deg"]
-        exposure_seconds = camera_config["exposure_seconds"]
-        sampling_arcsec = camera_config.get("sampling_arcsec")
-        slit_x = camera_config["slit_x"]
-        slit_y = camera_config["slit_y"]
+        exposure_seconds = guiding_params["exposure_seconds"]
+        sampling_arcsec = guiding_params.get("sampling_arcsec")
+        slit_x = guiding_params["slit_x"]
+        slit_y = guiding_params["slit_y"]
 
         # Step 0: stop any leftover PHD2 guiding/looping from the previous observation
         # (nothing else stops it explicitly) -- otherwise its own corrections would

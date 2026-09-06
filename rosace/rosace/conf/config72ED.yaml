@@ -100,6 +100,30 @@ subplugin_params:
   exposure_time_mag0_seconds: 1.0
   max_exposure_time_seconds: 30
 
+  # Also shared at the root -- read by pointing_72ed, stop_phd2_guiding_diag
+  # (all four) and guiding_dark_acquisition (exposure_seconds only). Grouped
+  # under one key since they describe a single coherent concept: the optical
+  # alignment/plate-scale of the whole telescope+spectro+guiding-camera
+  # assembly, not a property of the guiding camera device in isolation --
+  # which is why they live here rather than in the active hardware profile
+  # (see CLAUDE.md, HISTORY.md 2026-09-06). Values below are the 72ED's
+  # calibrated guiding camera, valid regardless of which network path
+  # (active_hardware) reaches it -- same physical instrument either way.
+  guiding:
+    # Exposure time (seconds) for a direct guiding-camera capture.
+    exposure_seconds: 10
+    # Plate scale (arcsec/pixel) of the guiding camera behind this telescope.
+    sampling_arcsec: 1.75
+    # Spectrograph slit position in the guiding camera's field, in pixels.
+    # Zero-indexed (pixel (0,0) = center of the first pixel, matching
+    # astropy's WCS.pixel_to_world()) -- if read off a FITS viewer such as
+    # DS9 (one-indexed), subtract 1 from each axis first. Measured by eye in
+    # KStars (one-indexed: KStars' first pixel is (1,1), confirmed
+    # 2026-09-04) as (614, 617), converted here to Rosace's zero-indexed
+    # convention (-1 per axis).
+    slit_x: 613
+    slit_y: 616
+
   scheduler_rosace_2026:
     # Full path (any location, not necessarily under base_data_dir) to the
     # text file SCHEDULER reads to pick the next target.

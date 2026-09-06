@@ -47,6 +47,11 @@ def small_guiding_dark_count(monkeypatch):
     monkeypatch.setattr(gda_mod, "GUIDING_DARK_COUNT", 2)
 
 
+@pytest.fixture(autouse=True)
+def guiding_subplugin_params(monkeypatch):
+    monkeypatch.setattr(gda_mod, "SUBPLUGIN_PARAMS", {"guiding": {"exposure_seconds": EXPOSURE_SECONDS}})
+
+
 def _write_raw_frame(directory, *, exptime=EXPOSURE_SECONDS, naxis=FRAME_SIZE, value=100, index=1):
     directory.mkdir(parents=True, exist_ok=True)
     width, height = naxis
@@ -144,7 +149,6 @@ def _make_obs(obs_dir, *, camera=None, spectroscope=None, stop_check=None):
     camera.get_frame_size.return_value = FRAME_SIZE
     obs.hardware["guiding_camera"] = camera
     obs.hardware["spectroscope"] = spectroscope if spectroscope is not None else AsyncMock()
-    obs.hardware_config["guiding_camera"] = {"exposure_seconds": EXPOSURE_SECONDS}
     return obs
 
 

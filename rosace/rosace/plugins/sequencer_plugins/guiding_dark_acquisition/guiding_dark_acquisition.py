@@ -30,10 +30,10 @@ Two origins:
   directory (e.g. made for an earlier observation tonight).
 - camera: otherwise, switches the spectroscope to DARK and shoots a fresh
   GUIDING_DARK_COUNT-frame series with the guiding camera at
-  hardware_config["guiding_camera"]["exposure_seconds"] (the same duration
-  every real guide image uses -- not a separate subplugin_params value, to
-  keep the dark's exposure time and the guide images it corrects
-  permanently in sync), then median-combines them into one file.
+  subplugin_params.guiding.exposure_seconds (the same duration every real
+  guide image uses -- not a separate, dedicated value of its own, to keep
+  the dark's exposure time and the guide images it corrects permanently in
+  sync), then median-combines them into one file.
 
 Casier: {"origin": "current_session"|"camera", "dark_files": [...raw
 frames...], "median_dark_file": "<combined median filename>"}.
@@ -117,7 +117,7 @@ class GuidingDarkAcquisitionPlugin(SubPlugin):
             raise RuntimeError("GUIDING_DARK_ACQUISITION: observation directory (obs_dir) not set")
 
         camera = obs.hardware["guiding_camera"]
-        exposure_time = obs.hardware_config["guiding_camera"]["exposure_seconds"]
+        exposure_time = SUBPLUGIN_PARAMS.get("guiding", {})["exposure_seconds"]
         frame_size = await camera.get_frame_size()
         obs_dir = Path(obs.obs_dir)
 

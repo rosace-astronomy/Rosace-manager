@@ -45,10 +45,6 @@ def _make_obs() -> Observation:
         "calibrated": True, "xAngle": 0.0, "yAngle": 90.0, "xRate": 1.0, "yRate": 1.0,
     }
     obs.hardware["guiding_camera"] = AsyncMock()
-    obs.hardware_config["guiding_camera"] = {
-        "exposure_seconds": EXPOSURE_SECONDS, "sampling_arcsec": SAMPLING_ARCSEC,
-        "slit_x": SLIT_X, "slit_y": SLIT_Y,
-    }
     return obs
 
 
@@ -65,6 +61,12 @@ def mock_dependencies(monkeypatch):
     monkeypatch.setattr(stop_phd2_guiding_diag, "capture_guide_image", capture_mock)
     monkeypatch.setattr(stop_phd2_guiding_diag, "solve_wcs", solve_wcs_mock)
     monkeypatch.setattr(stop_phd2_guiding_diag, "world_to_pixel", world_to_pixel_mock)
+    monkeypatch.setattr(stop_phd2_guiding_diag, "SUBPLUGIN_PARAMS", {
+        "guiding": {
+            "exposure_seconds": EXPOSURE_SECONDS, "sampling_arcsec": SAMPLING_ARCSEC,
+            "slit_x": SLIT_X, "slit_y": SLIT_Y,
+        },
+    })
     return {"capture_guide_image": capture_mock, "solve_wcs": solve_wcs_mock, "world_to_pixel": world_to_pixel_mock}
 
 

@@ -119,7 +119,7 @@ class Observation(BaseModel):
     # (e.g. "guiding_camera", "focuser") -- everything its hardware YAML entry
     # declares beyond the plumbing fields needed just to connect it (see
     # hardware_connectivity.py::_PLUMBING_KEYS/_extract_device_params()),
-    # verbatim and unfiltered: cooling, sampling_arcsec, slit_x, focus_range...
+    # verbatim and unfiltered: cooling, cooling_capability, focus_range...
     # whatever a given device happens to declare. Unlike hardware, this is
     # plain, picklable data (no live connections) -- it's excluded from
     # model_dump() by the same policy as hardware, not by technical
