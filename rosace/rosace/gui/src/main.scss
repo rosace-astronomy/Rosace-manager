@@ -369,7 +369,8 @@ body {
 
 						&.done {
 							border-color: var(--green);
-							color: var(--green);
+							--label-color: white;
+							background: var(--green);
 						}
 
 						&.error {
