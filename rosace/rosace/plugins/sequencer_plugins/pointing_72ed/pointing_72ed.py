@@ -90,6 +90,8 @@ class Pointing72edPlugin(SubPlugin):
         # distinguishes the mount executing the GOTO inaccurately (reported position would
         # then differ from commanded) from the commanded position itself already being off
         # (reported would match commanded, but the real sky position still wouldn't).
+        # Briefly promoted to INFO 2026-09-07, reverted to DEBUG the same day (user's own
+        # call): useful while actively debugging, not something an observer needs every night.
         reported_ra, reported_dec = await mount.get_position()
         log.debug(
             f"[POINTING_72ED] Initial slew: commanded ({target_coord.ra.deg:.5f}, {target_coord.dec.deg:.5f}), "
@@ -139,28 +141,31 @@ class Pointing72edPlugin(SubPlugin):
         log.info(f"[POINTING_72ED] Guiding image acquisition: {corrected_guide_image.name}")
 
         # Step 9: start PHD2 guiding (auto-selects a guide star), waits for settle.
-        # DEBUG timing added 2026-09-02 while investigating the real residual: this settle
+        # Timing added 2026-09-02 while investigating the real residual: this settle
         # is on the *current* position (no new mount target commanded), so it's expected to
         # be fast -- logged to confirm that against real timings rather than assume it.
+        # INFO since 2026-09-07 (user's own call): unlike the other diagnostics added the
+        # same day, settle timing stays operationally useful beyond the investigation itself.
         log.info(f"[POINTING_72ED] Starting PHD2 guiding on {queried_name}")
         settle_start = time.monotonic()
         await phd2.start_guiding()
-        log.debug(f"[POINTING_72ED] PHD2 first settle took {time.monotonic() - settle_start:.1f}s")
+        log.info(f"[POINTING_72ED] PHD2 first settle took {time.monotonic() - settle_start:.1f}s")
 
         # Step 10: lock position PHD2 chose (its own guide star, generally not the target itself).
-        # DEBUG log added 2026-09-02: needed to later cross-check PHD2's own pixel-coordinate
+        # DEBUG only, added 2026-09-02: needed to later cross-check PHD2's own pixel-coordinate
         # convention against the plate-solve's (astropy, zero-indexed) -- see
         # project field-test notes for the 3-way comparison (PHD2 / Demetra / plate-solve)
-        # this value feeds.
+        # this value feeds. Briefly promoted to INFO 2026-09-07, reverted the same day.
         lock_x, lock_y = await phd2.get_lock_position()
         log.debug(f"[POINTING_72ED] PHD2 lock position for {queried_name}: ({lock_x:.2f}, {lock_y:.2f})")
 
         # Step 11: plate solve this 2nd image, without recording the error this time
         # (the pointing is already corrected, mount accuracy isn't what's being measured here) --
         # a tighter search radius than Phase 1's (see PHASE2_SEARCH_RADIUS_DEG above).
-        # DEBUG timing added 2026-09-02, same investigation: this synchronous solve is the
-        # other candidate for where the real wall-clock time between capturing this image and
-        # actually applying its residual to PHD2 goes (see HISTORY.md's 2026-08-30 entry).
+        # DEBUG only, timing added 2026-09-02, same investigation: this synchronous solve is
+        # the other candidate for where the real wall-clock time between capturing this image
+        # and actually applying its residual to PHD2 goes (see HISTORY.md's 2026-08-30 entry).
+        # Briefly promoted to INFO 2026-09-07, reverted the same day.
         solve_start = time.monotonic()
         await solve_wcs(
             str(corrected_guide_image), sampling_arcsec=sampling_arcsec, radius_deg=PHASE2_SEARCH_RADIUS_DEG,
@@ -175,7 +180,10 @@ class Pointing72edPlugin(SubPlugin):
         # 1's own pointing-error correction) -- then residual vs. the slit
         target_pixel_x, target_pixel_y = world_to_pixel(str(corrected_guide_image), target_coord)
         dx, dy = target_pixel_x - slit_x, target_pixel_y - slit_y
-        log.debug(f"[POINTING_72ED] Phase 2 residual vs slit for {queried_name}: dx={dx:.1f}px dy={dy:.1f}px")
+        # INFO since 2026-09-07 (was DEBUG): kept permanently, not just for the current
+        # investigation -- the operationally useful "before" counterpart to
+        # stop_phd2_guiding's own post-science residual (the "after").
+        log.info(f"[POINTING_72ED] Phase 2 residual vs slit for {queried_name}: dx={dx:.1f}px dy={dy:.1f}px")
 
         # Step 13: shift PHD2's lock position by the same offset as the desired field shift --
         # PHD2 will itself move the mount until its own star reaches this new position,
@@ -186,7 +194,7 @@ class Pointing72edPlugin(SubPlugin):
         log.info(f"[POINTING_72ED] Refining PHD2 lock position on {queried_name}")
         settle_start = time.monotonic()
         await phd2.start_guiding()
-        log.debug(f"[POINTING_72ED] PHD2 refine settle took {time.monotonic() - settle_start:.1f}s")
+        log.info(f"[POINTING_72ED] PHD2 refine settle took {time.monotonic() - settle_start:.1f}s")
 
         # Step 15: done -- star in the slit, guiding active. No "target" (already in
         # scheduler_data) or "guiding_started" flag (process info, not descriptive --

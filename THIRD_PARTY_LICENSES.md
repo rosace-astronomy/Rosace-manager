@@ -49,3 +49,21 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## x4js (MIT) — GUI runtime dependency, not vendored code
+
+Unlike the entry above, this isn't code incorporated into Rosace's own
+source tree — the GUI (`rosace/rosace/gui/`) simply depends on
+[x4js](https://x4js.org) as a regular npm package (`gui/package.json`,
+installed under `node_modules/x4js`), the same as any other JavaScript
+dependency. Recorded here only because neither the published npm package
+nor its GitHub repository ([rlibre/x4](https://github.com/rlibre/x4))
+carries a `license` field or a `LICENSE` file, which could otherwise read
+as "no license granted" — the project's own documentation site states
+otherwise:
+
+> Copyright (c) 2019-2022 R-libre ingenierie — MIT License, confirmed at
+> <https://x4js.org/doc/mit-license/> (standard MIT terms: permission to
+> use/copy/modify/merge/publish/distribute/sublicense/sell, conditioned on
+> keeping the copyright and permission notice, provided "as is" with no
+> warranty).
