@@ -149,6 +149,10 @@ const STEP_PROGRESS_HOLD_SECONDS = 10;
 // In-browser Journal history cap -- not a real retention limit, rosace.log keeps everything.
 const MAX_JOURNAL_LINES = 1000;
 
+// Sticky-scroll tolerance (px) for the Journal panel: how close to the bottom counts
+// as "already following" -- a couple of pixels of rounding slack, not a real margin.
+const JOURNAL_AUTOSCROLL_TOLERANCE_PX = 4;
+
 const LOG_CREATE_MSG = "log.create";
 const IMAGE_NEW_MSG = "image.new";
 const AUTH_LOGOUT_MSG = "auth.logout";	// fired locally (Application.fireGlobal) on logout — AppShell listens
@@ -547,7 +551,18 @@ class MainView extends VBox {
 		}
 
 		const l = this.query<SimpleTextArea>( "#logger" );
+		const el = l.dom as HTMLTextAreaElement;
+
+		// Sticky auto-scroll: only follow the new lines down if the user was already
+		// at (or very near) the bottom -- if they've scrolled up to read earlier
+		// lines, setText() below must not yank them back down on every new batch.
+		const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= JOURNAL_AUTOSCROLL_TOLERANCE_PX;
+
         l.setText( this.log_lines.join('\n' ) );
+
+		if( wasAtBottom ) {
+			l.scrollToBottom();
+		}
     }
 
 	private log(msg: string) {
