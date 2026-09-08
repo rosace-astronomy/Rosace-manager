@@ -50,6 +50,7 @@ interface ObsRow {
     id: string;
     target_name: string;
     queried_name: string | null;
+    program_name: string | null;
     priority: number | null;
     created_at: string | Date;
     error_message: string;
@@ -482,6 +483,7 @@ class MainView extends VBox {
 				cls: 'obs-row',
 				sub_cols: [
 					new SimpleText({ cls: "obs-priority",  text: priorityText }),
+					new SimpleText({ cls: "obs-program",   text: obs.program_name ?? "" }),
 					new HBox({ cls: "obs-name", content: [
 						new SimpleText({ cls: "obs-target",    text: displayName }),
 						new SimpleText({ cls: "obs-canonical", text: canonicalText }),

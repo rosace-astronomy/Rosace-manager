@@ -221,7 +221,7 @@ async def db_get_recent_observations(limit: int | None = None) -> list[dict]:
     No limit by default: the astronomical-day filter alone already bounds the result set to one night.
     An explicit limit is still accepted (used by tests to isolate their own rows in the shared DB)."""
     since = astronomical_day_start_utc()
-    query = """SELECT id, target_name, queried_name, priority, created_at, error_message,
+    query = """SELECT id, target_name, queried_name, program_name, priority, created_at, error_message,
                       scheduler_done, sequencer_done, reduction_done,
                       sharing_done, archive_done,
                       scheduler_status, sequencer_status, reduction_status,
@@ -242,6 +242,7 @@ async def db_get_recent_observations(limit: int | None = None) -> list[dict]:
             "id":            row["id"],
             "target_name":   row["target_name"],
             "queried_name":  row["queried_name"],
+            "program_name":  row["program_name"],
             "priority":      row["priority"],
             "created_at":    row["created_at"],
             "error_message": row["error_message"],

@@ -289,6 +289,14 @@ body {
 					flex: 0 0 2.5rem;
 				}
 
+				.obs-program {
+					color: var(--muted);
+					flex: 0 0 6rem;
+					overflow: hidden;
+					text-overflow: ellipsis;
+					white-space: nowrap;
+				}
+
 				.obs-id {
 					color: var(--muted);
 					flex: 0 0 6rem;

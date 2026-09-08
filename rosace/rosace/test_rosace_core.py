@@ -695,6 +695,20 @@ class TestDatabase:
         assert row["queried_name"] == "VegaQueriedNameTest"
         assert row["target_name"] == "Vega"
 
+    async def test_program_name_roundtrips(self):
+        """program_name (scheduler_data["program"]) is returned alongside
+        target_name/queried_name -- lets the GUI show which scientific
+        program an observation belongs to."""
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        obs.scheduler_data["program"] = "Be_stars"
+        await db_insert_observation(obs, ctx.session_id)
+
+        rows = await db_get_recent_observations(limit=1)
+        row = next(r for r in rows if r["id"] == obs.id)
+        assert row["program_name"] == "Be_stars"
+
     async def test_queried_name_none_when_not_set(self):
         ctx = self._make_ctx()
         await db_insert_session(ctx)

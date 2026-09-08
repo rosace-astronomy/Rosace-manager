@@ -86,7 +86,10 @@ async def cool_science_camera_to_target(
     target isn't reached within CAMERA_COOLDOWN_TIMEOUT_SECONDS. A stop
     request (stop_check() becoming true) simply interrupts the wait and
     returns the target as-is -- not treated as a failure, the cooldown
-    keeps converging in the background regardless."""
+    keeps converging in the background regardless. Logs the current
+    temperature once per poll (every POLL_INTERVAL_SECONDS, 5s) so a
+    long cooldown is visible in progress, not silent until it either
+    reaches target or times out."""
     ambient = await focuser.get_temperature()
     target = compute_camera_target_temperature(ambient, cooling_capability_deg_c)
     log.info(f"[CAMERA_COOLDOWN] Ambient temperature {ambient}C -- cooling science camera to {target}C")
@@ -99,6 +102,7 @@ async def cool_science_camera_to_target(
             return ambient, target
 
         current = await camera.get_temperature()
+        log.info(f"[CAMERA_COOLDOWN] Current temperature: {current}C (target {target}C)")
         if abs(current - target) <= tolerance_deg_c:
             log.info(f"[CAMERA_COOLDOWN] Target reached ({current}C)")
             return ambient, target
