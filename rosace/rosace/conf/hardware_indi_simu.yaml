@@ -80,6 +80,12 @@ INDI_drivers:
         indi_client:
             indi_host: localhost
             indi_port: 7624
+        # SpectroscopePlaceholder.set_light_source() never physically blocks
+        # light (pure in-memory, see the class's own docstring) -- lets
+        # guiding_dark_acquisition synthesize an all-zero placeholder dark
+        # instead of shooting real DARK frames that wouldn't be dark at all.
+        # Absent (defaults true) on every real spectroscope device.
+        obstructs_light: false
 
 PHD2_config:
     # host: 192.168.144.32

@@ -35,6 +35,13 @@ no hardware dependency) and for SEQUENCER when SEQUENCER_BACKEND="indi".
 backend): only the sub-plugins actually needed for the demo have a
 <name>_internal.py file — its absence for a given sub-plugin is normal, not
 a gap.
+
+A program's own `sequencer:` list is never the *whole* story for SEQUENCER:
+the active hardware profile may declare its own `sequencer_prefix:` (e.g.
+`[home_sync_am3]` for an AM3 mount) — steps every program run against that
+equipment needs, regardless of which science it's doing. See
+hardware_sequencer_prefix() below: this is what keeps equipment-specific
+sub-plugins out of program YAMLs entirely.
 """
 
 from __future__ import annotations
@@ -48,7 +55,7 @@ from pathlib import Path
 
 import yaml
 
-from ..config import SEQUENCER_BACKEND
+from ..config import HARDWARE_CONFIG_PATH, SEQUENCER_BACKEND
 
 log = logging.getLogger("spectro.pipeline_loader")
 
@@ -349,6 +356,31 @@ def build_pipeline(step_names: list[str], kind: str) -> list:
     return pipeline
 
 
+def hardware_sequencer_prefix() -> list[str]:
+    """
+    Returns the SEQUENCER step names the active hardware profile declares as
+    mandatory for every program run against it (its own `sequencer_prefix:`
+    key, e.g. `[home_sync_am3]` for the 72ED/AM3 profiles) — [] if the key
+    is absent, or if SEQUENCER_BACKEND isn't "indi" (no hardware profile is
+    meaningfully "active" for the internal/demo backend).
+
+    This is what keeps equipment-specific steps out of scientific program
+    YAMLs: a program never needs to know it's running on an AM3 mount, or
+    declare anything about it — the hardware profile itself does, and every
+    program run against it inherits the same prefix automatically. Both
+    callers that need this (load_pipelines() below, for building the actual
+    pipeline, and SequencerPlugin.run(), for obs.program_steps) read it from
+    this one function, so the two can never prepend different lists and
+    desynchronize the step names from the sub-plugin instances they're
+    zipped against.
+    """
+    if SEQUENCER_BACKEND != "indi":
+        return []
+    with open(HARDWARE_CONFIG_PATH, encoding="utf-8") as f:
+        hw_config = yaml.safe_load(f) or {}
+    return list(hw_config.get("sequencer_prefix", []))
+
+
 def load_pipelines(program_name: str) -> tuple[list, list]:
     """
     Loads the program YAML and returns (sequencer_pipeline, reduction_pipeline).
@@ -366,7 +398,7 @@ def load_pipelines(program_name: str) -> tuple[list, list]:
     if "reduction" not in data:
         raise KeyError(f"Missing 'reduction' key in program '{program_name}'")
 
-    seq_steps = data["sequencer"]
+    seq_steps = hardware_sequencer_prefix() + list(data["sequencer"])
     red_steps = data["reduction"]
 
     log.debug(f"[PIPELINE] Program '{program_name}' loaded")

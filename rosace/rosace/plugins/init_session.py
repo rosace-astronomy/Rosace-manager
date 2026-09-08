@@ -30,6 +30,21 @@ class InitSessionPlugin:
             ctx.hardware_config = connected.hardware_config
             log.info(f"[INIT_SESSION] Hardware connected: {list(ctx.hardware)}")
 
+            # Generic, mount-agnostic: symmetric to CLOSE_SESSION's own generic
+            # park() -- any mount left parked by a previous session's close (or
+            # never unparked at all) can't be slewed at all until this runs
+            # (Mount.set_coord() silently no-ops, not raises, on a parked mount).
+            # Deliberately not gated behind sequencer_prefix/home_sync_am3: that's
+            # the AM3's own additional recovery ritual (park+unpark+sync), not the
+            # baseline "let the mount move at all" precondition every hardware
+            # profile needs regardless of which mount it declares. Let any
+            # failure propagate -- INIT_SESSION already treats its own
+            # exceptions as fatal (session_runner()), and a mount that can't be
+            # unparked would otherwise silently doom every observation tonight.
+            if "mount" in ctx.hardware:
+                await ctx.hardware["mount"].unpark()
+                log.info("[INIT_SESSION] Mount unparked")
+
             await activate_cooling_for_every_camera(ctx.hardware, ctx.hardware_config)
 
             science_camera_config = ctx.hardware_config.get("science_camera", {})

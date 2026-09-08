@@ -24,7 +24,7 @@ this sub-plugin's own casier (sequencer_data["guiding_dark_acquisition"]
 ["median_dark_file"]) to dark-correct every guide image it writes -- see
 that function's own docstring for the raw/corrected file split.
 
-Two origins:
+Three origins:
 
 - current_session: a usable median already sits in this session's own
   directory (e.g. made for an earlier observation tonight).
@@ -34,9 +34,20 @@ Two origins:
   guide image uses -- not a separate, dedicated value of its own, to keep
   the dark's exposure time and the guide images it corrects permanently in
   sync), then median-combines them into one file.
+- synthetic: when the active hardware profile's spectroscope declares
+  obstructs_light: false (SpectroscopePlaceholder on the simulator profile
+  -- see its own docstring: set_light_source() never physically blocks
+  light, so a "DARK" shot there would just be another star exposure, not a
+  real dark) -- writes a single all-zero frame instead of shooting
+  anything, matching the guiding camera's current frame size. Subtracting
+  an all-zero array is a true no-op, so every downstream guide image comes
+  out exactly as if no correction had ever been requested -- without
+  capture_guide_image() or any of its callers needing to know this
+  equipment can't produce a real dark at all.
 
-Casier: {"origin": "current_session"|"camera", "dark_files": [...raw
-frames...], "median_dark_file": "<combined median filename>"}.
+Casier: {"origin": "current_session"|"camera"|"synthetic", "dark_files":
+[...raw frames, empty for synthetic...], "median_dark_file": "<combined or
+synthetic filename>"}.
 """
 
 from __future__ import annotations
@@ -128,30 +139,42 @@ class GuidingDarkAcquisitionPlugin(SubPlugin):
         dark_files: list[str] = []
 
         if median_file is None:
-            spectroscope = obs.hardware["spectroscope"]
-            await spectroscope.set_light_source(LightSource.DARK)
-            root_name = build_fits_root_name(
-                "GUIDINGDARK", exposure_time=exposure_time, num_exposures=GUIDING_DARK_COUNT,
-            )
-            for i in range(1, GUIDING_DARK_COUNT + 1):
-                suffix = f"-{i}" if GUIDING_DARK_COUNT > 1 else ""
-                path = await capture_science_image(
-                    camera, exposure_time, obs.obs_dir, f"{root_name}{suffix}.fits",
+            obstructs_light = obs.hardware_config.get("spectroscope", {}).get("obstructs_light", True)
+
+            if not obstructs_light:
+                root_name = build_fits_root_name("GUIDINGDARK", exposure_time=exposure_time, num_exposures=1)
+                median_data = np.zeros((frame_size[1], frame_size[0]), dtype=np.uint16)
+                median_header = fits.Header()
+                median_header["EXPTIME"] = exposure_time
+                median_header["NCOMBINE"] = (0, "Synthetic dark, stamped by Rosace")
+                median_file = f"{root_name}_median.fits"
+                fits.writeto(obs_dir / median_file, median_data, median_header, overwrite=True)
+                origin = "synthetic"
+            else:
+                spectroscope = obs.hardware["spectroscope"]
+                await spectroscope.set_light_source(LightSource.DARK)
+                root_name = build_fits_root_name(
+                    "GUIDINGDARK", exposure_time=exposure_time, num_exposures=GUIDING_DARK_COUNT,
                 )
-                dark_files.append(path.name)
-
-                if i < GUIDING_DARK_COUNT and obs.stop_check and obs.stop_check():
-                    log.info(
-                        f"[GUIDING_DARK_ACQUISITION] Stop requested -- "
-                        f"{i}/{GUIDING_DARK_COUNT} dark(s) captured, interrupting"
+                for i in range(1, GUIDING_DARK_COUNT + 1):
+                    suffix = f"-{i}" if GUIDING_DARK_COUNT > 1 else ""
+                    path = await capture_science_image(
+                        camera, exposure_time, obs.obs_dir, f"{root_name}{suffix}.fits",
                     )
-                    break
+                    dark_files.append(path.name)
 
-            median_data, median_header = _median_combine(obs_dir, dark_files)
-            median_header["NCOMBINE"] = (len(dark_files), "Frames combined, stamped by Rosace")
-            median_file = f"{root_name}_median.fits"
-            fits.writeto(obs_dir / median_file, median_data, median_header, overwrite=True)
-            origin = "camera"
+                    if i < GUIDING_DARK_COUNT and obs.stop_check and obs.stop_check():
+                        log.info(
+                            f"[GUIDING_DARK_ACQUISITION] Stop requested -- "
+                            f"{i}/{GUIDING_DARK_COUNT} dark(s) captured, interrupting"
+                        )
+                        break
+
+                median_data, median_header = _median_combine(obs_dir, dark_files)
+                median_header["NCOMBINE"] = (len(dark_files), "Frames combined, stamped by Rosace")
+                median_file = f"{root_name}_median.fits"
+                fits.writeto(obs_dir / median_file, median_data, median_header, overwrite=True)
+                origin = "camera"
 
         obs.sequencer_data["guiding_dark_acquisition"] = {
             "origin": origin, "dark_files": dark_files, "median_dark_file": median_file,

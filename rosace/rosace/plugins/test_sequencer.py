@@ -123,6 +123,54 @@ class TestSequencerPlugin:
 
         assert calls == ["step_a", "step_b"]  # step_c never reached
 
+    async def test_program_steps_include_hardware_sequencer_prefix(self, monkeypatch):
+        """program_steps["sequencer"] must include the active hardware
+        profile's own prefix (e.g. an AM3 mount's home/sync step) -- both it
+        and load_pipelines() read the prefix from the same
+        hardware_sequencer_prefix() function, so the two can never drift
+        apart (see pipeline_loader.py)."""
+        monkeypatch.setattr(
+            "rosace.plugins.sequencer.hardware_sequencer_prefix",
+            lambda: ["home_sync_am3"],
+        )
+        monkeypatch.setattr(
+            "rosace.plugins.sequencer.load_pipelines",
+            lambda program: ([], []),
+        )
+
+        obs = _make_obs()  # program = "demo"
+        result = await SequencerPlugin().run(obs)
+
+        assert result.program_steps["sequencer"] == [
+            "home_sync_am3", "slew", "focus", "star_spectra_acquisition",
+        ]
+
+    async def test_hardware_prefix_step_names_align_with_executed_pipeline(self, monkeypatch):
+        """The prefixed step names in program_steps["sequencer"] must line up
+        positionally with the sub-plugin instances load_pipelines() actually
+        returns -- run() zips the two together, so a mismatch would silently
+        associate the wrong name with the wrong instance."""
+        calls: list[str] = []
+        fake_pipeline = [FakeSubPlugin("home_sync_am3", calls), FakeSubPlugin("step_a", calls)]
+        monkeypatch.setattr(
+            "rosace.plugins.sequencer.hardware_sequencer_prefix",
+            lambda: ["home_sync_am3"],
+        )
+        monkeypatch.setattr(
+            "rosace.plugins.sequencer.load_program_yaml",
+            lambda program: {"sequencer": ["step_a"], "reduction": [], "sharing": "blank_share"},
+        )
+        monkeypatch.setattr(
+            "rosace.plugins.sequencer.load_pipelines",
+            lambda program: (fake_pipeline, []),
+        )
+
+        obs = _make_obs()
+        result = await SequencerPlugin().run(obs)
+
+        assert result.program_steps["sequencer"] == ["home_sync_am3", "step_a"]
+        assert calls == ["home_sync_am3", "step_a"]
+
     async def test_records_step_progress_before_each_subplugin(self, monkeypatch):
         """SequencerPlugin must stay agnostic of which sub-plugins actually
         exist -- both the declared step names and the pipeline instances are

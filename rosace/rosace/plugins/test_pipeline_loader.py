@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parents[3]))
 from rosace.plugins.pipeline_loader import (
     load_program_yaml,
     build_pipeline,
+    hardware_sequencer_prefix,
     load_pipelines,
     load_sharing_plugin,
     list_programs,
@@ -120,12 +121,66 @@ class TestBuildPipeline:
             build_pipeline([bad_name], "sequencer")
 
 
+class TestHardwareSequencerPrefix:
+    """hardware_sequencer_prefix() -- the active hardware profile's own
+    equipment-specific SEQUENCER steps (e.g. an AM3 mount's home/sync),
+    prepended to every program's own sequencer list so a program YAML
+    never needs to declare anything equipment-specific itself."""
+
+    def test_empty_when_backend_is_not_indi(self, tmp_path, monkeypatch):
+        from rosace.plugins import pipeline_loader
+        import yaml as _yaml
+
+        hw_yaml = tmp_path / "hw.yaml"
+        hw_yaml.write_text(_yaml.dump({"sequencer_prefix": ["home_sync_am3"]}))
+        monkeypatch.setattr(pipeline_loader, "HARDWARE_CONFIG_PATH", hw_yaml)
+        monkeypatch.setattr(pipeline_loader, "SEQUENCER_BACKEND", "internal")
+
+        assert hardware_sequencer_prefix() == []
+
+    def test_empty_when_hardware_yaml_declares_no_prefix(self, tmp_path, monkeypatch):
+        from rosace.plugins import pipeline_loader
+        import yaml as _yaml
+
+        hw_yaml = tmp_path / "hw.yaml"
+        hw_yaml.write_text(_yaml.dump({"INDI_drivers": {}}))
+        monkeypatch.setattr(pipeline_loader, "HARDWARE_CONFIG_PATH", hw_yaml)
+        monkeypatch.setattr(pipeline_loader, "SEQUENCER_BACKEND", "indi")
+
+        assert hardware_sequencer_prefix() == []
+
+    def test_returns_the_declared_list(self, tmp_path, monkeypatch):
+        from rosace.plugins import pipeline_loader
+        import yaml as _yaml
+
+        hw_yaml = tmp_path / "hw.yaml"
+        hw_yaml.write_text(_yaml.dump({"sequencer_prefix": ["home_sync_am3"]}))
+        monkeypatch.setattr(pipeline_loader, "HARDWARE_CONFIG_PATH", hw_yaml)
+        monkeypatch.setattr(pipeline_loader, "SEQUENCER_BACKEND", "indi")
+
+        assert hardware_sequencer_prefix() == ["home_sync_am3"]
+
+
 class TestLoadPipelines:
 
     def test_returns_tuple_of_two_lists(self):
         seq, red = load_pipelines("demo")
         assert isinstance(seq, list)
         assert isinstance(red, list)
+
+    def test_prepends_hardware_sequencer_prefix(self, monkeypatch):
+        """load_pipelines() prepends whatever hardware_sequencer_prefix()
+        returns to the program's own sequencer list before building the
+        pipeline -- this is what keeps equipment-specific steps (e.g. an AM3
+        mount's home/sync) out of program YAMLs entirely."""
+        from rosace.plugins import pipeline_loader
+        monkeypatch.setattr(pipeline_loader, "hardware_sequencer_prefix", lambda: ["home_sync_am3"])
+
+        seq, _ = load_pipelines("demo")
+
+        names = [p.__class__.__name__ for p in seq]
+        assert names[0] == "HomeSyncAm3Plugin"
+        assert names == ["HomeSyncAm3Plugin", "SlewPlugin", "FocusPlugin", "StarSpectraAcquisitionPlugin"]
 
     def test_bright_stars_no_focus_full_reduction(self):
         """No focus (bright star, manual adjustment) — but the reduction

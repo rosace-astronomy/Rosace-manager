@@ -3,7 +3,10 @@ SEQUENCER plugin — Acquisition orchestrator.
 The pipeline (list of sub-plugins) is loaded dynamically from the
 observation's scientific program YAML (obs.scheduler_data["program"]), set
 by SCHEDULER — so it's reloaded for every observation, not once and for
-all at startup.
+all at startup. The active hardware profile's own equipment-specific steps
+(pipeline_loader.py::hardware_sequencer_prefix(), e.g. an AM3 mount's
+home/sync step) are prepended before this list, so a program YAML never
+needs to know or declare anything about the equipment it happens to run on.
 
 Structure:
     programs/<program>.yaml  →  pipeline_loader  →  [sub-plugin, sub-plugin, …]
@@ -13,7 +16,7 @@ import logging
 
 from .. import step_progress
 from ..models import Observation
-from .pipeline_loader import load_pipelines, load_program_yaml
+from .pipeline_loader import hardware_sequencer_prefix, load_pipelines, load_program_yaml
 
 log = logging.getLogger("spectro.plugin.sequencer")
 
@@ -36,7 +39,11 @@ class SequencerPlugin:
         program_data = load_program_yaml(program)
         obs.program_file = f"{program}.yaml"
         obs.program_steps = {
-            "sequencer": list(program_data["sequencer"]),
+            # Same prefix load_pipelines() below prepends when it actually builds
+            # seq_pipeline -- both read it from the same function, so the step
+            # names here can never drift out of sync with the instances they're
+            # zipped against below.
+            "sequencer": hardware_sequencer_prefix() + list(program_data["sequencer"]),
             "reduction": list(program_data["reduction"]),
             "sharing": program_data["sharing"],
         }

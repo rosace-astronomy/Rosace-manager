@@ -110,3 +110,12 @@ PHD2_config:
         pixels: 1.2
         time: 3
         timeout: 180
+
+# SEQUENCER steps mandatory for every program run on this equipment,
+# regardless of which science it's doing -- prepended automatically to
+# every program's own `sequencer:` list (see
+# pipeline_loader.py::hardware_sequencer_prefix()). This is the AM3 mount's
+# own park/unpark/sync recovery step -- a program YAML never needs to know
+# this mount, or this step, exists.
+sequencer_prefix:
+    - home_sync_am3

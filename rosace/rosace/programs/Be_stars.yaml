@@ -6,7 +6,8 @@ program: Be_stars
 description: "Spectral monitoring of Be stars — Hα emission and profile variations"
 
 sequencer:
-  - home_sync_am3                # AM3 mount re-homing (once per session)
+  # The active hardware profile may prepend its own steps here (equipment-specific,
+  # e.g. a mount's own homing/sync) -- see its sequencer_prefix, if it declares one.
   - guiding_dark_acquisition     # Guiding-camera dark median (session/camera) -- before pointing
   - pointing_72ed                # Telescope pointing
   # - focus                      # Automatic focusing

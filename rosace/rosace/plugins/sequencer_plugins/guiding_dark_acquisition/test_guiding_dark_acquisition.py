@@ -1,8 +1,9 @@
 """
 Tests for the GUIDING_DARK_ACQUISITION sub-plugin (GuidingDarkAcquisitionPlugin),
 indi backend. Covers _find_usable_guiding_dark_median() (no staleness check
-at all, like flat_acquisition -- the guiding camera is uncooled), the two
-origins (current_session/camera -- no library), and the median-combine math.
+at all, like flat_acquisition -- the guiding camera is uncooled), the three
+origins (current_session/camera/synthetic -- no library), and the
+median-combine math.
 Run: pytest plugins/sequencer_plugins/guiding_dark_acquisition/test_guiding_dark_acquisition.py -v
 """
 
@@ -203,6 +204,81 @@ class TestGuidingDarkAcquisitionPlugin:
 
         median_data = fits.getdata(session_dir / casier["median_dark_file"])
         assert (median_data == 100).all()
+
+    async def test_synthetic_origin_when_spectroscope_cannot_obstruct_light(self, tmp_path):
+        """obstructs_light: false (SpectroscopePlaceholder on the simulator
+        profile) -- an all-zero placeholder dark is written instead of
+        shooting anything, so capture_guide_image()'s dark subtraction is a
+        true no-op on this equipment."""
+        session_dir = tmp_path / "session"
+        session_dir.mkdir()
+        camera = AsyncMock()
+        spectroscope = AsyncMock()
+        obs = _make_obs(session_dir, camera=camera, spectroscope=spectroscope)
+        obs.hardware_config["spectroscope"] = {"obstructs_light": False}
+
+        result = await GuidingDarkAcquisitionPlugin().execute(obs)
+
+        casier = result.sequencer_data["guiding_dark_acquisition"]
+        assert casier["origin"] == "synthetic"
+        assert casier["dark_files"] == []
+        assert (session_dir / casier["median_dark_file"]).exists()
+        camera.expose.assert_not_awaited()
+        spectroscope.set_light_source.assert_not_awaited()
+
+        median_data = fits.getdata(session_dir / casier["median_dark_file"])
+        assert (median_data == 0).all()
+        width, height = FRAME_SIZE
+        assert median_data.shape == (height, width)
+
+        header = fits.getheader(session_dir / casier["median_dark_file"])
+        assert header["EXPTIME"] == EXPOSURE_SECONDS
+
+    async def test_synthetic_dark_is_reused_as_current_session_next_time(self, tmp_path):
+        """A synthetic dark must satisfy _find_usable_guiding_dark_median()'s
+        own reuse check (EXPTIME/frame size) just like a real one -- so the
+        next observation in the same session reuses it (current_session)
+        rather than regenerating it every time."""
+        session_dir = tmp_path / "session"
+        session_dir.mkdir()
+        obs1 = _make_obs(session_dir, camera=AsyncMock(), spectroscope=AsyncMock())
+        obs1.hardware_config["spectroscope"] = {"obstructs_light": False}
+        await GuidingDarkAcquisitionPlugin().execute(obs1)
+
+        camera2 = AsyncMock()
+        obs2 = _make_obs(session_dir, camera=camera2, spectroscope=AsyncMock())
+        obs2.hardware_config["spectroscope"] = {"obstructs_light": False}
+        result2 = await GuidingDarkAcquisitionPlugin().execute(obs2)
+
+        assert result2.sequencer_data["guiding_dark_acquisition"]["origin"] == "current_session"
+        camera2.expose.assert_not_awaited()
+
+    async def test_defaults_to_camera_origin_when_hardware_config_silent_on_light(self, tmp_path):
+        """No obstructs_light key at all (every real spectroscope profile) --
+        must default to True (real dark capture), not silently skip it."""
+        session_dir = tmp_path / "session"
+        session_dir.mkdir()
+        camera = AsyncMock()
+        width, height = FRAME_SIZE
+        fake_image = MagicMock()
+        fake_image.__getitem__.return_value.data = np.full((height, width), 100, dtype=np.uint16)
+        camera.expose.return_value = fake_image
+
+        def _writeto(path, overwrite=True):
+            fits.PrimaryHDU(
+                fake_image.__getitem__.return_value.data,
+                header=fits.Header({"EXPTIME": EXPOSURE_SECONDS}),
+            ).writeto(path, overwrite=overwrite)
+
+        fake_image.writeto.side_effect = _writeto
+        spectroscope = AsyncMock()
+        obs = _make_obs(session_dir, camera=camera, spectroscope=spectroscope)
+        assert obs.hardware_config == {}  # no spectroscope entry declared at all
+
+        result = await GuidingDarkAcquisitionPlugin().execute(obs)
+
+        assert result.sequencer_data["guiding_dark_acquisition"]["origin"] == "camera"
+        spectroscope.set_light_source.assert_awaited_once()
 
     async def test_stop_check_interrupts_camera_capture_loop(self, tmp_path):
         session_dir = tmp_path / "session"
