@@ -76,3 +76,42 @@ def altitude_deg(
     lat, dec, ha = math.radians(latitude_deg), math.radians(dec_deg), math.radians(hour_angle_deg)
     sin_alt = math.sin(dec) * math.sin(lat) + math.cos(dec) * math.cos(lat) * math.cos(ha)
     return math.degrees(math.asin(sin_alt))
+
+
+def equatorial_from_horizontal_deg(
+    altitude_deg_: float,
+    azimuth_deg: float,
+    latitude_deg: float,
+    longitude_deg: float,
+    at: datetime | None = None,
+) -> tuple[float, float]:
+    """Inverse of altitude_deg(): given a horizontal position (altitude,
+    azimuth -- degrees, azimuth East of North, matching INDI's own
+    HORIZONTAL_COORD convention) above an observing site (latitude_deg
+    north-positive, longitude_deg east-positive) at a given UTC datetime
+    (`at`, defaults to now), returns the (RA, Dec) degrees -- in the same
+    "ICRS to within a few arcminutes" sense as the rest of this module
+    (precession itself is neglected, well within the accuracy budget
+    already claimed by the module docstring).
+
+    Same spherical-trigonometry identities as altitude_deg(), applied in
+    reverse (declination/hour-angle swap for altitude/azimuth) -- no
+    ephemeris/IERS data, same accuracy class as the rest of this module.
+    Written for home_sync_am3.py's own measured-sync homing (picks a
+    random azimuth at a fixed altitude, needs the equatorial coordinate to
+    hand the mount) -- deliberately not AstroPy's AltAz transform, for the
+    same IERS/network reason given above.
+    """
+    at = at or datetime.now(timezone.utc)
+    lst_deg = local_sidereal_time_deg(longitude_deg, at)
+
+    alt, az, lat = math.radians(altitude_deg_), math.radians(azimuth_deg), math.radians(latitude_deg)
+    sin_dec = math.sin(alt) * math.sin(lat) + math.cos(alt) * math.cos(lat) * math.cos(az)
+    dec = math.asin(sin_dec)
+
+    sin_ha = -math.sin(az) * math.cos(alt) / math.cos(dec)
+    cos_ha = (math.sin(alt) - math.sin(lat) * sin_dec) / (math.cos(lat) * math.cos(dec))
+    hour_angle_deg = math.degrees(math.atan2(sin_ha, cos_ha))
+
+    ra_deg = (lst_deg - hour_angle_deg) % 360.0
+    return ra_deg, math.degrees(dec)

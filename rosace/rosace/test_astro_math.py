@@ -4,7 +4,12 @@ from datetime import datetime, timezone
 
 import pytest
 
-from rosace.astro_math import altitude_deg, julian_date, local_sidereal_time_deg
+from rosace.astro_math import (
+    altitude_deg,
+    equatorial_from_horizontal_deg,
+    julian_date,
+    local_sidereal_time_deg,
+)
 
 
 class TestJulianDate:
@@ -42,6 +47,55 @@ class TestAltitudeDeg:
         # Must not raise -- just check that calling without `at` works.
         alt = altitude_deg(ra_deg=10.0, dec_deg=20.0, latitude_deg=45.0, longitude_deg=5.0)
         assert -90.0 <= alt <= 90.0
+
+
+class TestEquatorialFromHorizontalDeg:
+
+    def test_round_trips_through_altitude_deg(self):
+        # For any (alt, az) this produces an (ra, dec) that, fed back through
+        # altitude_deg(), must reproduce the same altitude -- the two functions
+        # share the same underlying spherical triangle, just solved for
+        # different unknowns.
+        at = datetime(2026, 8, 16, 21, 0, 0, tzinfo=timezone.utc)
+        latitude, longitude = 45.0, 5.0
+        for alt, az in [(65.0, 5.0), (65.0, 90.0), (65.0, 175.0), (30.0, 45.0), (80.0, 170.0)]:
+            ra, dec = equatorial_from_horizontal_deg(alt, az, latitude, longitude, at=at)
+            recovered_alt = altitude_deg(ra_deg=ra, dec_deg=dec, latitude_deg=latitude, longitude_deg=longitude, at=at)
+            assert recovered_alt == pytest.approx(alt, abs=1e-6)
+
+    def test_due_south_meridian_crossing(self):
+        # Az=180 (due south): hour angle is exactly 0 (meridian transit), so
+        # RA == LST exactly, and the standard meridian-transit identity
+        # dec = alt + lat - 90 holds (northern-hemisphere observer, object
+        # transiting south of zenith).
+        at = datetime(2026, 8, 16, 21, 0, 0, tzinfo=timezone.utc)
+        latitude, longitude, alt = 45.0, 5.0, 65.0
+        lst_deg = local_sidereal_time_deg(longitude, at)
+
+        ra, dec = equatorial_from_horizontal_deg(alt, 180.0, latitude, longitude, at=at)
+
+        assert ra == pytest.approx(lst_deg, abs=1e-9)
+        assert dec == pytest.approx(alt + latitude - 90.0, abs=1e-9)
+
+    def test_east_west_mirror_symmetry(self):
+        # Azimuths symmetric about the meridian (az and 360-az) at the same
+        # altitude are mirror images through the meridian plane: same
+        # declination, and their hour angles are negatives of each other
+        # (so their RAs average out to LST).
+        at = datetime(2026, 8, 16, 21, 0, 0, tzinfo=timezone.utc)
+        latitude, longitude, alt = 45.0, 5.0, 65.0
+        lst_deg = local_sidereal_time_deg(longitude, at)
+
+        ra_east, dec_east = equatorial_from_horizontal_deg(alt, 60.0, latitude, longitude, at=at)
+        ra_west, dec_west = equatorial_from_horizontal_deg(alt, 300.0, latitude, longitude, at=at)
+
+        assert dec_east == pytest.approx(dec_west, abs=1e-9)
+        assert ((ra_east + ra_west) / 2.0) % 360.0 == pytest.approx(lst_deg, abs=1e-9)
+
+    def test_defaults_to_now_when_at_omitted(self):
+        ra, dec = equatorial_from_horizontal_deg(65.0, 90.0, 45.0, 5.0)
+        assert 0.0 <= ra < 360.0
+        assert -90.0 <= dec <= 90.0
 
 
 class TestLocalSiderealTimeDeg:
