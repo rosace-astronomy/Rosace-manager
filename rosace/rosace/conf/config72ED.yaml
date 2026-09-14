@@ -100,7 +100,7 @@ subplugin_params:
   exposure_time_mag0_seconds: 1.0
   max_exposure_time_seconds: 30
 
-  # Also shared at the root -- read by pointing_72ed, stop_phd2_guiding_diag
+  # Also shared at the root -- read by pointing_72ed, stop_phd2_guiding
   # (all four) and guiding_dark_acquisition (exposure_seconds only). Grouped
   # under one key since they describe a single coherent concept: the optical
   # alignment/plate-scale of the whole telescope+spectro+guiding-camera
