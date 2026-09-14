@@ -30,11 +30,13 @@ class Mount(Protocol):
     async def sync_to_coordinates(self, ra: float, dec: float) -> None:
         """Tell the mount it is currently pointed at the given J2000
         equatorial coordinates (degrees), without moving it -- recalibrates
-        its internal position reference to match reality. Provisional,
-        reinstated 2026-09-06 for field-testing on the real AM3 (see
-        HISTORY.md) -- removed 2026-08-26 after a distorting side effect
-        found on the INDI Telescope Simulator specifically, not yet
-        confirmed either way on real hardware."""
+        its internal position reference to match reality. Reinstated
+        2026-09-06 for field-testing on the real AM3 (see HISTORY.md) --
+        removed 2026-08-26 after a distorting side effect found on the INDI
+        Telescope Simulator specifically, which real-hardware field testing
+        (2026-09-11/14) confirmed does not apply to the real AM3. Used by
+        home_sync_am3.py's measured-sync homing, always with a plate-solved
+        (not computed) position -- see that module's own docstring."""
         ...
 
     async def get_home_position(self, longitude_deg: float) -> tuple[float, float]:

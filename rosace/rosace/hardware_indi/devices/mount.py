@@ -8,6 +8,7 @@ THIRD_PARTY_LICENSES.md at the repository root for the full license text.
 
 # Basic stuff
 import logging
+import time
 
 # Indi stuff
 from ..wrapper.indi_device import IndiDevice
@@ -21,6 +22,27 @@ from astropy.time import Time
 from astropy.coordinates import SkyCoord
 from astropy.coordinates import ICRS
 from astropy.coordinates import FK5
+
+# EQUATORIAL_EOD_COORD can already sit at IPS_OK from an immediately
+# preceding command on the same property (e.g. a SYNC, which completes
+# near-instantly) when a slew's own set_number() write is sent -- so its
+# sync=True property-status wait can return before the mount has actually
+# reached, or even started slewing to, the requested coordinate. Confirmed
+# in the field 2026-09-11: a slew issued ~100ms after a sync returned
+# immediately while the mount was still sitting at the pre-sync position,
+# then physically slewed during the following exposure, trailing the star
+# across the frame. _verify_slew_reached() below is the defense: never
+# trust the property wait alone for a slew, always cross-check position.
+#
+# Tolerance is deliberately loose (real successful slews land within a few
+# arcsec of commanded, see HISTORY.md) but still far tighter than the
+# smallest deliberate back-to-back slew this codebase issues today
+# (the 2 deg backlash-approach offset, hardware YAML's backlash_offset_deg)
+# -- so two genuinely close, unrelated targets can't accidentally mask a
+# stuck slew, without risking false positives on normal precision noise.
+SLEW_POSITION_TOLERANCE_ARCMIN = 10.0
+SLEW_VERIFY_TIMEOUT_SECONDS = 180
+SLEW_VERIFY_POLL_INTERVAL_SECONDS = 0.5
 
 class IndiMount(IndiDevice):
     """
@@ -82,6 +104,8 @@ class IndiMount(IndiDevice):
         """
         self.on_coord_set('SLEW')
         self.set_coord(coord)
+        if not self.is_parked:
+            self._verify_slew_reached(coord)
 
     def slew_to_coord_and_track(self, coord):
         """
@@ -89,6 +113,32 @@ class IndiMount(IndiDevice):
         """
         self.on_coord_set('TRACK')
         self.set_coord(coord)
+        if not self.is_parked:
+            self._verify_slew_reached(coord)
+
+    def _verify_slew_reached(self, target_coord):
+        """See the module-level comment on SLEW_POSITION_TOLERANCE_ARCMIN."""
+        actual = self.get_current_coordinates()
+        separation_arcmin = target_coord.separation(actual).arcmin
+        if separation_arcmin <= SLEW_POSITION_TOLERANCE_ARCMIN:
+            return
+        self.logger.warning(
+            f"Slew reported complete but mount is {separation_arcmin:.1f}' from target "
+            f"(commanded RA={target_coord.ra.deg:.4f} DEC={target_coord.dec.deg:.4f}, "
+            f"reports RA={actual.ra.deg:.4f} DEC={actual.dec.deg:.4f}) -- waiting for it to actually arrive"
+        )
+        started = time.time()
+        while separation_arcmin > SLEW_POSITION_TOLERANCE_ARCMIN:
+            if time.time() - started > SLEW_VERIFY_TIMEOUT_SECONDS:
+                raise RuntimeError(
+                    f"Mount never reached target after slew: still {separation_arcmin:.1f}' away "
+                    f"(commanded RA={target_coord.ra.deg:.4f} DEC={target_coord.dec.deg:.4f}) "
+                    f"after {SLEW_VERIFY_TIMEOUT_SECONDS}s"
+                )
+            time.sleep(SLEW_VERIFY_POLL_INTERVAL_SECONDS)
+            actual = self.get_current_coordinates()
+            separation_arcmin = target_coord.separation(actual).arcmin
+        self.logger.info(f"Mount reached target after extra wait ({separation_arcmin:.1f}' from commanded)")
 
     def sync_to_coord(self, coord):
         """

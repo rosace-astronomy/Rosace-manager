@@ -85,7 +85,7 @@ async def capture_guide_image(
     session -- no silent fallback that skips the correction, since an
     uncorrected image is exactly the failure mode this mechanism exists to
     prevent. Every actual caller today (pointing_72ed.py,
-    stop_phd2_guiding_diag.py) needs the corrected copy for plate-solving,
+    stop_phd2_guiding.py) needs the corrected copy for plate-solving,
     hence the True default -- an existing caller that doesn't pass this
     parameter keeps getting exactly that.
 

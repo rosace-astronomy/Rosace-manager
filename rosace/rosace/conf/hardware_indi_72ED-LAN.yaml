@@ -115,8 +115,13 @@ PHD2_config:
 # SEQUENCER steps mandatory for every program run on this equipment,
 # regardless of which science it's doing -- prepended automatically to
 # every program's own `sequencer:` list (see
-# pipeline_loader.py::hardware_sequencer_prefix()). This is the AM3 mount's
-# own park/unpark/sync recovery step -- a program YAML never needs to know
-# this mount, or this step, exists.
+# pipeline_loader.py::hardware_sequencer_prefix()). guiding_dark_acquisition
+# must come before home_sync_am3: home_sync_am3's own measured-sync homing
+# captures and plate-solves guide images, which requires a guiding-camera
+# dark median to already exist (capture_guide_image()'s own dark-subtraction
+# requirement) -- see home_sync_am3.py's own docstring. home_sync_am3 is the
+# AM3 mount's own park/unpark/sync recovery step -- a program YAML never
+# needs to know this mount, or either of these steps, exists.
 sequencer_prefix:
+    - guiding_dark_acquisition
     - home_sync_am3
