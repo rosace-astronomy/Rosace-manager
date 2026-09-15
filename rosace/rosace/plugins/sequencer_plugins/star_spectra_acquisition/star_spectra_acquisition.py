@@ -40,6 +40,10 @@ log = logging.getLogger("spectro.subplugin.star_spectra_acquisition")
 # section for why these two keys sit at the root, not under one plugin name.
 EXPOSURE_TIME_MAG0_SECONDS = SUBPLUGIN_PARAMS.get("exposure_time_mag0_seconds", 1.0)
 MAX_EXPOSURE_TIME_SECONDS = SUBPLUGIN_PARAMS.get("max_exposure_time_seconds", 300)
+# Only this sub-plugin reads it (not shared with dark_acquisition), but sits at the
+# root alongside the two above since it's the third argument of the same
+# compute_exposure_time_and_count() call -- see conf/config.yaml's own comment.
+MIN_EXPOSURE_COUNT = SUBPLUGIN_PARAMS.get("min_exposure_count", 5)
 
 
 class StarSpectraAcquisitionPlugin(SubPlugin):
@@ -59,7 +63,9 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
 
         if exposure.exposure_time is not None:
             exposure_time, count = compute_exposure_time_and_count(
-                exposure_time=exposure.exposure_time, max_exposure_time=MAX_EXPOSURE_TIME_SECONDS
+                exposure_time=exposure.exposure_time,
+                max_exposure_time=MAX_EXPOSURE_TIME_SECONDS,
+                min_exposure_count=MIN_EXPOSURE_COUNT,
             )
         else:
             target = obs.scheduler_data.get("target")
@@ -72,6 +78,7 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
                 magnitude=target.magnitude_v,
                 exposure_time_mag0=EXPOSURE_TIME_MAG0_SECONDS,
                 max_exposure_time=MAX_EXPOSURE_TIME_SECONDS,
+                min_exposure_count=MIN_EXPOSURE_COUNT,
             )
 
         log.info(f"[STAR_SPECTRA_ACQUISITION] {count} exposure(s) of {exposure_time}s")

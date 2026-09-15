@@ -32,8 +32,8 @@ class SlewPlugin(SubPlugin):
         log.info(f"[SLEW] Slewing to {queried_name} RA={ra:.4f}° Dec={dec:.4f}°")
 
         slew_duration = min(settle_time, 30.0 / slew_speed)
-        await asyncio.sleep(slew_duration * 0.1)  # sped up for simulation
-        log.info(f"[SLEW] Simulation — slew complete in {slew_duration:.1f}s (accelerated)")
+        await asyncio.sleep(slew_duration)  # real time
+        log.info(f"[SLEW] Simulation — slew complete in {slew_duration:.1f}s")
 
         # No sequencer_data casier: the target is already in scheduler_data, and
         # nothing downstream needs to know specifically which SEQUENCER sub-plugin

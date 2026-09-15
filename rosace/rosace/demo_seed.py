@@ -33,12 +33,23 @@ DEMO_ADMIN_PASSWORD = "rosace"
 
 log = logging.getLogger("spectro.demo_seed")
 
-# name, ra (deg), dec (deg), magnitude_v — same real coordinates already
-# used by plugins/schedulers/blank/scheduler.py, kept consistent rather than
-# inventing new example data.
+# name, ra (deg), dec (deg), magnitude_v — Vega/Arcturus/Castor are the same
+# real coordinates already used by plugins/schedulers/blank/scheduler.py,
+# kept consistent rather than inventing new example data; the rest are
+# other well-known bright stars, spread across right ascension so at least
+# one is typically observable whenever the demo runs, and across magnitude
+# to show a visibly different exposure count/duration per star (see
+# compute_exposure_time_and_count() in acquisition_helpers.py). Polaris is
+# circumpolar at this app's default site latitude (45°N) — always above
+# min_target_altitude_deg, a reliable fallback target for the demo.
 _STARS = [
     ("Vega", 279.234735, 38.783611, 0.03),
     ("Arcturus", 213.915300, 19.182410, -0.05),
+    ("Castor", 113.649413, 31.888276, 1.58),
+    ("Sirius", 101.287155, -16.716116, -1.46),
+    ("Capella", 79.172328, 45.998054, 0.08),
+    ("Rigel", 78.634467, -8.201638, 0.13),
+    ("Polaris", 37.954561, 89.264109, 1.98),
 ]
 
 _PROGRAM_NAME = "demo"

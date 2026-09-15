@@ -39,6 +39,10 @@ log = logging.getLogger("spectro.subplugin.star_spectra_acquisition")
 # backend) -- see conf/config.yaml's subplugin_params section.
 EXPOSURE_TIME_MAG0_SECONDS = SUBPLUGIN_PARAMS.get("exposure_time_mag0_seconds", 1.0)
 MAX_EXPOSURE_TIME_SECONDS = SUBPLUGIN_PARAMS.get("max_exposure_time_seconds", 300)
+# Only this sub-plugin reads it (not shared with dark_acquisition), but sits at the
+# root alongside the two above since it's the third argument of the same
+# compute_exposure_time_and_count() call -- see conf/config.yaml's own comment.
+MIN_EXPOSURE_COUNT = SUBPLUGIN_PARAMS.get("min_exposure_count", 5)
 
 
 class StarSpectraAcquisitionPlugin(SubPlugin):
@@ -57,7 +61,9 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
 
         if exposure.exposure_time is not None:
             exposure_time, num_exposures = compute_exposure_time_and_count(
-                exposure_time=exposure.exposure_time, max_exposure_time=MAX_EXPOSURE_TIME_SECONDS
+                exposure_time=exposure.exposure_time,
+                max_exposure_time=MAX_EXPOSURE_TIME_SECONDS,
+                min_exposure_count=MIN_EXPOSURE_COUNT,
             )
         else:
             target = obs.scheduler_data.get("target")
@@ -70,13 +76,12 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
                 magnitude=target.magnitude_v,
                 exposure_time_mag0=EXPOSURE_TIME_MAG0_SECONDS,
                 max_exposure_time=MAX_EXPOSURE_TIME_SECONDS,
+                min_exposure_count=MIN_EXPOSURE_COUNT,
             )
         binning = exposure.binning
         grating = exposure.grating
 
         log.info("[STAR_SPECTRA_ACQUISITION] Spectroscope set to SKY mode (simulated)")
-
-        simulate_speed = 0.05
 
         queried_name = obs.scheduler_data.get("queried_name")
         root_name = build_fits_root_name(
@@ -95,7 +100,7 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
             filepath = Path(obs.obs_dir) / basename
             log.info(f"[STAR_SPECTRA_ACQUISITION] Exposure {i}/{num_exposures} -> {basename}")
 
-            await asyncio.sleep(exposure_time * simulate_speed)
+            await asyncio.sleep(exposure_time)  # real time -- the demo runs at the actual exposure duration
             filepath.parent.mkdir(parents=True, exist_ok=True)
             filepath.touch()
             log.info(f"[STAR_SPECTRA_ACQUISITION] Simulation -- file created: {basename}")

@@ -96,9 +96,17 @@ session_cookie_secure: false
 subplugin_params:
   # Shared at the root (not nested under one plugin) because several
   # SEQUENCER sub-plugins read them: star_spectra_acquisition (both) and
-  # dark_acquisition (max_exposure_time_seconds only).
+  # dark_acquisition (max_exposure_time_seconds only). min_exposure_count
+  # is read only by star_spectra_acquisition, but sits here too since it's
+  # the third argument of the same compute_exposure_time_and_count() call
+  # as the two above -- see acquisition_helpers.py.
   exposure_time_mag0_seconds: 1.0
-  max_exposure_time_seconds: 30
+  max_exposure_time_seconds: 10
+  # Minimum number of science sub-exposures per star, regardless of how the
+  # per-sub-exposure duration compares to max_exposure_time_seconds above --
+  # a bright star whose computed/explicit duration is short still gets a
+  # proper stack (cosmic-ray rejection, etc.) instead of a single frame.
+  min_exposure_count: 3
 
   # Also shared at the root -- read by pointing_72ed, stop_phd2_guiding
   # (all four) and guiding_dark_acquisition (exposure_seconds only). Grouped

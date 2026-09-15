@@ -80,7 +80,7 @@ subplugin_params:
         result = self._run(tmp_path)
         assert result.returncode == 0, result.stderr
         assert "programs= 1" in result.stdout
-        assert "stars= ['Arcturus', 'Vega']" in result.stdout
+        assert "stars= ['Arcturus', 'Capella', 'Castor', 'Polaris', 'Rigel', 'Sirius', 'Vega']" in result.stdout
         assert "users= 1" in result.stdout
         assert "obs_list_exists= True" in result.stdout
 
@@ -89,6 +89,11 @@ subplugin_params:
         assert lines[0] == "Priority, Program, Star, commentaire"
         assert "1, demo, Vega, demo seed" in lines
         assert "2, demo, Arcturus, demo seed" in lines
+        assert "3, demo, Castor, demo seed" in lines
+        assert "4, demo, Sirius, demo seed" in lines
+        assert "5, demo, Capella, demo seed" in lines
+        assert "6, demo, Rigel, demo seed" in lines
+        assert "7, demo, Polaris, demo seed" in lines
 
     def test_idempotent_on_second_run(self, tmp_path):
         first = self._run(tmp_path)

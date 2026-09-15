@@ -33,6 +33,14 @@ def freeze_fits_timestamp(monkeypatch):
     monkeypatch.setattr(acquisition_helpers, "datetime", _FrozenDatetime)
 
 
+@pytest.fixture(autouse=True)
+def default_min_exposure_count(monkeypatch):
+    """Most tests below are about something other than min_exposure_count
+    itself -- pin it to 1 (today's pre-min_exposure_count behavior) so their
+    counts stay meaningful; TestMinExposureCount overrides it explicitly."""
+    monkeypatch.setattr(ssa_mod, "MIN_EXPOSURE_COUNT", 1)
+
+
 def _make_obs(
     obs_dir=None, exposure=None, target=None, camera=None, spectroscope=None,
     stop_check=None, queried_name=None,
@@ -245,3 +253,32 @@ class TestStarSpectraAcquisitionPlugin:
 
         assert camera.expose.await_count == 4
         assert len(result.sequencer_data["star_spectra_images"]) == 4
+
+
+class TestMinExposureCount:
+
+    async def test_bright_star_gets_at_least_min_exposure_count_shots(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ssa_mod, "MIN_EXPOSURE_COUNT", 5)
+        camera = AsyncMock()
+        camera.expose.return_value = MagicMock()
+        exposure = ExposureConfig(exposure_time=8.0)  # well under max -- would be 1 shot without the floor
+        obs = _make_obs(obs_dir=tmp_path, exposure=exposure, camera=camera)
+
+        result = await StarSpectraAcquisitionPlugin().execute(obs)
+
+        assert camera.expose.await_count == 5
+        camera.expose.assert_awaited_with(pytest.approx(8.0))  # each sub-exposure keeps the full duration
+        assert len(result.sequencer_data["star_spectra_images"]) == 5
+
+    async def test_min_exposure_count_does_not_reduce_a_higher_ceil_count(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ssa_mod, "EXPOSURE_TIME_MAG0_SECONDS", 1.0)
+        monkeypatch.setattr(ssa_mod, "MAX_EXPOSURE_TIME_SECONDS", 300)
+        monkeypatch.setattr(ssa_mod, "MIN_EXPOSURE_COUNT", 3)
+        camera = AsyncMock()
+        camera.expose.return_value = MagicMock()
+        target = Target(name="FaintStar", ra=1.0, dec=1.0, magnitude_v=7.5)  # raw 1000s -> 4x300s, already > 3
+        obs = _make_obs(obs_dir=tmp_path, exposure=ExposureConfig(exposure_time=None), target=target, camera=camera)
+
+        result = await StarSpectraAcquisitionPlugin().execute(obs)
+
+        assert camera.expose.await_count == 4

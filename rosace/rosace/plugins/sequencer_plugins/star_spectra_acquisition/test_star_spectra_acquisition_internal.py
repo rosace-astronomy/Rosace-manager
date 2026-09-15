@@ -43,6 +43,14 @@ def fast_sleep(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def default_min_exposure_count(monkeypatch):
+    """Most tests below are about something other than min_exposure_count
+    itself -- pin it to 1 (today's pre-min_exposure_count behavior) so their
+    counts stay meaningful; TestMinExposureCount overrides it explicitly."""
+    monkeypatch.setattr(ssa_mod, "MIN_EXPOSURE_COUNT", 1)
+
+
 class TestStarSpectraAcquisitionPlugin:
 
     async def test_raises_if_obs_dir_missing(self):
@@ -156,3 +164,25 @@ class TestStarSpectraAcquisitionPlugin:
 
         assert result.sequencer_data["star_spectra_images"][0] == "earlier_image.fits"
         assert len(result.sequencer_data["star_spectra_images"]) == 2
+
+
+class TestMinExposureCount:
+
+    async def test_bright_star_gets_at_least_min_exposure_count_shots(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ssa_mod, "MIN_EXPOSURE_COUNT", 5)
+        exposure = ExposureConfig(exposure_time=1.0)  # well under max -- would be 1 shot without the floor
+        obs = _make_obs(obs_dir=tmp_path, exposure=exposure, target=Target(name="Vega", ra=1.0, dec=1.0))
+
+        result = await StarSpectraAcquisitionPlugin().execute(obs)
+
+        assert len(result.sequencer_data["star_spectra_images"]) == 5
+
+    async def test_min_exposure_count_does_not_reduce_a_higher_ceil_count(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ssa_mod, "MAX_EXPOSURE_TIME_SECONDS", 300)
+        monkeypatch.setattr(ssa_mod, "MIN_EXPOSURE_COUNT", 3)
+        exposure = ExposureConfig(exposure_time=1000)  # -> ceil(1000/300) = 4, already > 3
+        obs = _make_obs(obs_dir=tmp_path, exposure=exposure, target=Target(name="Vega", ra=1.0, dec=1.0))
+
+        result = await StarSpectraAcquisitionPlugin().execute(obs)
+
+        assert len(result.sequencer_data["star_spectra_images"]) == 4

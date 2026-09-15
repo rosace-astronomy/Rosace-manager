@@ -482,12 +482,12 @@ class MainView extends VBox {
 				text: null,
 				cls: 'obs-row',
 				sub_cols: [
-					new SimpleText({ cls: "obs-priority",  text: priorityText }),
-					new SimpleText({ cls: "obs-program",   text: obs.program_name ?? "" }),
 					new HBox({ cls: "obs-name", content: [
 						new SimpleText({ cls: "obs-target",    text: displayName }),
 						new SimpleText({ cls: "obs-canonical", text: canonicalText }),
 					] }),
+					new SimpleText({ cls: "obs-program",   text: obs.program_name ?? "" }),
+					new SimpleText({ cls: "obs-priority",  text: priorityText }),
 					new SimpleText({ cls: "obs-id",        text: obs.id }),
 					new SimpleText({ cls: "obs-time",      text: time }),
 					stagesColumn,

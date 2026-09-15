@@ -218,22 +218,38 @@ def compute_exposure_time_and_count(
     exposure_time: float | None = None,
     exposure_time_mag0: float | None = None,
     max_exposure_time: float,
+    min_exposure_count: int = 1,
 ) -> tuple[float, int]:
     """(per-sub-exposure duration in seconds, count) — the exposure-time
     policy shared by every science-acquisition sub-plugin. Exactly one of
     magnitude or exposure_time must be given:
     - magnitude: no explicit exposure time is known for this star (no
-      program_stars.exposure_time set in targets.db) — the raw total
-      exposure time is computed from the target's magnitude:
+      program_stars.exposure_time set in targets.db) — the ideal single-
+      exposure duration is computed from the target's magnitude:
       exposure_time_mag0 * 10**(magnitude / 2.5). exposure_time_mag0 is
       required in this case.
-    - exposure_time: an explicit total exposure time is already known
-      (program_stars.exposure_time) — used as-is as the raw total,
-      exposure_time_mag0 is not needed and ignored if given.
-    Either way, the raw total is then split into count identical
-    max_exposure_time-long sub-exposures once it exceeds max_exposure_time
-    (count = ceil(raw / max_exposure_time), e.g. a raw 780s at a 300s max ->
-    (300.0, 3)) — otherwise a single sub-exposure of the raw duration."""
+    - exposure_time: an explicit exposure duration is already known
+      (program_stars.exposure_time) — used as-is, exposure_time_mag0 is
+      not needed and ignored if given. Meant to be set in targets.db only
+      when the magnitude-based duration wouldn't do (e.g. it would
+      saturate this particular star) — same per-unit-exposure meaning as
+      the magnitude-computed value, not a total to split evenly.
+
+    Either way, that duration (called raw below) is a per-sub-exposure
+    target, not a total integration budget to divide:
+    - raw <= max_exposure_time: every sub-exposure is raw seconds long, and
+      at least min_exposure_count of them are shot — (raw,
+      min_exposure_count) — so a bright star with a short computed/explicit
+      duration still yields a proper stack instead of a single frame.
+    - raw > max_exposure_time: sub-exposures are capped at
+      max_exposure_time, and at least ceil(raw / max_exposure_time) of them
+      are needed to reach the required integration (e.g. a raw 780s at a
+      300s max -> 3x300s) — but never fewer than min_exposure_count either:
+      count = max(min_exposure_count, ceil(raw / max_exposure_time)), each
+      max_exposure_time long.
+
+    min_exposure_count defaults to 1 (today's behavior, unchanged) for a
+    caller that doesn't pass it."""
     if (magnitude is None) == (exposure_time is None):
         raise ValueError("compute_exposure_time_and_count: exactly one of magnitude or exposure_time must be given")
     if magnitude is not None:
@@ -244,8 +260,8 @@ def compute_exposure_time_and_count(
         raw_exposure_time = exposure_time
 
     if raw_exposure_time <= max_exposure_time:
-        return raw_exposure_time, 1
-    count = math.ceil(raw_exposure_time / max_exposure_time)
+        return raw_exposure_time, min_exposure_count
+    count = max(min_exposure_count, math.ceil(raw_exposure_time / max_exposure_time))
     return max_exposure_time, count
 
 

@@ -63,7 +63,10 @@ subplugin_params:
   # star_spectra_acquisition, bias/dark/flat/extract) — the DARK/BIAS/
   # CALIB/FLAT acquisition sub-plugins are indi-only and never load here.
   exposure_time_mag0_seconds: 1.0
-  max_exposure_time_seconds: 30
+  max_exposure_time_seconds: 10
+  # See config.yaml's own comment: third argument of the same
+  # compute_exposure_time_and_count() call as the two keys above.
+  min_exposure_count: 3
 
   scheduler_rosace_2026:
     # Seeded by demo_seed.py on first run, alongside the two demo stars —

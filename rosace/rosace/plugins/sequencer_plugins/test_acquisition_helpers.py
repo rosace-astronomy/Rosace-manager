@@ -326,6 +326,47 @@ class TestComputeExposureTimeAndCount:
         with pytest.raises(ValueError, match="exposure_time_mag0"):
             compute_exposure_time_and_count(magnitude=2.5, max_exposure_time=300)
 
+    def test_min_exposure_count_repeats_short_raw_duration_unchanged(self):
+        # raw = 1.0 * 10**(2.5/2.5) = 10s, well under max -- with a min count,
+        # every sub-exposure still lasts the full 10s, just repeated 5x.
+        exposure_time, count = compute_exposure_time_and_count(
+            magnitude=2.5, exposure_time_mag0=1.0, max_exposure_time=300, min_exposure_count=5
+        )
+
+        assert exposure_time == pytest.approx(10.0)
+        assert count == 5
+
+    def test_min_exposure_count_applies_to_explicit_exposure_time_too(self):
+        exposure_time, count = compute_exposure_time_and_count(
+            exposure_time=8.0, max_exposure_time=300, min_exposure_count=5
+        )
+
+        assert exposure_time == pytest.approx(8.0)
+        assert count == 5
+
+    def test_min_exposure_count_is_a_floor_not_added_on_top_of_ceil(self):
+        # raw 1000s at a 300s max -> ceil=4, already >= min_exposure_count=3.
+        exposure_time, count = compute_exposure_time_and_count(
+            magnitude=7.5, exposure_time_mag0=1.0, max_exposure_time=300, min_exposure_count=3
+        )
+
+        assert exposure_time == pytest.approx(300.0)
+        assert count == 4
+
+    def test_min_exposure_count_raises_ceil_count_when_higher(self):
+        # raw 1000s at a 300s max -> ceil=4, but min_exposure_count=6 wins.
+        exposure_time, count = compute_exposure_time_and_count(
+            magnitude=7.5, exposure_time_mag0=1.0, max_exposure_time=300, min_exposure_count=6
+        )
+
+        assert exposure_time == pytest.approx(300.0)
+        assert count == 6
+
+    def test_min_exposure_count_defaults_to_one(self):
+        exposure_time, count = compute_exposure_time_and_count(exposure_time=10.0, max_exposure_time=300)
+
+        assert count == 1
+
 
 class TestCaptureScienceImage:
 
