@@ -75,6 +75,15 @@ SITE_LATITUDE_DEG = _cfg["site_latitude_deg"]
 SITE_LONGITUDE_DEG = _cfg["site_longitude_deg"]
 SITE_ELEVATION_M = _cfg["site_elevation_m"]
 
+# Optional — absent (None) in every config without a local horizon mask
+# (packaged config, demo configs): no obstruction beyond the scheduler's own
+# flat minimum altitude. A KStars "Artificial Horizon" text export describing
+# this site's terrain obstructions (see plugins/schedulers/scheduler_rosace_2026/
+# horizon.py); a site fact like the coordinates above, hence Core rather than
+# subplugin_params.
+_horizon_file = _cfg.get("horizon_file")
+HORIZON_FILE: Path | None = Path(_horizon_file).expanduser() if _horizon_file else None
+
 # ── Active hardware configuration ────────────────────────────
 # Name of the YAML file in conf/ (without extension) describing the hardware
 # to use. Lets you switch between several configurations (simulator, real

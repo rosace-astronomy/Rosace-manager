@@ -50,7 +50,9 @@ Usage: python -m rosace.main [config_path] [--demo-mode] [--check-config [config
                             Validate a config and exit — never starts the server.
                             With no path, validates whatever would normally be
                             resolved; with a path, validates that file instead.
-                            Prints [OK]/[FAIL] and exits 0/1.
+                            If the config declares horizon_file, also parses and
+                            validates that local-horizon file (prints its point
+                            count). Prints [OK]/[FAIL] and exits 0/1.
 
   --create-admin username  Bootstrap the very first admin account and exit — never
                             starts the server. Prompts for the password (never
@@ -87,6 +89,14 @@ if __name__ == "__main__":
             print(f"[FAIL] config invalid: {e}")
             sys.exit(1)
         print(f"[OK] config valid: {_checked_config._CONFIG_PATH}")
+        if _checked_config.HORIZON_FILE is not None:
+            try:
+                from rosace.plugins.schedulers.scheduler_rosace_2026.horizon import load_horizon
+                _horizon_points = load_horizon(_checked_config.HORIZON_FILE)
+            except Exception as e:
+                print(f"[FAIL] horizon file invalid: {e}")
+                sys.exit(1)
+            print(f"[OK] horizon file valid: {_checked_config.HORIZON_FILE} ({len(_horizon_points)} points)")
         sys.exit(0)
     elif "--create-admin" in _argv:
         _idx = _argv.index("--create-admin")

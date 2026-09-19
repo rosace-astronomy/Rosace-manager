@@ -187,6 +187,54 @@ class TestCheckConfigCLI:
         assert "[FAIL]" in result.stdout
         assert str(missing) in result.stdout
 
+    def _config_with_horizon(self, tmp_path, horizon_path):
+        """A complete valid config (the packaged demo one) plus a horizon_file key."""
+        demo_config_path = Path(__file__).parent / "conf" / "config_demo.yaml"
+        config = tmp_path / "with_horizon.yaml"
+        config.write_text(demo_config_path.read_text() + f"\nhorizon_file: {horizon_path}\n")
+        return config
+
+    def test_valid_horizon_file_is_reported_with_its_point_count(self, tmp_path):
+        horizon = tmp_path / "horizon.txt"
+        horizon.write_text("Site\n0 10\n90 20\n180 5\n")
+        result = subprocess.run(
+            [sys.executable, "-m", "rosace.main", "--check-config", str(self._config_with_horizon(tmp_path, horizon))],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0
+        assert "[OK] horizon file valid" in result.stdout
+        assert "3 points" in result.stdout
+
+    def test_malformed_horizon_file_exits_nonzero_naming_the_line(self, tmp_path):
+        horizon = tmp_path / "horizon.txt"
+        horizon.write_text("0 10\n90 20\nnot numbers\n")
+        result = subprocess.run(
+            [sys.executable, "-m", "rosace.main", "--check-config", str(self._config_with_horizon(tmp_path, horizon))],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 1
+        assert "[FAIL] horizon file invalid" in result.stdout
+        assert "line 3" in result.stdout
+
+    def test_missing_horizon_file_exits_nonzero(self, tmp_path):
+        missing = tmp_path / "no_such_horizon.txt"
+        result = subprocess.run(
+            [sys.executable, "-m", "rosace.main", "--check-config", str(self._config_with_horizon(tmp_path, missing))],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 1
+        assert "[FAIL] horizon file invalid" in result.stdout
+        assert "not found" in result.stdout
+
+    def test_config_without_horizon_file_reports_no_horizon_line(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "rosace.main", "--check-config",
+             str(Path(__file__).parent / "conf" / "config_demo.yaml")],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0
+        assert "horizon" not in result.stdout
+
 
 class TestDemoModeCLI:
     """`python -m rosace.main --demo-mode` — sugar for ROSACE_CONFIG pointed at

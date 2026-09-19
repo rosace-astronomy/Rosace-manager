@@ -41,6 +41,15 @@ site_latitude_deg: 45.0
 site_longitude_deg: 5.0 # East positive
 site_elevation_m: 950
 
+# Optional — local horizon of the site (trees, house, hills): a KStars
+# "Artificial Horizon" text export (Alt/Az points, azimuth North through East).
+# scheduler_rosace_2026 skips, without consuming it, any target below this
+# profile at its current azimuth (on top of min_target_altitude_deg below).
+# Absent = no local horizon, only the flat minimum altitude applies. Read on
+# every SCHEDULER call; a missing or malformed file is fatal. Validate it with
+# `python -m rosace.main --check-config`. Exposed as HORIZON_FILE.
+# horizon_file: ~/.rosace/horizon/Horizon St-Pan.txt
+
 # Name (without extension) of the active hardware profile in conf/ — only
 # consulted when sequencer_backend (below) is 'indi'.
 # Exposed as ACTIVE_HARDWARE / HARDWARE_CONFIG_PATH in config.py.

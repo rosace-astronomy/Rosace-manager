@@ -4,12 +4,13 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from ....astro_math import altitude_deg
-from ....config import SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, SUBPLUGIN_PARAMS
+from ....astro_math import altitude_deg, azimuth_deg
+from ....config import HORIZON_FILE, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, SUBPLUGIN_PARAMS
 from ....database import db_count_observations_for_target
 from ....models import Observation, Target, ExposureConfig
 from ....targets import program_get_by_name, star_get_by_name, program_get_stars
 from .. import SchedulerFatalError
+from .horizon import horizon_altitude_deg, load_horizon
 
 log = logging.getLogger("spectro.plugin.scheduler")
 
@@ -25,6 +26,13 @@ def _target_altitude_deg(ra_deg: float, dec_deg: float) -> float:
     site's horizon, right now. See astro_math.py for why this is plain
     trigonometry rather than an AstroPy/IERS-backed transform."""
     return altitude_deg(ra_deg, dec_deg, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG)
+
+
+def _target_azimuth_deg(ra_deg: float, dec_deg: float) -> float:
+    """Current azimuth (degrees, North through East) of an ICRS (RA, Dec)
+    coordinate, right now — same site and same no-IERS maths as
+    _target_altitude_deg() above."""
+    return azimuth_deg(ra_deg, dec_deg, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG)
 
 
 def _read_observation_list(path) -> list[dict]:
@@ -89,19 +97,24 @@ class SchedulerPlugin:
     altitude above the horizon (astro_math.py, site defined by
     SITE_LATITUDE_DEG/SITE_LONGITUDE_DEG) is compared against
     MIN_TARGET_ALTITUDE_DEG: if it's too low, the line is skipped and the
-    next one is tried (no observation "consumed" either way). Altitude check
-    only — no day/night (sun below horizon) check: remains a separate future
-    chantier.
+    next one is tried (no observation "consumed" either way). When HORIZON_FILE
+    is set (conf/config.yaml, optional), the target's azimuth is also looked up
+    against that local horizon profile (horizon.py): a target above
+    MIN_TARGET_ALTITUDE_DEG but below the terrain obstruction at its azimuth is
+    skipped the same way (logged, not consumed). The profile is read fresh on
+    every call, like the plan file. No day/night (sun below horizon) check:
+    remains a separate future chantier.
 
-    A missing/malformed plan file, or invalid data in targets.db (e.g. a
-    non-numeric exposure_time), raises SchedulerFatalError rather than
-    silently failing every attempt in a loop.
+    A missing/malformed plan file or horizon file, or invalid data in
+    targets.db (e.g. a non-numeric exposure_time), raises SchedulerFatalError
+    rather than silently failing every attempt in a loop.
     """
 
     async def run(self, obs: Observation) -> Observation:
         log.info("[SCHEDULER] Selecting next target…")
 
         rows = _read_observation_list(OBSERVATION_LIST_PATH)
+        horizon = load_horizon(HORIZON_FILE) if HORIZON_FILE else None
 
         # Resolves each line, in priority order (stable sort: ties -> file order).
         resolved: list[dict] = []
@@ -167,6 +180,16 @@ class SchedulerPlugin:
                     f"({altitude:.1f}° < {MIN_TARGET_ALTITUDE_DEG}°), line ignored"
                 )
                 continue
+
+            if horizon is not None:
+                azimuth = _target_azimuth_deg(star.ra, star.dec)
+                horizon_altitude = horizon_altitude_deg(horizon, azimuth)
+                if altitude < horizon_altitude:
+                    log.info(
+                        f"[SCHEDULER] {item['queried_name']} below local horizon "
+                        f"({altitude:.1f}° < {horizon_altitude:.1f}° at az {azimuth:.1f}°), line ignored"
+                    )
+                    continue
 
             obs.scheduler_data["target"] = Target(
                 name=star.name, ra=star.ra, dec=star.dec, magnitude_v=star.magnitude_v,

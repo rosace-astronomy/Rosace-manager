@@ -78,6 +78,36 @@ def altitude_deg(
     return math.degrees(math.asin(sin_alt))
 
 
+def azimuth_deg(
+    ra_deg: float,
+    dec_deg: float,
+    latitude_deg: float,
+    longitude_deg: float,
+    at: datetime | None = None,
+) -> float:
+    """Azimuth (degrees, in [0, 360)) of an ICRS (RA, Dec) position as seen
+    from an observing site (latitude_deg north-positive, longitude_deg
+    east-positive), at a given UTC datetime (`at`, defaults to now).
+
+    Measured from North through East (0 = N, 90 = E, 180 = S, 270 = W) --
+    the same convention as equatorial_from_horizontal_deg() (its exact
+    inverse, together with altitude_deg()), INDI's HORIZONTAL_COORD and
+    KStars. Same hour-angle/spherical-trigonometry approach, same accuracy
+    class as the rest of this module (see module docstring)."""
+    at = at or datetime.now(timezone.utc)
+    lst_deg = local_sidereal_time_deg(longitude_deg, at)
+    hour_angle = math.radians(lst_deg - ra_deg)
+
+    lat, dec = math.radians(latitude_deg), math.radians(dec_deg)
+    # atan2() below gives the azimuth measured from South, westward (Meeus,
+    # ch. 13); +180 turns it into North-through-East.
+    from_south = math.atan2(
+        math.sin(hour_angle),
+        math.cos(hour_angle) * math.sin(lat) - math.tan(dec) * math.cos(lat),
+    )
+    return (math.degrees(from_south) + 180.0) % 360.0
+
+
 def equatorial_from_horizontal_deg(
     altitude_deg_: float,
     azimuth_deg: float,

@@ -41,6 +41,10 @@ site_latitude_deg: 45.2895
 site_longitude_deg: 5.855 # East positive
 site_elevation_m: 955
 
+# Local horizon of the site (KStars "Artificial Horizon" export) — see
+# config.yaml for the details. Exposed as HORIZON_FILE.
+horizon_file: ~/.rosace/horizon/Horizon St-Pan.txt
+
 # Name (without extension) of the active hardware profile in conf/ — only
 # consulted when sequencer_backend (below) is 'indi'.
 # Exposed as ACTIVE_HARDWARE / HARDWARE_CONFIG_PATH in config.py.

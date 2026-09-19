@@ -40,5 +40,7 @@ Claude peut le suggérer, jamais le faire lui-même.
 ## Petits items
 
 - [ ] Mesure spectre-vs-position-fente
+- [ ] GUI web : afficher les coordonnées (x, y) et l'intensité du pixel
+      sous le curseur dans les panneaux d'image (Spectre / Guidage)
 - [X] Repasser rosace.log de DEBUG à INFO une fois le développement actif
       AM3/pointage terminé

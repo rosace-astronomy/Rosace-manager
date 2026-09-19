@@ -28,6 +28,17 @@ def _write_observation_list(tmp_path, content: str):
     return path
 
 
+def _write_horizon(tmp_path, content: str):
+    path = tmp_path / "horizon.txt"
+    path.write_text(content)
+    return path
+
+
+# Obstruction of 40° over the whole northern-to-eastern quadrant (az 0-90),
+# opening to 5° from the south to the west (az 180-270), linear in between.
+HORIZON_NORTH_EAST_HIGH = "0 40\n90 40\n180 5\n270 5\n"
+
+
 class TestTargetAltitudeDeg:
     """Tests _target_altitude_deg() itself, not SchedulerPlugin. The north
     celestial pole (dec=90°) sits at an altitude constantly equal to the
@@ -58,6 +69,12 @@ class TestSchedulerPlugin:
         would make unrelated tests flaky. Tests for the altitude check itself
         override this with their own monkeypatch."""
         monkeypatch.setattr(scheduler_mod, "_target_altitude_deg", lambda ra, dec: 45.0)
+
+    @pytest.fixture(autouse=True)
+    def _no_horizon_by_default(self, monkeypatch):
+        """No local horizon mask unless a test opts in — whatever horizon_file
+        the active config happens to declare must never leak into these tests."""
+        monkeypatch.setattr(scheduler_mod, "HORIZON_FILE", None)
 
     async def _make_session(self) -> SessionContext:
         session = SessionContext(site_name="Test")
@@ -318,6 +335,134 @@ class TestSchedulerPlugin:
         monkeypatch.setattr(scheduler_mod, "_target_altitude_deg", lambda ra, dec: 45.0)
         obs2 = await SchedulerPlugin().run(self._make_obs(session.session_id))
         assert obs2.scheduler_data["target"].name == "LaterObservableStar"
+
+    async def test_target_below_local_horizon_is_skipped_and_next_line_offered(self, tmp_path, monkeypatch):
+        """Both stars are at 20° (above the flat 10° floor). The priority-1 star
+        sits at az 10 (mask 40°): hidden. The priority-2 star sits at az 200
+        (mask 5°): free, and must be selected instead."""
+        sid_hidden = await star_insert(StarCreate(name="HiddenByTrees", ra=1.0, dec=1.0))
+        sid_free = await star_insert(StarCreate(name="FreeSkyStar", ra=2.0, dec=2.0))
+        pid = await program_insert(ProgramCreate(name="HorizonMaskProgram"))
+        await program_add_star(pid, sid_hidden)
+        await program_add_star(pid, sid_free)
+
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path,
+            "Priority, Program, Star, commentaire\n"
+            "1, HorizonMaskProgram, HiddenByTrees, x\n"
+            "2, HorizonMaskProgram, FreeSkyStar, x\n"
+        ))
+        monkeypatch.setattr(scheduler_mod, "HORIZON_FILE", _write_horizon(tmp_path, HORIZON_NORTH_EAST_HIGH))
+        monkeypatch.setattr(scheduler_mod, "_target_altitude_deg", lambda ra, dec: 20.0)
+        monkeypatch.setattr(
+            scheduler_mod, "_target_azimuth_deg",
+            lambda ra, dec: 10.0 if ra == 1.0 else 200.0,
+        )
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"].name == "FreeSkyStar"
+        assert_scheduler_contract(obs)
+
+    async def test_target_below_local_horizon_is_not_marked_consumed(self, tmp_path, monkeypatch):
+        """A target hidden by the local horizon must stay offerable as soon as
+        it moves to an open azimuth — it's not a missed observation."""
+        sid = await star_insert(StarCreate(name="LaterClearsTheTrees", ra=1.0, dec=1.0))
+        pid = await program_insert(ProgramCreate(name="HorizonLaterProgram"))
+        await program_add_star(pid, sid)
+
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n1, HorizonLaterProgram, LaterClearsTheTrees, x\n"
+        ))
+        monkeypatch.setattr(scheduler_mod, "HORIZON_FILE", _write_horizon(tmp_path, HORIZON_NORTH_EAST_HIGH))
+        monkeypatch.setattr(scheduler_mod, "_target_altitude_deg", lambda ra, dec: 20.0)
+        session = await self._make_session()
+
+        monkeypatch.setattr(scheduler_mod, "_target_azimuth_deg", lambda ra, dec: 10.0)
+        obs1 = await SchedulerPlugin().run(self._make_obs(session.session_id))
+        assert obs1.scheduler_data["target"] is None
+
+        monkeypatch.setattr(scheduler_mod, "_target_azimuth_deg", lambda ra, dec: 200.0)
+        obs2 = await SchedulerPlugin().run(self._make_obs(session.session_id))
+        assert obs2.scheduler_data["target"].name == "LaterClearsTheTrees"
+
+    async def test_flat_minimum_altitude_still_applies_above_the_local_horizon(self, tmp_path, monkeypatch):
+        """8° is above the 5° local horizon at this azimuth, but still below the
+        flat 10° floor: the two checks combine, the mask never replaces the floor."""
+        sid = await star_insert(StarCreate(name="AboveMaskBelowFloor", ra=1.0, dec=1.0))
+        pid = await program_insert(ProgramCreate(name="FloorStillAppliesProgram"))
+        await program_add_star(pid, sid)
+
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n1, FloorStillAppliesProgram, AboveMaskBelowFloor, x\n"
+        ))
+        monkeypatch.setattr(scheduler_mod, "HORIZON_FILE", _write_horizon(tmp_path, HORIZON_NORTH_EAST_HIGH))
+        monkeypatch.setattr(scheduler_mod, "_target_altitude_deg", lambda ra, dec: 8.0)
+        monkeypatch.setattr(scheduler_mod, "_target_azimuth_deg", lambda ra, dec: 200.0)
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"] is None
+
+    async def test_target_exactly_at_local_horizon_altitude_is_accepted(self, tmp_path, monkeypatch):
+        """Strict comparison: alt == horizon altitude is observable."""
+        sid = await star_insert(StarCreate(name="RightOnTheHorizon", ra=1.0, dec=1.0))
+        pid = await program_insert(ProgramCreate(name="OnTheHorizonProgram"))
+        await program_add_star(pid, sid)
+
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n1, OnTheHorizonProgram, RightOnTheHorizon, x\n"
+        ))
+        monkeypatch.setattr(scheduler_mod, "HORIZON_FILE", _write_horizon(tmp_path, HORIZON_NORTH_EAST_HIGH))
+        monkeypatch.setattr(scheduler_mod, "_target_altitude_deg", lambda ra, dec: 40.0)
+        monkeypatch.setattr(scheduler_mod, "_target_azimuth_deg", lambda ra, dec: 45.0)  # mask: 40°
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"].name == "RightOnTheHorizon"
+
+    async def test_no_horizon_file_configured_means_no_local_horizon_check(self, tmp_path, monkeypatch):
+        """HORIZON_FILE unset (the autouse default): a target at az 10 / 20° is
+        selected, exactly as before the mask existed."""
+        sid = await star_insert(StarCreate(name="NoMaskConfigured", ra=1.0, dec=1.0))
+        pid = await program_insert(ProgramCreate(name="NoMaskProgram"))
+        await program_add_star(pid, sid)
+
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n1, NoMaskProgram, NoMaskConfigured, x\n"
+        ))
+        monkeypatch.setattr(scheduler_mod, "_target_altitude_deg", lambda ra, dec: 20.0)
+        monkeypatch.setattr(scheduler_mod, "_target_azimuth_deg", lambda ra, dec: 10.0)
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"].name == "NoMaskConfigured"
+
+    async def test_missing_horizon_file_raises_fatal_error(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n"
+        ))
+        monkeypatch.setattr(scheduler_mod, "HORIZON_FILE", tmp_path / "NoSuchHorizon.txt")
+
+        session = await self._make_session()
+        with pytest.raises(SchedulerFatalError, match="Horizon file not found"):
+            await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+    async def test_malformed_horizon_file_raises_fatal_error(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, "Priority, Program, Star, commentaire\n"
+        ))
+        monkeypatch.setattr(
+            scheduler_mod, "HORIZON_FILE", _write_horizon(tmp_path, "0 10\n90 20\nnot numbers\n"),
+        )
+
+        session = await self._make_session()
+        with pytest.raises(SchedulerFatalError, match="line 3"):
+            await SchedulerPlugin().run(self._make_obs(session.session_id))
 
     async def test_missing_observation_list_file_raises_fatal_error(self, tmp_path, monkeypatch):
         monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", tmp_path / "DoesNotExist.txt")
