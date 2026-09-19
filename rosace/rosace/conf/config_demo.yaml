@@ -71,5 +71,5 @@ subplugin_params:
   scheduler_rosace_2026:
     # Seeded by demo_seed.py on first run, alongside the two demo stars —
     # lives under this config's own base_data_dir, not the real one.
-    observation_list_path: ~/.rosace-demo/ObservationList.txt
+    observation_list_path: ~/.rosace-demo/targets/ObservationList.txt
     min_target_altitude_deg: 10

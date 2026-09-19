@@ -448,7 +448,7 @@ already has a program — same guard as the Docker demo's own seed script), it
 inserts 2 stars (Vega/Arcturus — the same coordinates `plugins/schedulers/
 blank/scheduler.py` already hardcodes, kept consistent rather than inventing
 new example data) under **one program named `"demo"`**, writes a matching
-`ObservationList.txt`, and bootstraps a fixed `rosace`/`rosace` admin
+`targets/ObservationList.txt`, and bootstraps a fixed `rosace`/`rosace` admin
 account (same convention and same "evaluation only, never a real install"
 rationale as the Docker demo's own credential).
 
@@ -504,7 +504,7 @@ demo-shaped.
 | Key | Nested under | Default (in the plugin's own code) | Purpose |
 |---|---|---|---|
 | `exposure_time_mag0_seconds` / `max_exposure_time_seconds` / `min_exposure_count` | *(root — shared)* | `1.0` / `300` / `5` | Science exposure time for a magnitude-0 target, the max duration of a single sub-exposure, and the minimum number of sub-exposures per star regardless of duration — the three arguments of `acquisition_helpers.py::compute_exposure_time_and_count()`, read by `star_spectra_acquisition.py` (both backends) when `exposure_time` isn't explicitly set for the first two. `min_exposure_count`'s own default (`5`) is only ever a fallback for a config that omits the key — `compute_exposure_time_and_count()` itself defaults to `1` (today's pre-min-exposure-count behavior) for a caller that doesn't pass it at all. `min_exposure_count` is read only by `star_spectra_acquisition` but sits here too since it's the third argument of that same call. `max_exposure_time_seconds` also doubles as `dark_acquisition`'s required DARK exposure time (`min_exposure_count` does not apply to `dark_acquisition`, which has its own separate `count` — see below) |
-| `observation_list_path` / `min_target_altitude_deg` | `scheduler_rosace_2026` | `~/.rosace/ObservationList.txt` / `10` | Text file (CSV: `Priority, Program, Star, commentaire`) this scheduler reads to pick the next target (any location, not necessarily under `BASE_DATA_DIR`) — see below; minimum altitude (degrees) for a target to be considered currently observable |
+| `observation_list_path` / `min_target_altitude_deg` | `scheduler_rosace_2026` | `~/.rosace/targets/ObservationList.txt` / `10` | Text file (CSV: `Priority, Program, Star, commentaire`) this scheduler reads to pick the next target (any location, not necessarily under `BASE_DATA_DIR`) — see below; minimum altitude (degrees) for a target to be considered currently observable |
 | `count` | `dark_acquisition` | `5` | Number of DARK frames per series, fixed for the whole session — see `dark_acquisition` below |
 | `count` / `exposure_time_seconds` | `bias_acquisition` | `5` / `0.0` | Number of BIAS frames per series; BIAS exposure time — 0 by definition (no integration), overridable for a camera that refuses a literal 0s exposure — see `bias_acquisition` below |
 | `count` | `guiding_dark_acquisition` | `7` | Number of guiding-camera dark frames median-combined per session — no separate exposure-time key, deliberately: it always reuses `guiding.exposure_seconds` (see below), the same duration every real guide image uses — see `guiding_dark_acquisition` above |
@@ -554,6 +554,8 @@ The control interface is a single-page application built **exclusively with [X4 
 │   └── targets.db
 ├── log/
 │   └── rosace.log
+├── targets/
+│   └── ObservationList.txt            # the scheduler's plan (Priority, Program, Star, commentaire); user-edited, read-only for Rosace
 ├── observations/
 │   └── <date>_<site_name>/
 │       ├── <datetime>_<target>.yaml   # full Observation dossier, rewritten after every stage

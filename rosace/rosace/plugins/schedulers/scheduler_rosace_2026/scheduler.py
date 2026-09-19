@@ -15,7 +15,7 @@ log = logging.getLogger("spectro.plugin.scheduler")
 
 _params = SUBPLUGIN_PARAMS.get("scheduler_rosace_2026", {})
 OBSERVATION_LIST_PATH = Path(
-    _params.get("observation_list_path", "~/.rosace/ObservationList.txt")
+    _params.get("observation_list_path", "~/.rosace/targets/ObservationList.txt")
 ).expanduser()
 MIN_TARGET_ALTITUDE_DEG = _params.get("min_target_altitude_deg", 10)
 

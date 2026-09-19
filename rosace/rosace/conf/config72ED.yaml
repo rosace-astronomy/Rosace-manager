@@ -138,7 +138,7 @@ subplugin_params:
   scheduler_rosace_2026:
     # Full path (any location, not necessarily under base_data_dir) to the
     # text file SCHEDULER reads to pick the next target.
-    observation_list_path: ~/.rosace/ObservationList.txt
+    observation_list_path: ~/.rosace/targets/ObservationList.txt
     # Minimum altitude (degrees) for a target to be considered observable.
     min_target_altitude_deg: 10
 
