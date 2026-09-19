@@ -8,6 +8,10 @@ This file describes the project **as it is today**: conventions, architecture, h
 
 All code artifacts must be in English: variable names, function names, comments, docstrings, log messages, and any text written to files. This applies even though the user communicates with Claude in French. Conversations happen in French; code is written in English.
 
+## Planning policy
+
+No automatic mode, in any case: Claude always presents a plan and gets the user's explicit validation before making any change to this repository, however small, however similar to an already-approved pattern, and however directly it follows from the current conversation. Only once the user has validated does Claude implement.
+
 ## Licensing
 
 Rosace is licensed under the GNU General Public License v3, or (at the

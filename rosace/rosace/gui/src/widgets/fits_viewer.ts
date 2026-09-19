@@ -1,9 +1,11 @@
 /**
- * Generic, reusable FITS image viewer widget -- pan/zoom only for now (no threshold
- * control, no pixel readout yet, both deferred to a later iteration).
+ * Generic, reusable FITS image viewer widget -- pan/zoom, plus an adjustable
+ * visualization stretch (whole image or a user-selected region) computed via
+ * 1%/99% percentile clipping. No pixel readout yet, deferred to a later
+ * iteration.
  */
 
-import { VBox, HBox, Button, Canvas, CanvasEx, BoxProps } from "x4js";
+import { VBox, HBox, Button, Canvas, CanvasEx, BoxProps, Menu } from "x4js";
 
 import { parseFits, FitsImage } from "./fits_parser";
 
@@ -11,12 +13,29 @@ const MIN_SCALE = 0.05;
 const MAX_SCALE = 50;
 const WHEEL_ZOOM_FACTOR = 1.15;
 
+// Minimum drag distance (canvas pixels) for a zone-mode pointer gesture to count
+// as "drawing a rectangle" rather than "a plain click" (which clears the selection).
+const SELECT_CLICK_THRESHOLD = 3;
+
+const STRETCH_LOW_PERCENTILE = 0.01;
+const STRETCH_HIGH_PERCENTILE = 0.99;
+
+/** A selection rectangle in image space (top-down, same convention as the
+ * rendered/displayed image -- (0,0) is the top-left corner on screen). */
+interface SelectionRect {
+	x0: number;
+	y0: number;
+	x1: number;
+	y1: number;
+}
+
 export interface FitsViewerProps extends BoxProps {
 }
 
 export class FitsViewer extends VBox {
 
 	private canvas: Canvas;
+	private zoneButton: Button;
 	private offscreen: HTMLCanvasElement;
 	private image: FitsImage;
 
@@ -30,14 +49,37 @@ export class FitsViewer extends VBox {
 	private dragOriginX = 0;
 	private dragOriginY = 0;
 
+	// Zone-selection mode ("Zone" toggle button): while on, drag draws/redraws
+	// the selection rectangle instead of panning; while off, plain pan/zoom.
+	// The rectangle itself is kept across a toggle-off (so re-enabling "Zone"
+	// shows it again exactly where it was) and across incoming new images of
+	// the same panel (same frame size assumed) -- only "Ajuster les niveaux"
+	// ever reads it, and only while selectionMode is on.
+	private selectionMode = false;
+	private selection: SelectionRect | null = null;
+	private selecting = false;
+	private selectMoved = false;
+	private selectStartCanvasX = 0;
+	private selectStartCanvasY = 0;
+
+	// User-adjusted stretch (set by "Ajuster les niveaux"). Once set, it stays
+	// applied to every subsequent image loaded into this viewer (a new pose of
+	// the same target must not silently reset it) until adjusted again.
+	private hasCustomStretch = false;
+	private stretchMin = 0;
+	private stretchMax = 0;
+
 	constructor( props: FitsViewerProps = {} ) {
 		super( props );
 		this.addClass( "fits-viewer" );
 
 		this.setContent( [
 			new HBox({ cls: "fits-toolbar", content: [
-				new Button({ cls: "fits-btn", label: "Ajuster", click: () => this.zoomFit() }),
+				new Button({ cls: "fits-btn", label: "Zoom", click: () => this.zoomFit() }),
+				new Button({ cls: "fits-btn", label: "Zoom H", click: () => this.zoomFitWidth() }),
 				new Button({ cls: "fits-btn", label: "1:1", click: () => this.zoomOneToOne() }),
+				this.zoneButton = new Button({ cls: "fits-btn", label: "Zone", click: () => this.toggleZoneMode() }),
+				new Button({ cls: "fits-btn", label: "Ajuster les niveaux", click: () => this.adjustLevels() }),
 			]}),
 			this.canvas = new Canvas({ cls: "fits-canvas", flex: 1, clear: true, paint_cb: ctx => this.paint( ctx ) }),
 		]);
@@ -46,16 +88,59 @@ export class FitsViewer extends VBox {
 		this.canvas.addDOMEvent( "pointerdown", ( ev: PointerEvent ) => this.onPointerDown( ev ) );
 		this.canvas.addDOMEvent( "pointermove", ( ev: PointerEvent ) => this.onPointerMove( ev ) );
 		this.canvas.addDOMEvent( "pointerup", ( ev: PointerEvent ) => this.onPointerUp( ev ) );
+		this.canvas.addDOMEvent( "contextmenu", ( ev: MouseEvent ) => this.onContextMenu( ev ) );
 	}
 
 	/**
 	 * Parses raw FITS bytes and displays them, fit to the current canvas size.
+	 * Preserves any previously-set custom stretch (hasCustomStretch) and the
+	 * current selection rectangle -- neither resets just because a new pose
+	 * of the same target came in.
 	 */
 
 	loadFits( buffer: ArrayBuffer ) {
 		this.image = parseFits( buffer );
-		this.offscreen = renderToOffscreenCanvas( this.image );
+		const [ min, max ] = this.hasCustomStretch
+			? [ this.stretchMin, this.stretchMax ]
+			: [ this.image.min, this.image.max ];
+		this.offscreen = renderToOffscreenCanvas( this.image, min, max );
 		this.zoomFit();
+	}
+
+	/**
+	 * Recomputes the visualization stretch (1%/99% percentile clipping) from
+	 * the current selection rectangle if zone mode is on and a rectangle has
+	 * been drawn, or from the whole image otherwise -- and applies it. Stays
+	 * in effect for every later image loaded into this viewer until called
+	 * again.
+	 */
+
+	adjustLevels() {
+		if( !this.image ) {
+			return;
+		}
+
+		const region = ( this.selectionMode && this.selection ) ? this.selection : null;
+		const [ min, max ] = computePercentileRange( this.image, region, STRETCH_LOW_PERCENTILE, STRETCH_HIGH_PERCENTILE );
+
+		this.hasCustomStretch = true;
+		this.stretchMin = min;
+		this.stretchMax = max;
+
+		this.offscreen = renderToOffscreenCanvas( this.image, min, max );
+		this.canvas.redraw();
+	}
+
+	/**
+	 * Toggles zone-selection mode. The rectangle itself (if any) is kept
+	 * across the toggle -- only the ability to draw/use it turns on or off.
+	 */
+
+	private toggleZoneMode() {
+		this.selectionMode = !this.selectionMode;
+		this.zoneButton.setClass( "active", this.selectionMode );
+		this.canvas.setClass( "zone-mode", this.selectionMode );
+		this.canvas.redraw();
 	}
 
 	/**
@@ -74,6 +159,34 @@ export class FitsViewer extends VBox {
 
 		this.scale = Math.min( rc.width / this.image.width, rc.height / this.image.height );
 		this.centerImage( rc.width, rc.height );
+		this.canvas.redraw();
+	}
+
+	/**
+	 * Scales the image so its width fills the canvas exactly ("Zoom H") --
+	 * the height may then exceed the canvas (cropped top/bottom), which is
+	 * fine for panels where the full height is rarely needed. Deliberately
+	 * does NOT re-center vertically: keeps whatever image-space Y coordinate
+	 * is currently at the canvas's vertical center still there after the
+	 * rescale, so an existing vertical pan position survives a "Zoom H".
+	 */
+
+	zoomFitWidth() {
+		if( !this.image ) {
+			return;
+		}
+
+		const rc = this.canvas.getBoundingRect();
+		if( !rc.width ) {
+			return;
+		}
+
+		const centerY = ( rc.height / 2 - this.offsetY ) / this.scale;
+
+		this.scale = rc.width / this.image.width;
+		this.offsetX = ( rc.width - this.image.width * this.scale ) / 2;
+		this.offsetY = rc.height / 2 - centerY * this.scale;
+
 		this.canvas.redraw();
 	}
 
@@ -97,6 +210,14 @@ export class FitsViewer extends VBox {
 		this.offsetY = ( canvasHeight - this.image.height * this.scale ) / 2;
 	}
 
+	/** Canvas-pixel to image-space (top-down, matching the rendered/displayed image). */
+	private toImageSpace( canvasX: number, canvasY: number ): { x: number, y: number } {
+		return {
+			x: ( canvasX - this.offsetX ) / this.scale,
+			y: ( canvasY - this.offsetY ) / this.scale,
+		};
+	}
+
 	private onWheel( ev: WheelEvent ) {
 		if( !this.image ) {
 			return;
@@ -108,8 +229,7 @@ export class FitsViewer extends VBox {
 		const my = ev.pageY - rc.top;
 
 		// image-space coordinate currently under the cursor, kept fixed across the zoom
-		const ix = ( mx - this.offsetX ) / this.scale;
-		const iy = ( my - this.offsetY ) / this.scale;
+		const { x: ix, y: iy } = this.toImageSpace( mx, my );
 
 		const factor = ev.deltaY < 0 ? WHEEL_ZOOM_FACTOR : 1 / WHEEL_ZOOM_FACTOR;
 		this.scale = Math.min( MAX_SCALE, Math.max( MIN_SCALE, this.scale * factor ) );
@@ -125,31 +245,109 @@ export class FitsViewer extends VBox {
 			return;
 		}
 
+		if( this.selectionMode ) {
+			const rc = this.canvas.getBoundingRect();
+			this.selecting = true;
+			this.selectMoved = false;
+			this.selectStartCanvasX = ev.pageX - rc.left;
+			this.selectStartCanvasY = ev.pageY - rc.top;
+			this.canvas.setCapture( ev.pointerId );
+			return;
+		}
+
 		this.dragging = true;
 		this.canvas.setCapture( ev.pointerId );
 		this.dragStartX = ev.pageX;
 		this.dragStartY = ev.pageY;
 		this.dragOriginX = this.offsetX;
 		this.dragOriginY = this.offsetY;
+		this.canvas.setClass( "v-pan", ev.ctrlKey );
 	}
 
 	private onPointerMove( ev: PointerEvent ) {
+		if( this.selecting ) {
+			const rc = this.canvas.getBoundingRect();
+			const cx = ev.pageX - rc.left;
+			const cy = ev.pageY - rc.top;
+
+			if( Math.abs( cx - this.selectStartCanvasX ) > SELECT_CLICK_THRESHOLD
+				|| Math.abs( cy - this.selectStartCanvasY ) > SELECT_CLICK_THRESHOLD ) {
+				this.selectMoved = true;
+			}
+
+			const p0 = this.toImageSpace( this.selectStartCanvasX, this.selectStartCanvasY );
+			const p1 = this.toImageSpace( cx, cy );
+			this.selection = { x0: p0.x, y0: p0.y, x1: p1.x, y1: p1.y };
+			this.canvas.redraw();
+			return;
+		}
+
 		if( !this.dragging ) {
 			return;
 		}
 
-		this.offsetX = this.dragOriginX + ( ev.pageX - this.dragStartX );
+		// Ctrl held: constrain the drag to vertical movement only (handy in
+		// "Zoom H", where the width is already exactly fit and any horizontal
+		// drift is unwanted) -- without Ctrl, unchanged free pan.
+		if( !ev.ctrlKey ) {
+			this.offsetX = this.dragOriginX + ( ev.pageX - this.dragStartX );
+		}
 		this.offsetY = this.dragOriginY + ( ev.pageY - this.dragStartY );
+		this.canvas.setClass( "v-pan", ev.ctrlKey );
 		this.canvas.redraw();
 	}
 
 	private onPointerUp( ev: PointerEvent ) {
+		if( this.selecting ) {
+			this.selecting = false;
+			this.canvas.releaseCapture( ev.pointerId );
+
+			// a plain click (no real drag) clears the current selection instead
+			// of leaving a zero-size rectangle behind
+			if( !this.selectMoved ) {
+				this.selection = null;
+				this.canvas.redraw();
+			}
+			return;
+		}
+
 		if( !this.dragging ) {
 			return;
 		}
 
 		this.dragging = false;
 		this.canvas.releaseCapture( ev.pointerId );
+		this.canvas.setClass( "v-pan", false );
+	}
+
+	/**
+	 * Right-click: a small help/actions menu, replacing the browser's own
+	 * (heterogeneous, extension-polluted) default context menu with something
+	 * actually relevant to this viewer -- mirrors the toolbar buttons plus a
+	 * few lines documenting the mouse/keyboard gestures that have no button.
+	 */
+
+	private onContextMenu( ev: MouseEvent ) {
+		if( !this.image ) {
+			return;
+		}
+
+		const menu = new Menu({ items: [
+			{ text: "Zoom", click: () => this.zoomFit() },
+			{ text: "Zoom H", click: () => this.zoomFitWidth() },
+			{ text: "1:1", click: () => this.zoomOneToOne() },
+			{ text: this.selectionMode ? "Désactiver Zone" : "Activer Zone", click: () => this.toggleZoneMode() },
+			{ text: "Ajuster les niveaux", click: () => this.adjustLevels() },
+			"-",
+			"Molette : zoom",
+			"Glisser : déplacer l'image",
+			"Ctrl + glisser : déplacer verticalement seulement",
+			"Zone + glisser : sélectionner une zone",
+		]});
+
+		menu.displayAt( ev.pageX, ev.pageY );
+		ev.stopPropagation();
+		ev.preventDefault();
 	}
 
 	private paint( ctx: CanvasEx ) {
@@ -166,16 +364,32 @@ export class FitsViewer extends VBox {
 			0, 0, this.image.width, this.image.height,
 			this.offsetX, this.offsetY, this.image.width * this.scale, this.image.height * this.scale,
 		);
+
+		if( this.selectionMode && this.selection ) {
+			const x0 = this.offsetX + Math.min( this.selection.x0, this.selection.x1 ) * this.scale;
+			const y0 = this.offsetY + Math.min( this.selection.y0, this.selection.y1 ) * this.scale;
+			const w = Math.abs( this.selection.x1 - this.selection.x0 ) * this.scale;
+			const h = Math.abs( this.selection.y1 - this.selection.y0 ) * this.scale;
+
+			ctx.save();
+			ctx.strokeStyle = "#ffcc00";
+			ctx.lineWidth = 1;
+			ctx.setLineDash( [ 5, 4 ] );
+			ctx.strokeRect( x0, y0, w, h );
+			ctx.restore();
+		}
 	}
 }
 
 /**
- * Renders a FITS image to an offscreen 8-bit canvas via a simple linear min/max stretch --
- * a fixed baseline stretch, not the adjustable-threshold control planned for later.
+ * Renders a FITS image to an offscreen 8-bit canvas via a linear stretch
+ * between the given `min`/`max` bounds -- the caller decides those bounds
+ * (the image's own true min/max by default, or a percentile-clipped range
+ * from "Ajuster les niveaux", see FitsViewer.adjustLevels()).
  */
 
-function renderToOffscreenCanvas( image: FitsImage ): HTMLCanvasElement {
-	const { width, height, data, min, max } = image;
+function renderToOffscreenCanvas( image: FitsImage, min: number, max: number ): HTMLCanvasElement {
+	const { width, height, data } = image;
 
 	const canvas = document.createElement( "canvas" );
 	canvas.width = width;
@@ -202,4 +416,54 @@ function renderToOffscreenCanvas( image: FitsImage ): HTMLCanvasElement {
 
 	ctx.putImageData( imgData, 0, 0 );
 	return canvas;
+}
+
+/**
+ * Pixel values of `image` restricted to `region` (image space, top-down --
+ * same convention as renderToOffscreenCanvas's output), or of the whole image
+ * if `region` is null. Clamps the region to the image bounds.
+ */
+
+function collectValues( image: FitsImage, region: SelectionRect | null ): ArrayLike<number> {
+	const { width, height, data } = image;
+	if( !region ) {
+		return data;
+	}
+
+	const x0 = Math.max( 0, Math.min( width  - 1, Math.round( Math.min( region.x0, region.x1 ) ) ) );
+	const x1 = Math.max( 0, Math.min( width  - 1, Math.round( Math.max( region.x0, region.x1 ) ) ) );
+	const y0 = Math.max( 0, Math.min( height - 1, Math.round( Math.min( region.y0, region.y1 ) ) ) );
+	const y1 = Math.max( 0, Math.min( height - 1, Math.round( Math.max( region.y0, region.y1 ) ) ) );
+
+	const out = new Float32Array( Math.max( 0, x1 - x0 + 1 ) * Math.max( 0, y1 - y0 + 1 ) );
+	let i = 0;
+	for( let y = y0; y <= y1; y++ ) {
+		const srcRow = height - 1 - y;
+		for( let x = x0; x <= x1; x++ ) {
+			out[i++] = data[srcRow * width + x];
+		}
+	}
+	return out;
+}
+
+/**
+ * [min, max] at the `loPct`/`hiPct` percentiles (0-1) of the pixel values in
+ * `region` (image space, top-down), or of the whole image if `region` is
+ * null -- the visualization stretch computed by "Ajuster les niveaux",
+ * robust to a single hot/saturated pixel unlike a bare min/max scan (see
+ * [[project_gui_fits_viewer_stretch]]). Falls back to the image's own true
+ * min/max if the region is degenerate (empty, or every pixel identical).
+ */
+
+function computePercentileRange(
+	image: FitsImage, region: SelectionRect | null, loPct: number, hiPct: number
+): [ number, number ] {
+	const values = Array.from( collectValues( image, region ) ).sort( ( a, b ) => a - b );
+	if( values.length === 0 ) {
+		return [ image.min, image.max ];
+	}
+
+	const lo = values[ Math.floor( loPct * ( values.length - 1 ) ) ];
+	const hi = values[ Math.floor( hiPct * ( values.length - 1 ) ) ];
+	return lo < hi ? [ lo, hi ] : [ image.min, image.max ];
 }

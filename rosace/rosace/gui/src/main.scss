@@ -474,6 +474,11 @@ body {
 			.fits-btn {
 				color: white;
 				background-color: var(--green);
+
+				// "Zone" toggle, while zone-selection mode is on
+				&.active {
+					background-color: var(--amber);
+				}
 			}
 		}
 
@@ -492,6 +497,17 @@ body {
 
 			&:active {
 				cursor: grabbing;
+			}
+
+			// zone-selection mode ("Zone" toggle) and an in-progress Ctrl+drag
+			// (vertical-only pan) each override the default grab/grabbing pan
+			// cursor above -- mutually exclusive, never both set at once
+			&.zone-mode {
+				cursor: crosshair;
+			}
+
+			&.v-pan {
+				cursor: ns-resize;
 			}
 		}
 	}

@@ -264,7 +264,10 @@ class MainView extends VBox {
 	private last_stage: OrchestratorStageType;
 	private spectre_viewer: FitsViewer;
 	private guidage_viewer: FitsViewer;
-	
+	// Tracks, per panel, whether its first real (non-placeholder) image has
+	// already received its automatic stretch -- see loadPanelImage below.
+	private autoStretched: Record<string, boolean> = {};
+
 	constructor( props: BoxProps ) {
 		super( props );
 
@@ -391,6 +394,16 @@ class MainView extends VBox {
 		}
 
 		viewer.loadFits( await res.arrayBuffer() );
+
+		// first real image on this panel: apply the automatic (whole-image)
+		// percentile stretch once, so it doesn't come up all-black by default --
+		// never touches the startup placeholder (loadDemoImages), and never
+		// re-applies on later images (a manual "Ajuster les niveaux" click
+		// takes over from here, same persistence rule as any other adjustment).
+		if( !this.autoStretched[panel] ) {
+			viewer.adjustLevels();
+			this.autoStretched[panel] = true;
+		}
 	}
 
 
