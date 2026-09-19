@@ -1,11 +1,16 @@
 /**
  * Generic, reusable FITS image viewer widget -- pan/zoom, plus an adjustable
  * visualization stretch (whole image or a user-selected region) computed via
- * 1%/99% percentile clipping. No pixel readout yet, deferred to a later
- * iteration.
+ * 1%/99% percentile clipping, plus a toolbar readout of the pixel under the
+ * cursor: X, Y and intensity.
+ *
+ * Pixel coordinates follow Rosace's app-wide convention (see CLAUDE.md,
+ * "Pixel coordinate convention"): 0-indexed, origin at the centre of the
+ * bottom-left pixel, X to the right, Y upwards (FITS row order) -- the same as
+ * astropy's WCS and the slit_x/slit_y config values. KStars/DS9 count from 1.
  */
 
-import { VBox, HBox, Button, Canvas, CanvasEx, BoxProps, Menu } from "x4js";
+import { VBox, HBox, Button, Canvas, CanvasEx, BoxProps, Label, Menu } from "x4js";
 
 import { parseFits, FitsImage } from "./fits_parser";
 
@@ -36,6 +41,8 @@ export class FitsViewer extends VBox {
 
 	private canvas: Canvas;
 	private zoneButton: Button;
+	private readout: Label;
+	private lastReadout = "";
 	private offscreen: HTMLCanvasElement;
 	private image: FitsImage;
 
@@ -80,6 +87,7 @@ export class FitsViewer extends VBox {
 				new Button({ cls: "fits-btn", label: "1:1", click: () => this.zoomOneToOne() }),
 				this.zoneButton = new Button({ cls: "fits-btn", label: "Zone", click: () => this.toggleZoneMode() }),
 				new Button({ cls: "fits-btn", label: "Ajuster les niveaux", click: () => this.adjustLevels() }),
+				this.readout = new Label({ cls: "fits-readout", text: "" }),
 			]}),
 			this.canvas = new Canvas({ cls: "fits-canvas", flex: 1, clear: true, paint_cb: ctx => this.paint( ctx ) }),
 		]);
@@ -88,6 +96,7 @@ export class FitsViewer extends VBox {
 		this.canvas.addDOMEvent( "pointerdown", ( ev: PointerEvent ) => this.onPointerDown( ev ) );
 		this.canvas.addDOMEvent( "pointermove", ( ev: PointerEvent ) => this.onPointerMove( ev ) );
 		this.canvas.addDOMEvent( "pointerup", ( ev: PointerEvent ) => this.onPointerUp( ev ) );
+		this.canvas.addDOMEvent( "pointerleave", () => this.setReadout( "" ) );
 		this.canvas.addDOMEvent( "contextmenu", ( ev: MouseEvent ) => this.onContextMenu( ev ) );
 	}
 
@@ -100,6 +109,7 @@ export class FitsViewer extends VBox {
 
 	loadFits( buffer: ArrayBuffer ) {
 		this.image = parseFits( buffer );
+		this.setReadout( "" );	// a value read from the previous image must not linger
 		const [ min, max ] = this.hasCustomStretch
 			? [ this.stretchMin, this.stretchMax ]
 			: [ this.image.min, this.image.max ];
@@ -238,6 +248,46 @@ export class FitsViewer extends VBox {
 		this.offsetY = my - iy * this.scale;
 
 		this.canvas.redraw();
+		this.updateReadout( ev );	// the image moved under a still cursor
+	}
+
+	/**
+	 * Shows X, Y and intensity of the pixel under the cursor (Rosace's pixel
+	 * convention, see the file header), or clears the readout when there is no
+	 * image or the cursor is outside it.
+	 */
+
+	private updateReadout( ev: MouseEvent ) {
+		if( !this.image ) {
+			this.setReadout( "" );
+			return;
+		}
+
+		const rc = this.canvas.getBoundingRect();
+		const p = this.toImageSpace( ev.pageX - rc.left, ev.pageY - rc.top );
+		const col = Math.floor( p.x );
+		const row = Math.floor( p.y );	// top-down, as displayed
+
+		const { width, height, data } = this.image;
+		if( col < 0 || col >= width || row < 0 || row >= height ) {
+			this.setReadout( "" );
+			return;
+		}
+
+		// FITS row 0 is the bottom row, and Y counts upwards: the displayed
+		// (top-down) row is flipped, exactly like renderToOffscreenCanvas() does
+		const y = height - 1 - row;
+		const v = data[y * width + col];
+		this.setReadout( `X: ${col}  Y: ${y}  I: ${Number.isInteger( v ) ? v : v.toFixed( 2 )}` );
+	}
+
+	/** Sets the readout text, skipping the DOM update when unchanged (pointermove fires at a high rate). */
+
+	private setReadout( text: string ) {
+		if( text !== this.lastReadout ) {
+			this.lastReadout = text;
+			this.readout.setText( text );
+		}
 	}
 
 	private onPointerDown( ev: PointerEvent ) {
@@ -265,6 +315,11 @@ export class FitsViewer extends VBox {
 	}
 
 	private onPointerMove( ev: PointerEvent ) {
+		// The readout is refreshed in each branch below, always AFTER whatever
+		// moves the image: during a pan the image follows the cursor, so the
+		// pixel under it must be computed with the new offsets (a plain pan then
+		// leaves it unchanged), not the ones from before this event.
+
 		if( this.selecting ) {
 			const rc = this.canvas.getBoundingRect();
 			const cx = ev.pageX - rc.left;
@@ -279,10 +334,12 @@ export class FitsViewer extends VBox {
 			const p1 = this.toImageSpace( cx, cy );
 			this.selection = { x0: p0.x, y0: p0.y, x1: p1.x, y1: p1.y };
 			this.canvas.redraw();
+			this.updateReadout( ev );	// the image doesn't move while selecting a zone
 			return;
 		}
 
 		if( !this.dragging ) {
+			this.updateReadout( ev );
 			return;
 		}
 
@@ -295,6 +352,7 @@ export class FitsViewer extends VBox {
 		this.offsetY = this.dragOriginY + ( ev.pageY - this.dragStartY );
 		this.canvas.setClass( "v-pan", ev.ctrlKey );
 		this.canvas.redraw();
+		this.updateReadout( ev );
 	}
 
 	private onPointerUp( ev: PointerEvent ) {

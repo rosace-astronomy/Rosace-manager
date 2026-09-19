@@ -42,5 +42,13 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Mesure spectre-vs-position-fente
 - [ ] GUI web : afficher les coordonnées (x, y) et l'intensité du pixel
       sous le curseur dans les panneaux d'image (Spectre / Guidage)
+- [ ] Rendre le log DEBUG du fichier réellement actif (logger_spectro est
+      encore en INFO : aucun DEBUG n'atteint rosace.log) — utile si le bug
+      de réutilisation des darks revient
+- [ ] Décider si CLOSE_SESSION doit attendre la fin du refroidissement de la
+      caméra (erreurs "Failed to set temperature" du driver Atik après un
+      arrêt en plein refroidissement)
+- [ ] Entrée HISTORY.md du 2026-09-19 : faux "Target reached" du
+      refroidissement, masque d'horizon local, convention de pixel
 - [X] Repasser rosace.log de DEBUG à INFO une fois le développement actif
       AM3/pointage terminé
