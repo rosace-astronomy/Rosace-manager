@@ -11,10 +11,10 @@ INDI_drivers:
         class_name : IndiCamera
         # class_name : IndiASICamera
         indi_client :
-            indi_host : 192.168.144.48
+            indi_host : 192.168.144.50
             indi_port : 7624
-        cooling : true
-        cooling_capability : -20
+        cooling : FALSE
+        # cooling_capability : -20
         # sampling_arcsec / exposure_seconds / slit_x / slit_y for this camera
         # now live in the active config.yaml's subplugin_params.guiding_camera
         # -- they describe the whole telescope+spectro+camera assembly (the
@@ -29,10 +29,10 @@ INDI_drivers:
         # indi_name : ZWO CCD ASI120MM Mini
         class_name : IndiCamera
         indi_client :
-            indi_host : 192.168.144.48
+            indi_host : 192.168.144.50
             indi_port : 7624
         cooling : true
-        cooling_capability : -20
+        cooling_capability : -30
         # Acceptable gap (degrees) between commanded and measured temperature
         # for the cooldown wait in INIT_SESSION to consider the target reached.
         temperature_tolerance_deg_c : 2
@@ -44,7 +44,7 @@ INDI_drivers:
         indi_name : ZWO AM3 USB
         class_name : IndiMount
         indi_client :
-            indi_host : 192.168.144.48
+            indi_host : 192.168.144.50
             indi_port : 7624
         # Offset (degrees), added to both RA and DEC, for a preliminary slew
         # before the final slew to the exact target position -- always
@@ -59,7 +59,7 @@ INDI_drivers:
         indi_name : ZWO CCD ASI224MC
         class_name : IndiASICamera
         indi_client :
-            indi_host : 192.168.144.48
+            indi_host : 192.168.144.50
             indi_port : 7624
         cooling : false
 
@@ -71,7 +71,7 @@ INDI_drivers:
         class_name : IndiFocuser
         port: /dev/serial/by-id/usb-Optec__Inc._Optec_USB_Serial_Cable_OP5AORA9-if00-port0
         indi_client:
-            indi_host: 192.168.144.48
+            indi_host: 192.168.144.50
             indi_port: 7624
         focus_range:
             min: 10200
@@ -94,23 +94,23 @@ INDI_drivers:
         # CALIB mapping, fully confirmed on the real instrument.
         indi_name: SM Pro
         indi_client:
-            indi_host: 192.168.144.48
+            indi_host: 192.168.144.50
             indi_port: 7624
 
 PHD2_config:
     # host: 192.168.144.32
-    host: 192.168.144.48 # Stellarmate
+    host: 192.168.144.50 # Stellarmate
     port: 4400
     do_calibration: False
     # profile_name: St-Pancrasse
     # profile_name: Simulators
     # profile_name: Simulator
     profile_name: 72ED Stellarmate
-    exposure_time_sec: 1.0
+    exposure_time_sec: 0.3
     settle:
-        pixels: 7
+        pixels: 1.2
         time: 3
-        timeout: 120
+        timeout: 180
 
 # SEQUENCER steps mandatory for every program run on this equipment,
 # regardless of which science it's doing -- prepended automatically to

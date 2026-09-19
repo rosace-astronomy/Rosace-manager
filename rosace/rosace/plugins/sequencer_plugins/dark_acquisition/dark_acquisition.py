@@ -90,6 +90,11 @@ class DarkAcquisitionPlugin(SubPlugin):
         camera = obs.hardware["science_camera"]
         target_temp = obs.camera_target_temperature_deg_c
         frame_size = await camera.get_frame_size()
+        # TEMPORARY (2026-09-18): investigating unexplained current_session
+        # reuse failures -- confirm whether a live get_frame_size() read
+        # ever disagrees with what's actually on disk (see HISTORY.md once
+        # this is resolved). Remove once confirmed/fixed.
+        log.debug(f"[DARK_ACQUISITION] Live read: frame_size={frame_size}, target_temp={target_temp}")
 
         # current_session: reuse a usable series already sitting in this session's own directory.
         files = find_usable_frame_series(

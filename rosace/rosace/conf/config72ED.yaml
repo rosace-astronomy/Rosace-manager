@@ -44,7 +44,7 @@ site_elevation_m: 955
 # Name (without extension) of the active hardware profile in conf/ — only
 # consulted when sequencer_backend (below) is 'indi'.
 # Exposed as ACTIVE_HARDWARE / HARDWARE_CONFIG_PATH in config.py.
-active_hardware: hardware_indi_72ED-WIFI
+active_hardware: hardware_indi_72ED-LAN
 
 # Name (registry in plugins/schedulers/__init__.py) of the active SCHEDULER
 # plugin — each is an interchangeable target-selection algorithm. See
@@ -100,11 +100,11 @@ subplugin_params:
   # is read only by star_spectra_acquisition, but sits here too since it's
   # the third argument of the same compute_exposure_time_and_count() call
   # as the two above -- see acquisition_helpers.py.
-  exposure_time_mag0_seconds: 1.0
+  exposure_time_mag0_seconds: 5.5
   # 120s (not the 30s debug value used by the INDI-simulator config.yaml) --
   # the real ceiling for the 72ED's own science camera, above the simulator's
   # short debug value since this file is what actually drives real sessions.
-  max_exposure_time_seconds: 120
+  max_exposure_time_seconds: 180
   # Minimum number of science sub-exposures per star, regardless of how the
   # per-sub-exposure duration compares to max_exposure_time_seconds above --
   # a bright star whose computed/explicit duration is short still gets a
@@ -133,7 +133,7 @@ subplugin_params:
     # 2026-09-04) as (614, 617), converted here to Rosace's zero-indexed
     # convention (-1 per axis).
     slit_x: 613
-    slit_y: 616
+    slit_y: 614
 
   scheduler_rosace_2026:
     # Full path (any location, not necessarily under base_data_dir) to the

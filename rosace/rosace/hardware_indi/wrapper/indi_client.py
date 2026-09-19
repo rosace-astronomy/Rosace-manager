@@ -60,7 +60,7 @@ class BLOBListener(Base):
             blob = self.queue.get(True, timeout)
             return blob
         except queue.Empty:
-            raise BLOBError(f"Timeout while waiting for BLOB on {self.device.name}")
+            raise BLOBError(f"Timeout while waiting for BLOB on {self.device_name}")
 
     def __str__(self):
         return f"BLOBListener(device={self.device_name}"

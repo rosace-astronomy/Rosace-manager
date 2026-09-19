@@ -263,9 +263,14 @@ class IndiCamera(IndiDevice):
         if isinstance(temperature, u.Quantity):
             temperature = temperature.to(u.deg_C).value
         if np.isfinite(temperature):
+            # No sync: waiting here for the driver's own OK state would block
+            # for the whole cooldown with zero visibility -- the caller
+            # (camera_cooldown.py's cool_science_camera_to_target()) already
+            # polls get_temperature() against its own tolerance and logs
+            # progress every 5s, which needs this call to return immediately.
             self.set_number('CCD_TEMPERATURE',
                            {'CCD_TEMPERATURE_VALUE': temperature},
-                           sync=True, timeout=1200)
+                           sync=False)
 
     def set_cooling_on(self):
         # No sync, because that's the way it works on indi for the CCD_COOLER property, it stays yellow in the interface
