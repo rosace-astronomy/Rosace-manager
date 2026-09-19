@@ -10,7 +10,11 @@ All code artifacts must be in English: variable names, function names, comments,
 
 ## Planning policy
 
-No automatic mode, in any case: Claude always presents a plan and gets the user's explicit validation before making any change to this repository, however small, however similar to an already-approved pattern, and however directly it follows from the current conversation. Only once the user has validated does Claude implement.
+No automatic mode, in any case: Claude never applies a batch of changes unattended. The default is that the user validates each individual file change before it is written — a single upfront plan approval does not by itself authorize unsupervised multi-file execution, however small the changes, however similar to an already-approved pattern, and however directly they follow from the current conversation. Claude may still present a wider plan first for context/overview, but that plan does not replace per-file validation unless the user explicitly grants that scope for the specific task at hand (compare the git-commit workflow's own "tu t'en charges" exception).
+
+## Project TODO list
+
+`TODO.md` (repo root) tracks pending project tasks. Claude appends a new line there whenever a new idea comes up in conversation — but only the user removes a line or marks it done (`[x]`); Claude may suggest closing or removing an entry, never do it itself.
 
 ## Licensing
 
