@@ -59,6 +59,27 @@ def local_sidereal_time_deg(longitude_deg: float, at: datetime | None = None) ->
     return (_greenwich_mean_sidereal_time_deg(at) + longitude_deg) % 360.0
 
 
+def hour_angle_deg(
+    ra_deg: float,
+    longitude_deg: float,
+    at: datetime | None = None,
+) -> float:
+    """Hour angle (degrees, in [-180, 180)) of an ICRS right ascension for an
+    observing site (longitude_deg east-positive), at a given UTC datetime
+    (`at`, defaults to now): local sidereal time minus RA. 0 = on the
+    meridian, negative = before it (east, rising side), positive = after it
+    (west) -- the sign convention the mount's pier-flip reasoning uses.
+
+    Measured in degrees of hour angle, not of arc on the sky: it advances by
+    15 degrees per hour whatever the declination, which is what a
+    German-equatorial mount's RA axis actually sees (an arc-on-the-sky
+    distance to the meridian would shrink by cos(dec) and make any
+    near-polar target look permanently "on" the meridian). Same GMST
+    formula/accuracy as the rest of this module (see module docstring)."""
+    lst_deg = local_sidereal_time_deg(longitude_deg, at)
+    return (lst_deg - ra_deg + 180.0) % 360.0 - 180.0
+
+
 def altitude_deg(
     ra_deg: float,
     dec_deg: float,

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from ....astro_math import altitude_deg, azimuth_deg
+from ....astro_math import altitude_deg, azimuth_deg, hour_angle_deg
 from ....config import HORIZON_FILE, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, SUBPLUGIN_PARAMS
 from ....database import db_count_observations_for_target
 from ....models import Observation, Target, ExposureConfig
@@ -19,6 +19,12 @@ OBSERVATION_LIST_PATH = Path(
     _params.get("observation_list_path", "~/.rosace/targets/ObservationList.txt")
 ).expanduser()
 MIN_TARGET_ALTITUDE_DEG = _params.get("min_target_altitude_deg", 10)
+# Hour-angle window (degrees, each side of the meridian) inside which a target is
+# not offered: pointing_72ed's two-step slew starts backlash_offset_deg (hardware
+# YAML, 2 deg) of RA before the exact position, so a target just past the meridian
+# gets an approach point before it and an exact point after it -> pier flip.
+# 0 (the default) disables the check: no real mount, no flip (demo, simulator).
+MIN_MERIDIAN_DISTANCE_DEG = _params.get("min_meridian_distance_deg", 0)
 
 
 def _target_altitude_deg(ra_deg: float, dec_deg: float) -> float:
@@ -26,6 +32,14 @@ def _target_altitude_deg(ra_deg: float, dec_deg: float) -> float:
     site's horizon, right now. See astro_math.py for why this is plain
     trigonometry rather than an AstroPy/IERS-backed transform."""
     return altitude_deg(ra_deg, dec_deg, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG)
+
+
+def _target_hour_angle_deg(ra_deg: float) -> float:
+    """Current hour angle (degrees, [-180, 180), positive after the meridian)
+    of an ICRS right ascension, right now — same site longitude and same
+    no-IERS maths as _target_altitude_deg() above. In degrees of hour angle,
+    not of arc on the sky: see astro_math.hour_angle_deg()."""
+    return hour_angle_deg(ra_deg, SITE_LONGITUDE_DEG)
 
 
 def _target_azimuth_deg(ra_deg: float, dec_deg: float) -> float:
@@ -102,8 +116,12 @@ class SchedulerPlugin:
     against that local horizon profile (horizon.py): a target above
     MIN_TARGET_ALTITUDE_DEG but below the terrain obstruction at its azimuth is
     skipped the same way (logged, not consumed). The profile is read fresh on
-    every call, like the plan file. No day/night (sun below horizon) check:
-    remains a separate future chantier.
+    every call, like the plan file. When MIN_MERIDIAN_DISTANCE_DEG is > 0
+    (conf/config.yaml, default 0 = off), a target whose hour angle is within
+    that many degrees of the meridian (either side) is skipped the same way:
+    the mount's two-step pointing would otherwise straddle the meridian and
+    flip pier side. No day/night (sun below horizon) check: remains a
+    separate future chantier.
 
     A missing/malformed plan file or horizon file, or invalid data in
     targets.db (e.g. a non-numeric exposure_time), raises SchedulerFatalError
@@ -188,6 +206,15 @@ class SchedulerPlugin:
                     log.info(
                         f"[SCHEDULER] {item['queried_name']} below local horizon "
                         f"({altitude:.1f}° < {horizon_altitude:.1f}° at az {azimuth:.1f}°), line ignored"
+                    )
+                    continue
+
+            if MIN_MERIDIAN_DISTANCE_DEG > 0:
+                hour_angle = _target_hour_angle_deg(star.ra)
+                if abs(hour_angle) < MIN_MERIDIAN_DISTANCE_DEG:
+                    log.info(
+                        f"[SCHEDULER] {item['queried_name']} too close to the meridian "
+                        f"(HA {hour_angle:+.1f}° within ±{MIN_MERIDIAN_DISTANCE_DEG:.1f}°), line ignored"
                     )
                     continue
 

@@ -76,6 +76,13 @@ class TestSchedulerPlugin:
         the active config happens to declare must never leak into these tests."""
         monkeypatch.setattr(scheduler_mod, "HORIZON_FILE", None)
 
+    @pytest.fixture(autouse=True)
+    def _no_meridian_filter_by_default(self, monkeypatch):
+        """Meridian filter off unless a test opts in — whatever
+        min_meridian_distance_deg the active config happens to declare (e.g.
+        config72ED.yaml's 3) must never leak into these tests."""
+        monkeypatch.setattr(scheduler_mod, "MIN_MERIDIAN_DISTANCE_DEG", 0)
+
     async def _make_session(self) -> SessionContext:
         session = SessionContext(site_name="Test")
         await db_insert_session(session)
@@ -463,6 +470,91 @@ class TestSchedulerPlugin:
         session = await self._make_session()
         with pytest.raises(SchedulerFatalError, match="line 3"):
             await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+    async def _one_star_plan(self, tmp_path, monkeypatch, star_name: str, program_name: str, ra: float = 1.0):
+        """A single star on a single line, selected unless a filter skips it."""
+        sid = await star_insert(StarCreate(name=star_name, ra=ra, dec=1.0))
+        pid = await program_insert(ProgramCreate(name=program_name))
+        await program_add_star(pid, sid)
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path, f"Priority, Program, Star, commentaire\n1, {program_name}, {star_name}, x\n"
+        ))
+
+    async def test_target_just_east_of_the_meridian_is_skipped_and_next_line_offered(self, tmp_path, monkeypatch):
+        """Both stars are well above the horizon. The priority-1 star is 1° of
+        hour angle before the meridian (inside the ±3° window): skipped. The
+        priority-2 star is 30° away: selected instead."""
+        sid_near = await star_insert(StarCreate(name="NearMeridianEast", ra=1.0, dec=1.0))
+        sid_far = await star_insert(StarCreate(name="FarFromMeridian", ra=2.0, dec=2.0))
+        pid = await program_insert(ProgramCreate(name="MeridianEastProgram"))
+        await program_add_star(pid, sid_near)
+        await program_add_star(pid, sid_far)
+        monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", _write_observation_list(
+            tmp_path,
+            "Priority, Program, Star, commentaire\n"
+            "1, MeridianEastProgram, NearMeridianEast, x\n"
+            "2, MeridianEastProgram, FarFromMeridian, x\n"
+        ))
+        monkeypatch.setattr(scheduler_mod, "MIN_MERIDIAN_DISTANCE_DEG", 3)
+        monkeypatch.setattr(scheduler_mod, "_target_hour_angle_deg", lambda ra: -1.0 if ra == 1.0 else 30.0)
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"].name == "FarFromMeridian"
+        assert_scheduler_contract(obs)
+
+    async def test_target_just_west_of_the_meridian_is_skipped(self, tmp_path, monkeypatch):
+        """The V923 Aql case (2026-09-14): +0.2° to +1.5° after the meridian."""
+        await self._one_star_plan(tmp_path, monkeypatch, "JustPastMeridian", "MeridianWestProgram")
+        monkeypatch.setattr(scheduler_mod, "MIN_MERIDIAN_DISTANCE_DEG", 3)
+        monkeypatch.setattr(scheduler_mod, "_target_hour_angle_deg", lambda ra: 1.5)
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"] is None
+
+    @pytest.mark.parametrize("hour_angle", [3.5, -3.5, 3.0, -3.0])
+    async def test_target_outside_the_window_or_exactly_at_its_edge_is_selected(
+        self, tmp_path, monkeypatch, hour_angle
+    ):
+        """Strict comparison: |HA| == threshold is observable, like the other filters."""
+        suffix = f"{'p' if hour_angle > 0 else 'm'}{abs(hour_angle):.1f}".replace(".", "_")
+        await self._one_star_plan(tmp_path, monkeypatch, f"EdgeStar_{suffix}", f"EdgeProgram_{suffix}")
+        monkeypatch.setattr(scheduler_mod, "MIN_MERIDIAN_DISTANCE_DEG", 3)
+        monkeypatch.setattr(scheduler_mod, "_target_hour_angle_deg", lambda ra: hour_angle)
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"].name == f"EdgeStar_{suffix}"
+
+    async def test_target_near_the_meridian_is_not_marked_consumed(self, tmp_path, monkeypatch):
+        """A target skipped for meridian proximity must stay offerable once it
+        has moved out of the window — it's not a missed observation."""
+        await self._one_star_plan(tmp_path, monkeypatch, "MeridianLaterStar", "MeridianLaterProgram")
+        monkeypatch.setattr(scheduler_mod, "MIN_MERIDIAN_DISTANCE_DEG", 3)
+        session = await self._make_session()
+
+        monkeypatch.setattr(scheduler_mod, "_target_hour_angle_deg", lambda ra: 1.0)
+        obs1 = await SchedulerPlugin().run(self._make_obs(session.session_id))
+        assert obs1.scheduler_data["target"] is None
+
+        monkeypatch.setattr(scheduler_mod, "_target_hour_angle_deg", lambda ra: 10.0)
+        obs2 = await SchedulerPlugin().run(self._make_obs(session.session_id))
+        assert obs2.scheduler_data["target"].name == "MeridianLaterStar"
+
+    async def test_meridian_filter_disabled_at_zero_even_on_the_meridian(self, tmp_path, monkeypatch):
+        """0 (also the default when the key is absent) means no meridian filter."""
+        await self._one_star_plan(tmp_path, monkeypatch, "OnTheMeridianNoFilter", "MeridianOffProgram")
+        monkeypatch.setattr(scheduler_mod, "MIN_MERIDIAN_DISTANCE_DEG", 0)
+        monkeypatch.setattr(scheduler_mod, "_target_hour_angle_deg", lambda ra: 0.0)
+
+        session = await self._make_session()
+        obs = await SchedulerPlugin().run(self._make_obs(session.session_id))
+
+        assert obs.scheduler_data["target"].name == "OnTheMeridianNoFilter"
 
     async def test_missing_observation_list_file_raises_fatal_error(self, tmp_path, monkeypatch):
         monkeypatch.setattr(scheduler_mod, "OBSERVATION_LIST_PATH", tmp_path / "DoesNotExist.txt")

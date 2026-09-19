@@ -8,6 +8,7 @@ from rosace.astro_math import (
     altitude_deg,
     azimuth_deg,
     equatorial_from_horizontal_deg,
+    hour_angle_deg,
     julian_date,
     local_sidereal_time_deg,
 )
@@ -48,6 +49,58 @@ class TestAltitudeDeg:
         # Must not raise -- just check that calling without `at` works.
         alt = altitude_deg(ra_deg=10.0, dec_deg=20.0, latitude_deg=45.0, longitude_deg=5.0)
         assert -90.0 <= alt <= 90.0
+
+
+class TestHourAngleDeg:
+
+    AT = datetime(2026, 8, 16, 21, 0, 0, tzinfo=timezone.utc)
+    LONGITUDE = 5.0
+
+    def test_ra_equal_to_lst_is_on_the_meridian(self):
+        lst_deg = local_sidereal_time_deg(self.LONGITUDE, self.AT)
+        assert hour_angle_deg(lst_deg, self.LONGITUDE, at=self.AT) == pytest.approx(0.0, abs=1e-9)
+
+    def test_ra_below_lst_is_after_the_meridian_and_positive(self):
+        # An object whose RA is 1.5 deg less than the LST crossed the meridian
+        # 1.5 deg of hour angle ago (the V923 Aql case of 2026-09-14: +0.2 .. +1.5).
+        lst_deg = local_sidereal_time_deg(self.LONGITUDE, self.AT)
+        assert hour_angle_deg(lst_deg - 1.5, self.LONGITUDE, at=self.AT) == pytest.approx(1.5, abs=1e-9)
+
+    def test_ra_above_lst_is_before_the_meridian_and_negative(self):
+        lst_deg = local_sidereal_time_deg(self.LONGITUDE, self.AT)
+        assert hour_angle_deg(lst_deg + 2.0, self.LONGITUDE, at=self.AT) == pytest.approx(-2.0, abs=1e-9)
+
+    def test_result_wraps_into_minus_180_to_plus_180(self):
+        for ra in (0.0, 45.0, 90.0, 179.9, 180.0, 270.0, 359.9):
+            ha = hour_angle_deg(ra, self.LONGITUDE, at=self.AT)
+            assert -180.0 <= ha < 180.0
+
+    def test_wraps_across_the_ra_zero_boundary(self):
+        # LST just past 0 with RA just below 360 is a small negative angle
+        # difference on the circle, not ~ +360: 2 deg after the meridian.
+        # Build it from a known LST rather than a fixed date.
+        lst_deg = local_sidereal_time_deg(self.LONGITUDE, self.AT)
+        ra = (lst_deg - 2.0) % 360.0
+        assert hour_angle_deg(ra, self.LONGITUDE, at=self.AT) == pytest.approx(2.0, abs=1e-9)
+
+    def test_on_the_meridian_south_of_zenith_matches_azimuth_180(self):
+        # equatorial_from_horizontal_deg() at az=180 puts the object on the
+        # meridian: hour angle 0.
+        ra, _dec = equatorial_from_horizontal_deg(65.0, 180.0, 45.0, self.LONGITUDE, at=self.AT)
+        assert hour_angle_deg(ra, self.LONGITUDE, at=self.AT) == pytest.approx(0.0, abs=1e-9)
+
+    def test_advances_fifteen_degrees_per_sidereal_hour_whatever_the_declination(self):
+        # The point of measuring in hour angle: no dependence on declination
+        # at all (the function doesn't even take one). One hour later, the
+        # same RA has moved ~15.04 deg (sidereal rate) towards the west.
+        later = datetime(2026, 8, 16, 22, 0, 0, tzinfo=timezone.utc)
+        before = hour_angle_deg(100.0, self.LONGITUDE, at=self.AT)
+        after = hour_angle_deg(100.0, self.LONGITUDE, at=later)
+        assert (after - before) % 360.0 == pytest.approx(15.0411, abs=1e-3)
+
+    def test_defaults_to_now_when_at_omitted(self):
+        ha = hour_angle_deg(120.0, 5.0)
+        assert -180.0 <= ha < 180.0
 
 
 class TestAzimuthDeg:

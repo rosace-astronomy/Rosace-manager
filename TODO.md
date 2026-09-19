@@ -17,12 +17,18 @@ Claude peut le suggérer, jamais le faire lui-même.
       automatiquement aujourd'hui)
 - [ ] Confirmer/écarter la cause du bug de réutilisation dark/bias/calib/flat
       (log DEBUG frame_size en place depuis le 2026-09-18)
+- [ ] Pointage près du pôle : _slew_with_backlash_approach() envoie
+      dec + backlash_offset_deg, ce qui dépasse 90° pour une cible de
+      déclinaison > 88° (ex. Polaris, 89,3°) — comportement de la monture
+      non vérifié, probablement un bug
 
 ## Chantiers proposés
 
-- [ ] Masque d'horizon local (az-dépendant) — bloqué sur l'export de
+- [X] Masque d'horizon local (az-dépendant) — bloqué sur l'export de
       l'horizon KStars du PC de bureau
-- [ ] Filtre anti-retournement au méridien (~3° proposé, pas codé)
+- [X] Filtre anti-retournement au méridien (~3° proposé, pas codé)
+- [ ] Distance à la Lune : filtre scheduler sur la distance de la cible à
+      la Lune (seuil à définir, probablement selon la phase) — pas urgent
 - [ ] Journalisation temporelle des étapes (time-series DB type InfluxDB)
 - [ ] Supprimer le sub-plugin `focus` placeholder — différé jusqu'à la
       fin de la période de test sur le ciel

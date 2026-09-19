@@ -145,6 +145,11 @@ subplugin_params:
     observation_list_path: ~/.rosace/targets/ObservationList.txt
     # Minimum altitude (degrees) for a target to be considered observable.
     min_target_altitude_deg: 10
+    # Hour-angle window (degrees, each side of the meridian) inside which a
+    # target is not offered — see config.yaml. The AM3 flips pier side when the
+    # two-step pointing (backlash_offset_deg = 2, hardware YAML) straddles the
+    # meridian: 2 + 1 degree of margin.
+    min_meridian_distance_deg: 3
 
   dark_acquisition:
     # Number of DARK frames per series, fixed for the whole session.
