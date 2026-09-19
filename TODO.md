@@ -28,6 +28,7 @@ Claude peut le suggérer, jamais le faire lui-même.
       fin de la période de test sur le ciel
 - [ ] Pipeline de réduction natif Rosace — bloqué sur des exemples XML
       Demetra
+- [ ] Calcul du centre de la fente.
 
 ## Chantiers plus lointains
 
@@ -38,7 +39,6 @@ Claude peut le suggérer, jamais le faire lui-même.
 
 ## Petits items
 
-- [ ] Réduire le temps de pose de guidage à 5s (actuellement 10s)
 - [ ] Mesure spectre-vs-position-fente
-- [ ] Repasser rosace.log de DEBUG à INFO une fois le développement actif
+- [X] Repasser rosace.log de DEBUG à INFO une fois le développement actif
       AM3/pointage terminé

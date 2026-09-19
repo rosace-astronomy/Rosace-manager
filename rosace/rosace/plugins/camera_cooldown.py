@@ -101,15 +101,20 @@ async def cool_science_camera_to_target(
             log.info("[CAMERA_COOLDOWN] Stop requested -- interrupting cooldown wait")
             return ambient, target
 
+        # Sleep *before* the first read: right after set_temperature(), the
+        # INDI client's local CCD_TEMPERATURE property still holds the setpoint
+        # we just wrote, not the sensor reading -- the driver's own update
+        # hasn't arrived yet. Reading immediately would report "target reached"
+        # on a sensor that hasn't started cooling.
+        step = min(POLL_INTERVAL_SECONDS, CAMERA_COOLDOWN_TIMEOUT_SECONDS - elapsed)
+        await asyncio.sleep(step)
+        elapsed += step
+
         current = await camera.get_temperature()
         log.info(f"[CAMERA_COOLDOWN] Current temperature: {current}C (target {target}C)")
         if abs(current - target) <= tolerance_deg_c:
             log.info(f"[CAMERA_COOLDOWN] Target reached ({current}C)")
             return ambient, target
-
-        step = min(POLL_INTERVAL_SECONDS, CAMERA_COOLDOWN_TIMEOUT_SECONDS - elapsed)
-        await asyncio.sleep(step)
-        elapsed += step
 
     raise RuntimeError(
         f"CAMERA_COOLDOWN: target {target}C not reached within {CAMERA_COOLDOWN_TIMEOUT_SECONDS}s "

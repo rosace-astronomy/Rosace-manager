@@ -44,6 +44,31 @@ class TestCoolScienceCameraToTarget:
         assert target == -5
         camera.set_temperature.assert_awaited_once_with(-5)
 
+    async def test_waits_before_first_temperature_read(self, monkeypatch):
+        """Regression: reading right after set_temperature() returned the
+        setpoint just written, not the sensor's real temperature."""
+        calls = []
+
+        async def _recording_sleep(_seconds):
+            calls.append("sleep")
+
+        monkeypatch.setattr(cooldown_mod.asyncio, "sleep", _recording_sleep)
+        focuser = AsyncMock()
+        focuser.get_temperature.return_value = 15.0
+        camera = AsyncMock()
+
+        async def _get_temperature():
+            calls.append("read")
+            return -5.0
+
+        camera.get_temperature.side_effect = _get_temperature
+
+        await cool_science_camera_to_target(
+            camera, focuser, cooling_capability_deg_c=-30, tolerance_deg_c=2,
+        )
+
+        assert calls == ["sleep", "read"]
+
     async def test_converges_after_a_few_polls_within_tolerance(self):
         focuser = AsyncMock()
         focuser.get_temperature.return_value = 15.0
