@@ -72,6 +72,53 @@ uvicorn rosace.main:app --host 0.0.0.0 --port 8000
 # http://localhost:8000/
 ```
 
+### Deferred (unattended) session start
+
+To start a session at a given time while nobody is at the PC, use a systemd
+transient timer (`at` is not installed on the observatory PC): one command to
+log in, one to schedule `POST /control/start`. Validated on the real setup
+2026-09-19.
+
+```bash
+# 1. Log in once (the session cookie stays valid for 14 days; kept in the home
+#    directory, not /tmp). Do it BEFORE the scheduled time: without a valid
+#    cookie the start is refused with a 401.
+curl -f -c ~/.rosace_cookie -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"<user>","password":"<password>"}'
+
+# 2. Schedule the start (local time of the PC)
+systemd-run --user --unit=rosace-start-2120 --on-calendar="2026-09-19 21:20:00" \
+  curl -f -b /home/observatoire/.rosace_cookie -X POST http://localhost:8000/control/start
+
+# Check it is scheduled (NEXT must show the wanted time), read the result, cancel
+systemctl --user list-timers rosace-start-2120.timer
+journalctl --user -u rosace-start-2120.service
+systemctl --user stop rosace-start-2120.timer
+```
+
+Pitfalls, all met in practice:
+
+- **Absolute cookie path, never `%h`.** `systemd-run` does not expand `%h` in
+  the command line: `curl` receives the literal `%h/.rosace_cookie`, and
+  `curl -b` silently ignores a missing file, so the request goes out without a
+  cookie and comes back 401. A read-only way to test the exact same path under
+  systemd: `systemd-run --user --wait --pipe --collect curl -s -o /dev/null -w "HTTP %{http_code}\n" -b /home/observatoire/.rosace_cookie http://localhost:8000/status` (expect `HTTP 200`).
+- **Use a new `--unit` name each time** (e.g. `rosace-start-MMDD-HHMM`).
+  Reusing one fails with `Unit ... was already loaded or has a fragment file`
+  even when no unit file exists anywhere; a failed run also leaves a failed
+  service behind (`systemctl --user reset-failed <unit>.service` clears it).
+- **`curl -f` does not catch a refused start.** `/control/start` answers HTTP
+  200 with `"Session déjà en cours"` when `session_active` is true, so the
+  journal must be read for `Session démarrée`, not just the exit code. Check
+  `GET /status` (`session_active: false`) beforehand; after a manual stop, wait
+  for CLOSE_SESSION to finish.
+- **The PC must not suspend** before the scheduled time — a transient timer
+  does not wake the machine (`--timer-property=WakeSystem=true` would, if the
+  hardware clock supports it; untested here).
+- The password ends up in the shell history; log in through the web GUI
+  instead if that matters.
+
 ## Running tests
 
 ```bash

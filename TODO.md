@@ -21,6 +21,15 @@ Claude peut le suggérer, jamais le faire lui-même.
       dec + backlash_offset_deg, ce qui dépasse 90° pour une cible de
       déclinaison > 88° (ex. Polaris, 89,3°) — comportement de la monture
       non vérifié, probablement un bug
+- [ ] Messages d'erreur "[ERROR] Failed to set temperature (1)" répétés
+      chaque minute dans le Journal (et rosace.log) après un arrêt de
+      session en plein refroidissement de la caméra : le driver Atik
+      continue de gérer la température alors que CLOSE_SESSION a déconnecté
+      la caméra (cause confirmée 2026-09-19, sans gravité : INIT_SESSION
+      reconnecte la caméra au démarrage suivant). Fonctionnel, mais pas
+      propre — pistes : remettre la consigne à l'ambiante avant la
+      déconnexion, ou attendre la fin du refroidissement (voir l'item
+      "Décider si CLOSE_SESSION doit attendre…" plus bas)
 
 ## Chantiers proposés
 
