@@ -87,6 +87,17 @@ INDI_drivers:
         # Absent (defaults true) on every real spectroscope device.
         obstructs_light: false
 
+# guiding_dark_acquisition only -- NOT home_sync_am3 (deliberately absent:
+# the INDI Telescope Simulator isn't an AM3, and syncing it risks
+# activating its own ALIGNMENT_SUBSYSTEM_ACTIVE model). Needed so
+# pointing_72ed's capture_guide_image() calls have a
+# sequencer_data["guiding_dark_acquisition"] casier to read -- on this
+# profile it always takes the "synthetic" origin (obstructs_light: false
+# above), so this never shoots a real dark, just writes the all-zero
+# placeholder once per session.
+sequencer_prefix:
+    - guiding_dark_acquisition
+
 PHD2_config:
     # host: 192.168.144.32
     host: 127.0.0.1 # localhost (but integers expected)

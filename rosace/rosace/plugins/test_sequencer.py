@@ -84,6 +84,10 @@ class TestSequencerPlugin:
         otherwise a reader of the observation's YAML can't know which SHARING
         sub-plugin was planned if the observation crashes before it runs."""
         monkeypatch.setattr(
+            "rosace.plugins.sequencer.hardware_sequencer_prefix",
+            lambda: [],
+        )
+        monkeypatch.setattr(
             "rosace.plugins.sequencer.load_pipelines",
             lambda program: ([], []),
         )
@@ -196,6 +200,10 @@ class TestSequencerPlugin:
         monkeypatch.setattr(
             "rosace.plugins.sequencer.step_progress.set_step",
             lambda obs_id, stage, step, steps: seen.append((obs_id, stage, step, steps)),
+        )
+        monkeypatch.setattr(
+            "rosace.plugins.sequencer.hardware_sequencer_prefix",
+            lambda: [],
         )
         monkeypatch.setattr(
             "rosace.plugins.sequencer.load_program_yaml",

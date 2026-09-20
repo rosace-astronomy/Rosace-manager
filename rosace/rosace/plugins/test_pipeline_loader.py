@@ -163,6 +163,18 @@ class TestHardwareSequencerPrefix:
 
 class TestLoadPipelines:
 
+    @pytest.fixture(autouse=True)
+    def no_hardware_prefix(self, monkeypatch):
+        """These tests resolve program YAMLs in isolation -- mock the
+        active hardware profile's own prefix to empty so they don't
+        implicitly depend on whatever the real default test config's
+        simulator profile happens to declare (hardware_indi_simu.yaml
+        gained its own sequencer_prefix, [guiding_dark_acquisition], on
+        2026-09-20). test_prepends_hardware_sequencer_prefix below
+        overrides this with its own explicit monkeypatch."""
+        from rosace.plugins import pipeline_loader
+        monkeypatch.setattr(pipeline_loader, "hardware_sequencer_prefix", lambda: [])
+
     def test_returns_tuple_of_two_lists(self):
         seq, red = load_pipelines("demo")
         assert isinstance(seq, list)
