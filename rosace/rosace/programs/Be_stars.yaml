@@ -10,7 +10,7 @@ sequencer:
   # e.g. guiding_dark_acquisition and a mount's own homing/sync) -- see its
   # sequencer_prefix, if it declares one.
   - pointing_72ed                # Telescope pointing
-  # - focus                      # Automatic focusing
+  - focus                        # Guiding-camera focus sharpness measurement (diagnostic only)
   - star_spectra_acquisition     # Science exposure acquisition (switches spectro to SKY)
   - stop_phd2_guiding            # Stops guiding (PHD2) -- unnecessary/lost during darks/bias
   - dark_acquisition             # Darks (session/library/camera) -- before the SKY reset below

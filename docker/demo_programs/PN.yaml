@@ -10,7 +10,6 @@ description: "Planetary nebulae (demo, no real hardware)"
 
 sequencer:
   - slew
-  - focus
   - star_spectra_acquisition
 
 reduction:

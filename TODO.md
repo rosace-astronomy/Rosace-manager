@@ -1,6 +1,6 @@
 # TODO
 
-_Dernière mise à jour : 2026-09-19_
+_Dernière mise à jour : 2026-09-20_
 
 Liste des tâches en attente du projet Rosace. Claude peut ajouter une
 ligne dès qu'une nouvelle idée apparaît en conversation. **Seul
@@ -15,14 +15,15 @@ Claude peut le suggérer, jamais le faire lui-même.
       vérifier les autres cibles brillantes du plan d'observation
       (constaté 2026-09-20)
 - [ ] **URGENT** — Recalibrer les temps de pose une fois le correctif
-      gain/offset de la caméra de guidage en place (2026-09-20) : elle
-      tournait avec gain=0/offset=0 (jamais configurés par Rosace,
+      gain/offset de la caméra de guidage en place (2026-09-20, commité) :
+      elle tournait avec gain=0/offset=0 (jamais configurés par Rosace,
       confirmé dans KStars), ce qui faussait sa sensibilité réelle ;
-      passer à gain=50/offset=20 (valeurs confirmées par l'utilisateur en
-      direct dans KStars) va changer significativement la réponse de la
+      passé à gain=50/offset=15 (offset affiné par un test de marge réel,
+      voir mémoire) — va changer significativement la réponse de la
       caméra — revoir `subplugin_params.guiding.exposure_seconds` (10s
       aujourd'hui) et tout temps de pose calibré empiriquement en
-      supposant l'ancienne sensibilité
+      supposant l'ancienne sensibilité. Nécessite un vrai test de nuit
+      (le test de jour à gain=50 sature instantanément, pas représentatif)
 - [ ] **URGENT** — Focuser qui ne répond pas bien en descente (commandé
       42100 → 42000 → 41500 → 41000, n'atteint pas les positions cibles,
       comme un point dur mécanique) ; remontée à 41500 semblait OK
@@ -30,18 +31,24 @@ Claude peut le suggérer, jamais le faire lui-même.
       manuelle du guidage) — reboot du Stellarmate fait dans la foulée
       pour voir si ça se résout ; à vérifier sur place (effort moteur,
       câblage, température) si ça persiste après le reboot
-- [ ] **PRIORITÉ FORTE** — Reconnexion PHD2 après un reconnect INDI de la
-      caméra de guidage (ne suit pas automatiquement aujourd'hui) : 3ᵉ
-      occurrence confirmée le 2026-09-19, a fait planter Sheliak, zêta Oph
-      et omi And d'affilée (PHD2 refuse de guider avec "all equipment must
-      be connected first" tant qu'il n'est pas reconnecté à la main) —
-      mêmes symptômes que les incidents du 2026-09-11 et du 2026-09-18
-      (voir mémoire projet USB). Cette fois, aucune trace de déconnexion/
-      reconnexion INDI visible dans le log de Rosace (contrairement au
-      18/09) — la cause côté caméra reste donc incertaine, pas forcément
-      un problème USB classique cette fois. Deux problèmes liés mais
-      distincts : (1) pourquoi PHD2 perd son équipement, (2) pourquoi il
-      ne récupère pas tout seul après
+- [ ] **PRIORITÉ FORTE — CODÉ (2026-09-20), à valider sur le ciel** —
+      Reconnexion PHD2 après un reconnect INDI de la caméra de guidage
+      (ne suivait pas automatiquement) : 3ᵉ occurrence confirmée le
+      2026-09-19, a fait planter Sheliak, zêta Oph et omi And d'affilée
+      (PHD2 refuse de guider avec "all equipment must be connected first"
+      tant qu'il n'est pas reconnecté à la main) — mêmes symptômes que les
+      incidents du 2026-09-11 et du 2026-09-18 (voir mémoire projet USB).
+      Cette fois, aucune trace de déconnexion/reconnexion INDI visible
+      dans le log de Rosace (contrairement au 18/09) — la cause côté
+      caméra reste donc incertaine, pas forcément un problème USB
+      classique cette fois : **point (1) toujours pas élucidé**. Point
+      (2) corrigé : `phd2_client.py` expose maintenant `get_connected()`/
+      `set_connected()`, et `start_guiding()` vérifie `get_connected()`
+      juste avant l'appel `guide` existant, avec reconnexion automatique
+      si besoin — pas de thread de surveillance ni de polling, juste une
+      vérification au point précis où ça compte. Testé (38/38 tests
+      `test_phd2_client.py`, y compris les 2 nouveaux cas dédiés), pas
+      encore vu se déclencher sur une vraie coupure en conditions réelles.
 - [ ] Aucune vérification que l'étoile est réellement dans la fente avant
       de poursuivre : `pointing_72ed` (résidu Phase 2) et
       `stop_phd2_guiding` (résidu post-science, `residual_arcsec`) ne font
@@ -54,39 +61,32 @@ Claude peut le suggérer, jamais le faire lui-même.
       qu'aucune alerte ne soit levée ; envisager un seuil sur le résidu
       (Phase 2 et/ou post-science) qui échoue ou au moins signale
       clairement l'observation
-- [ ] Mise au point de la caméra de guidage qui dérive en cours de nuit :
-      identifiée comme cause probable de la quasi-totalité des échecs de
-      la nuit du 2026-09-19 (timeout de plate-solve Phase 1 systématique
-      de 20h53 à 3h02 sur toutes les cibles restantes, indépendamment de
-      PHD2 — voir mémoire) ; effet de bord observé le 2026-09-20 : étoile
-      guide verrouillée sur un reflet au lieu d'une vraie étoile (zêta Tau
-      hors fente). Le focuser lui-même montre un défaut mécanique côté
-      guidage (point dur en descente, cf. item câble/port USB plus bas —
-      pas forcément lié). Pas de mise au point logicielle sur cette caméra
-      aujourd'hui — ajouter une étape qui vérifie la netteté (au moins en
-      début de nuit) et alerte avant de lancer une nuit entière
-      d'observations ratées. Ne pas réinventer la détection d'étoiles :
-      utiliser `photutils` (package affilié à Astropy, pas encore une
-      dépendance du projet aujourd'hui, seuls `astropy`/`numpy` le sont) —
-      `DAOStarFinder`/`IRAFStarFinder` détecte les sources en éliminant
-      déjà les pixels chauds/rayons cosmiques (forme non stellaire,
-      colonnes `sharpness`/`roundness`), puis ajustement de profil
-      (`photutils.psf` ou `astropy.modeling.Gaussian2D`) pour mesurer la
-      FWHM de plusieurs étoiles du champ (ou d'une zone) et en prendre la
-      médiane — approche standard (SExtractor/PixInsight/N.I.N.A. tous
-      pareils), pas une bidouille sur une seule étoile. `SEP`/`sep-pjw`
-      (plus rapide que photutils en pur Python) et `astroscrappy`
-      (LACosmic, rejet de rayons cosmiques) sont des compléments possibles
-      si besoin, pas indispensables au départ. Point important à ne pas
-      manquer à l'implémentation : ni `DAOStarFinder`/`IRAFStarFinder` ni
-      le HFD "à la main" n'excluent automatiquement les étoiles saturées
-      (attendu avec 10s de pose) — une étoile saturée fausse la FWHM/HFD
-      mesurée (profil aplati) ; il faut explicitement masquer les pixels
-      ≥ seuil de saturation de la caméra et/ou écarter du calcul toute
-      étoile dont la vignette contient un pixel saturé, avant d'agréger
-      sur plusieurs étoiles. Complémentaire à l'item
-      plus haut sur la vérification du résidu étoile-vs-fente : l'un
-      prévient le défaut, l'autre détecte le résultat
+- [ ] **CODÉ (2026-09-20), à valider sur le ciel** — Mise au point de la
+      caméra de guidage qui dérive en cours de nuit : identifiée comme
+      cause probable de la quasi-totalité des échecs de la nuit du
+      2026-09-19 (timeout de plate-solve Phase 1 systématique de 20h53 à
+      3h02, indépendamment de PHD2 — voir mémoire) ; effet de bord observé
+      le 2026-09-20 : étoile guide verrouillée sur un reflet au lieu d'une
+      vraie étoile (zêta Tau hors fente). Le focuser montre par ailleurs
+      un défaut mécanique côté guidage (point dur en descente, cf. item
+      câble/port USB plus bas — pas forcément lié).
+      Sub-plugin `focus` (`plugins/sequencer_plugins/focus/`) — remplace
+      l'ancien placeholder d'autofocus caméra science (jamais implémenté,
+      inutile pour l'Alpy 600/72ED, un seul `focus` gardé plutôt que
+      deux). Tourne à **chaque observation**, juste après `pointing_72ed`
+      dans `Be_stars.yaml` (mesure l'étoile guide réellement verrouillée
+      par PHD2 pour cette observation). Fenêtre centrale 400px, filtre les
+      pixels chauds/étoiles "en patate" (forme `photutils.DAOStarFinder`)
+      et les étoiles saturées, SNR mini 30 en dur, garde au max 25
+      étoiles, ajuste une gaussienne par étoile (`astropy.modeling`) et
+      logue en INFO la FWHM moyenne, le nombre d'étoiles retenues et le
+      SNR le plus faible. Diagnostic seulement pour l'instant (pas de
+      seuil de rejet/alerte, pas de casier, tout en dur dans le code —
+      un vrai autofocus reste un chantier futur séparé). Testé (9 tests
+      unitaires sur données synthétiques), pas encore vu tourner sur une
+      vraie nuit. Complémentaire à l'item plus haut sur la vérification
+      du résidu étoile-vs-fente : l'un prévient le défaut, l'autre détecte
+      le résultat.
 - [ ] Caméra grand champ (`pointing_camera`) : câble/port USB3 défectueux
       — diagnostic terminé (matériel confirmé), remplacement du câble/port
       encore à faire sur place. `journalctl -k` montre `usb
@@ -159,8 +159,10 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Distance à la Lune : filtre scheduler sur la distance de la cible à
       la Lune (seuil à définir, probablement selon la phase) — pas urgent
 - [ ] Journalisation temporelle des étapes (time-series DB type InfluxDB)
-- [ ] Supprimer le sub-plugin `focus` placeholder — différé jusqu'à la
-      fin de la période de test sur le ciel
+- [ ] ~~Supprimer le sub-plugin `focus` placeholder~~ — obsolète, à
+      retirer : le placeholder a été remplacé le 2026-09-20 par le
+      sub-plugin de mesure de netteté du guidage (voir l'item "CODÉ" plus
+      haut), pas juste supprimé
 - [ ] Pipeline de réduction natif Rosace — bloqué sur des exemples XML
       Demetra
 - [ ] Calcul du centre de la fente.

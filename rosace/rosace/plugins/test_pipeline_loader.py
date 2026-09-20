@@ -180,7 +180,7 @@ class TestLoadPipelines:
 
         names = [p.__class__.__name__ for p in seq]
         assert names[0] == "HomeSyncAm3Plugin"
-        assert names == ["HomeSyncAm3Plugin", "SlewPlugin", "FocusPlugin", "StarSpectraAcquisitionPlugin"]
+        assert names == ["HomeSyncAm3Plugin", "SlewPlugin", "StarSpectraAcquisitionPlugin"]
 
     def test_bright_stars_no_focus_full_reduction(self):
         """No focus (bright star, manual adjustment) — but the reduction
@@ -206,7 +206,7 @@ class TestLoadPipelines:
         seq, red = load_pipelines("demo")
         seq_names = [p.__class__.__name__ for p in seq]
         red_names = [p.__class__.__name__ for p in red]
-        assert seq_names == ["SlewPlugin", "FocusPlugin", "StarSpectraAcquisitionPlugin"]
+        assert seq_names == ["SlewPlugin", "StarSpectraAcquisitionPlugin"]
         assert red_names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
 
     def test_raises_on_unknown_program(self):
@@ -591,10 +591,12 @@ class TestSubpluginDisplayNames:
         assert not missing, f"Sub-plugin(s) missing a DISPLAY_NAME: {missing}"
 
     def test_internal_backend_declares_same_display_name_as_canonical(self):
-        """focus, slew and star_spectra_acquisition each have both a
-        canonical and an _internal.py file, representing one logical step --
-        the GUI must show the same label no matter which SEQUENCER_BACKEND
-        is active."""
+        """slew and star_spectra_acquisition each have both a canonical and
+        an _internal.py file, representing one logical step -- the GUI must
+        show the same label no matter which SEQUENCER_BACKEND is active.
+        (focus used to be a third one, back when it was a science-camera
+        autofocus placeholder -- it's now a guiding-camera focus-quality
+        measurement, indi-only, no _internal.py counterpart.)"""
         from rosace.plugins.pipeline_loader import (
             _SUBPLUGIN_FAMILY_DIRS,
             _module_display_name,
@@ -603,7 +605,7 @@ class TestSubpluginDisplayNames:
 
         sequencer_dir = _SUBPLUGIN_FAMILY_DIRS["sequencer"]
         mismatched = []
-        for name in ("focus", "slew", "star_spectra_acquisition"):
+        for name in ("slew", "star_spectra_acquisition"):
             canonical = _module_display_name(sequencer_dir, name)
             internal = _read_display_name_constant(sequencer_dir / name / f"{name}_internal.py")
             if canonical != internal:

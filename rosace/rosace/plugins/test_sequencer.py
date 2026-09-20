@@ -51,7 +51,11 @@ class TestSequencerPlugin:
 
     async def test_calls_subplugins_in_order(self, monkeypatch):
         """Arbitrary generic labels, not real sub-plugin names -- SequencerPlugin
-        must stay agnostic of which sub-plugins actually exist (see CLAUDE.md)."""
+        must stay agnostic of which sub-plugins actually exist (see CLAUDE.md).
+        obs.program_steps["sequencer"] is zipped against the pipeline instances
+        (see sequencer.py), so the real program YAML's step count must also be
+        mocked here -- otherwise this test would silently depend on however
+        many steps demo.yaml happens to declare today."""
         calls: list[str] = []
         fake_pipeline = [
             FakeSubPlugin("step_a", calls),
@@ -61,6 +65,12 @@ class TestSequencerPlugin:
         monkeypatch.setattr(
             "rosace.plugins.sequencer.load_pipelines",
             lambda program: (fake_pipeline, []),
+        )
+        monkeypatch.setattr(
+            "rosace.plugins.sequencer.load_program_yaml",
+            lambda program: {
+                "sequencer": ["step_a", "step_b", "step_c"], "reduction": [], "sharing": "blank_share",
+            },
         )
 
         obs = _make_obs()
@@ -83,7 +93,7 @@ class TestSequencerPlugin:
 
         assert result.program_file == "demo.yaml"
         assert result.program_steps == {
-            "sequencer": ["slew", "focus", "star_spectra_acquisition"],
+            "sequencer": ["slew", "star_spectra_acquisition"],
             "reduction": ["bias", "dark", "flat", "extract"],
             "sharing": "blank_share",
         }
@@ -116,6 +126,12 @@ class TestSequencerPlugin:
             "rosace.plugins.sequencer.load_pipelines",
             lambda program: (fake_pipeline, []),
         )
+        monkeypatch.setattr(
+            "rosace.plugins.sequencer.load_program_yaml",
+            lambda program: {
+                "sequencer": ["step_a", "step_b", "step_c"], "reduction": [], "sharing": "blank_share",
+            },
+        )
 
         obs = _make_obs()
         with pytest.raises(RuntimeError, match="step_b failed"):
@@ -142,7 +158,7 @@ class TestSequencerPlugin:
         result = await SequencerPlugin().run(obs)
 
         assert result.program_steps["sequencer"] == [
-            "home_sync_am3", "slew", "focus", "star_spectra_acquisition",
+            "home_sync_am3", "slew", "star_spectra_acquisition",
         ]
 
     async def test_hardware_prefix_step_names_align_with_executed_pipeline(self, monkeypatch):

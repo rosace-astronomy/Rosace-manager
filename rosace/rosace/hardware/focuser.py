@@ -6,8 +6,10 @@ Deliberately does not include an "autofocus" operation: the underlying
 INDI focuser (hardware_indi/devices/focuser.py::IndiFocuser) only exposes
 move_to()/get_position(), nothing autofocus-specific. Autofocus is an
 algorithm built from these plus camera feedback (a measure-move-remeasure
-loop) — that belongs in the focus SEQUENCER sub-plugin, not in the device
-layer itself.
+loop) — that would belong in its own SEQUENCER sub-plugin, not in the
+device layer itself. (The `focus` sub-plugin itself is unrelated to this
+focuser: it measures the guiding camera's own focus sharpness, not this
+telescope's science-side focuser -- see CLAUDE.md.)
 """
 
 from typing import Protocol

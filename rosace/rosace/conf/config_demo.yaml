@@ -59,7 +59,7 @@ session_ttl_hours: 336 # 336h = 14 days
 session_cookie_secure: false
 
 subplugin_params:
-  # Only demo.yaml's steps run under this config (slew/focus/
+  # Only demo.yaml's steps run under this config (slew/
   # star_spectra_acquisition, bias/dark/flat/extract) — the DARK/BIAS/
   # CALIB/FLAT acquisition sub-plugins are indi-only and never load here.
   exposure_time_mag0_seconds: 1.0
