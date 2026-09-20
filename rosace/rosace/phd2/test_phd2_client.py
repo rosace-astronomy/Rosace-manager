@@ -210,6 +210,41 @@ class TestStartGuiding:
         with pytest.raises(DeviceTimeoutError):
             await client.start_guiding()
 
+    async def test_reconnects_equipment_when_disconnected_before_guiding(self, server, client):
+        """Found 2026-09-19/20: PHD2 can lose its own equipment link
+        mid-session (independently of this client's TCP connection) --
+        every subsequent guide() then fails until reconnected. start_guiding()
+        checks and repairs this itself."""
+        async def on_guide(msg):
+            await server.push_event({"Event": "SettleDone", "Status": 0})
+            return 0
+
+        server.handlers["get_connected"] = False
+        server.handlers["guide"] = on_guide
+        await client.connect()
+        server.received.clear()  # drop connect()'s own set_connected(True) call
+
+        await client.start_guiding()  # must not raise
+
+        methods = [m["method"] for m in server.received]
+        assert methods == ["get_connected", "set_connected", "guide"]
+        assert server.received[1]["params"] == [True]
+
+    async def test_does_not_reconnect_equipment_when_already_connected(self, server, client):
+        async def on_guide(msg):
+            await server.push_event({"Event": "SettleDone", "Status": 0})
+            return 0
+
+        server.handlers["get_connected"] = True
+        server.handlers["guide"] = on_guide
+        await client.connect()
+        server.received.clear()
+
+        await client.start_guiding()
+
+        methods = [m["method"] for m in server.received]
+        assert methods == ["get_connected", "guide"]
+
 
 class TestStopCapture:
 
@@ -319,6 +354,23 @@ class TestLockPositionAndStar:
         await client.find_star(roi=[0, 0, 400, 400])
 
         assert server.received[-1]["params"] == [[0, 0, 400, 400]]
+
+
+class TestGetSetConnected:
+
+    async def test_get_connected_returns_bool(self, server, client):
+        server.handlers["get_connected"] = True
+        await client.connect()
+
+        assert await client.get_connected() is True
+
+    async def test_set_connected_sends_value(self, server, client):
+        await client.connect()
+
+        await client.set_connected(False)
+
+        assert server.received[-1]["method"] == "set_connected"
+        assert server.received[-1]["params"] == [False]
 
 
 class TestCalibration:

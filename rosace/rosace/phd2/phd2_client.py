@@ -94,7 +94,7 @@ class Phd2Client:
                 )
             await self._call("set_profile", [match["id"]])
 
-        await self._call("set_connected", [True])
+        await self.set_connected(True)
 
     async def disconnect(self) -> None:
         self._connected = False
@@ -231,9 +231,22 @@ class Phd2Client:
         tolerance and it's safe to start acquiring science images. Races
         SettleDone against CalibrationFailed so a failed calibration
         surfaces immediately instead of only as a generic timeout once
-        settling never happens."""
+        settling never happens.
+
+        Self-heals PHD2's own equipment link first: found 2026-09-19/20
+        that PHD2 can lose it mid-session (its own "Connect Equipment"
+        going false, independently of this client's TCP connection, which
+        stays up) — every subsequent guide() call then fails with "all
+        equipment must be connected first" until reconnected by hand. This
+        is the one place that failure actually bites, so it's the one
+        place that checks and repairs it -- no background polling, no
+        change needed anywhere else (pointing_72ed.py included)."""
         if recalibrate is None:
             recalibrate = self._do_calibration
+
+        if not await self.get_connected():
+            log.warning("[PHD2] Equipment link was down -- reconnecting before guiding")
+            await self.set_connected(True)
 
         settle_queue = self._subscribe("SettleDone")
         calibration_queue = self._subscribe("CalibrationFailed")
@@ -329,6 +342,16 @@ class Phd2Client:
         return tuple(result)
 
     # ── State / calibration ──────────────────────────────────────────
+
+    async def get_connected(self) -> bool:
+        """Whether PHD2's own "Connect Equipment" is currently engaged --
+        distinct from this client's own TCP connection (self._connected),
+        which can stay up while this goes false on PHD2's side. See
+        start_guiding()'s own docstring for why this exists."""
+        return await self._call("get_connected")
+
+    async def set_connected(self, connected: bool) -> None:
+        await self._call("set_connected", [connected])
 
     async def get_app_state(self) -> str:
         return await self._call("get_app_state")
