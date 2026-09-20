@@ -1,0 +1,58 @@
+  <Process Version="5" UseSubFolderForTemporaryFiles="1">
+    <ProcessId Version="3" Type="Alpy" Subtype="1" />
+    <ProcessParams Version="5.0" SaveStepResults="1" KeepRawAduLevel="0">
+      <ProcessStepParams Version="1.0">
+        <Global Version="1">
+          <Master HotPixelNbSigmaThreshold="7" />
+          <Geometry Version="1.0">
+            <Tilt Angle_dg="0" />
+            <Smile Y0="0" Radius="0" />
+          </Geometry>
+          <Extraction Version="5.0" Rejection="20" HasBackground="1" Save2dSpectrum="0" IsBin1="1">
+            <area_spectrum Version="1.0" Top="468" Bottom="437" />
+            <area_backgroundTop Version="1.0" Top="524" Bottom="481" />
+            <area_backgroundBottom Version="1.0" Top="426" Bottom="392" />
+          </Extraction>
+          <CalibrationX Version="4" Method="2">
+            <CalibX_Alpy Version="1.0">
+              <AutoDetection>
+                <CalibXAutoParams Version="6.0" Range_percent="99">
+                  <LinesDetectionParams Version="5" Emitivity="0" Method="1" SectionSize="80" BackgroundRate="0.5" ThresholdSigmaCoef="7" MinPixelInLine="3" NbLinesKept="80" NbCombinationChecked="120" SmoothWidth_pixel="0" />
+                  <LinesCorrelationParams Version="2.0" ResidualTolerance="1" MinIdentifiedLinesCount="7" DispersionPolynomialDegree="3" FilterPoorLines="1" />
+                </CalibXAutoParams>
+              </AutoDetection>
+              <ReferenceLines>
+                <LinesSet Version="2" Name="ALPY_ABSOLUTE_THRESHOLD" Instrument="Alpy">
+                  <Lines l1="4158.59" l2="4200.67" l3="4426" l4="4545.05" l5="4657.9" l6="4764.87" l7="5852.48" l8="6099.16" l9="6677.28" l10="6965.43" l11="7067.22" l12="7147.04" />
+                </LinesSet>
+              </ReferenceLines>
+            </CalibX_Alpy>
+          </CalibrationX>
+          <IntensityCorrectionParameters Version="2.0">
+            <ResponseCurve Filename="" UseNeutral="1" />
+          </IntensityCorrectionParameters>
+          <Scale Version="1.0" Active="1" Low="6650" High="6700" />
+          <Crop Version="1.0" Active="1" Low="3700" High="7500" />
+          <HotPixels Version="1.0" NbSigma="7" />
+        </Global>
+      </ProcessStepParams>
+      <Alpy600 Version="5.0" />
+    </ProcessParams>
+    <ProcessResults Version="6" HasCmos="0">
+      <Status Version="2">
+        <FirstUnknown>
+          <Status_Node Version="1.0" Type="Process" Id="0">
+            <Status_Node Version="1.0" Type="Step" Id="Master">
+              <Status_Leaf Version="1.0" Type="Basket" Id="Offset_1" Status="Unknown" Update_time="0" />
+            </Status_Node>
+          </Status_Node>
+        </FirstUnknown>
+      </Status>
+      <Alpy Version="1.0">
+        <CalibX_OrderResults Version="1.0" MinLambda="0" MaxLambda="0" RMS="0">
+          <PixelToLambdaCoefficients />
+          <ReferenceLines_Pixel />
+        </CalibX_OrderResults>
+      </Alpy>
+    </ProcessResults>
+  </Process>
