@@ -3,18 +3,31 @@ INDI_drivers:
 
     guiding_camera:
         role: camera
-        module: camera
-        # module: asi_camera
+        # module: camera
+        module: asi_camera
         module_dir: rosace.hardware_indi.devices
         indi_name : ZWO CCD ASI120MM Mini
         # indi_name : Atik 314L
-        class_name : IndiCamera
-        # class_name : IndiASICamera
+        # class_name : IndiCamera
+        class_name : IndiASICamera
         indi_client :
             indi_host : 192.168.144.50
             indi_port : 7624
         cooling : FALSE
         # cooling_capability : -20
+        # Pushed to CCD_CONTROLS's Gain/Offset elements once, right after
+        # connecting (see IndiCamera.connect(), IndiASICamera.set_gain()/
+        # set_offset()) -- found 2026-09-20 that nothing ever sent these
+        # before, so the camera silently ran on whatever it already had
+        # (0/0 in one real case, starving its dynamic range). Also found
+        # the same day: this ASI camera exposes gain/offset as CCD_CONTROLS
+        # elements, not the separate CCD_GAIN/CCD_OFFSET vectors the plain
+        # IndiCamera class assumes -- this is exactly why guiding_camera
+        # must use IndiASICamera (above), not IndiCamera, unlike the Atik
+        # 314L science camera (a CCD, no gain/offset properties at all).
+        # Values confirmed live in KStars by the user.
+        gain : 50
+        offset : 15
         # sampling_arcsec / exposure_seconds / slit_x / slit_y for this camera
         # now live in the active config.yaml's subplugin_params.guiding_camera
         # -- they describe the whole telescope+spectro+camera assembly (the
@@ -62,6 +75,13 @@ INDI_drivers:
             indi_host : 192.168.144.50
             indi_port : 7624
         cooling : false
+        # Same CMOS gain/offset story as guiding_camera above -- not
+        # currently connectable (USB3 cable/port fault, see TODO.md) so
+        # these values are untested on the real ASI224MC, reused from the
+        # ASI120MM Mini's own confirmed-live values pending a real check
+        # once this camera is repaired and actually used by a sub-plugin.
+        gain : 50
+        offset : 15
 
     focuser:
         role: focuser

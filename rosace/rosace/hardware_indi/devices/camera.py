@@ -50,8 +50,8 @@ class IndiCamera(IndiDevice):
                 indi_name='CCD Simulator',
                 pointing_seconds=30,
                 default_exp_time_sec=5,
-                default_gain=50,
-                default_offset=30,
+                gain=50,
+                offset=30,
                 adjust_center_x=400,
                 adjust_center_y=400,
                 adjust_roi_search_size=50,
@@ -83,28 +83,51 @@ class IndiCamera(IndiDevice):
         device_name = config['indi_name']
         indi_driver_name = config.get('indi_driver_name', None)
 
+        # Specific initialization -- set before connect() (below) can run,
+        # since a connect_on_create=True caller would otherwise trigger our
+        # own connect() override (which reads self.gain/self.offset) before
+        # these attributes exist.
+        self.default_exp_time_sec = config.get('default_exp_time_sec', 5)
+        self.exp_time_sec = self.default_exp_time_sec
+        self.gain = config.get('gain', 50)
+        self.offset = config.get('offset', 30)
+        # Gain/offset are only pushed to the real device (see connect()
+        # below) when the hardware YAML declares them explicitly -- a CCD
+        # (e.g. the Atik 314L) has no such properties at all and would
+        # error out on CCD_GAIN/CCD_OFFSET; only a CMOS camera's YAML entry
+        # is expected to set these keys. Falling back to 50/30 above is
+        # just this class's own default *value*, not an implicit opt-in.
+        self._push_gain_on_connect = 'gain' in config
+        self._push_offset_on_connect = 'offset' in config
+
         # device related intialization
         IndiDevice.__init__(self,
                             device_name=device_name,
                             indi_driver_name=indi_driver_name,
                             indi_client_config=config["indi_client"])
+        self.logger.debug(f"Indi camera, camera name is: {device_name}")
         if connect_on_create:
             self.connect()
 
-        # Specific initialization
-        self.default_exp_time_sec = config.get('default_exp_time_sec', 5)
-        self.default_gain = config.get('default_gain', 50)
-        self.default_offset = config.get('default_offset', 30)
-
-        self.logger.debug(f"Indi camera, camera name is: {device_name}")
-
-        # Default exposureTime, gain
-        self.exp_time_sec = self.default_exp_time_sec
-        self.gain = self.default_gain
-        self.offset = self.default_offset
-
         # Finished configuring
         self.logger.debug('Configured Indi Camera successfully')
+
+    def connect(self, connect_device=True):
+        """Same as IndiDevice.connect(), plus pushing gain/offset to the
+        real device right after -- once, at connection time, never
+        re-sent afterward. Only for a camera whose hardware YAML entry
+        explicitly declares gain/offset (see __init__) -- a CCD with no
+        such INDI properties (e.g. the Atik 314L) is never touched.
+        Found 2026-09-20: with nothing ever calling set_gain()/
+        set_offset(), a CMOS guiding camera was silently running on
+        whatever gain/offset it last happened to have (0/0 in one real
+        case), which starved its effective dynamic range."""
+        IndiDevice.connect(self, connect_device=connect_device)
+        if connect_device:
+            if self._push_gain_on_connect:
+                self.set_gain(self.gain)
+            if self._push_offset_on_connect:
+                self.set_offset(self.offset)
 
     @property
     def dynamic(self):

@@ -104,7 +104,7 @@ subplugin_params:
   # is read only by star_spectra_acquisition, but sits here too since it's
   # the third argument of the same compute_exposure_time_and_count() call
   # as the two above -- see acquisition_helpers.py.
-  exposure_time_mag0_seconds: 5.5
+  exposure_time_mag0_seconds: 1.0
   # 120s (not the 30s debug value used by the INDI-simulator config.yaml) --
   # the real ceiling for the 72ED's own science camera, above the simulator's
   # short debug value since this file is what actually drives real sessions.
