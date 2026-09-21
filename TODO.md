@@ -1,6 +1,6 @@
 # TODO
 
-_Dernière mise à jour : 2026-09-20_
+## Dernière mise à jour : 2026-09-21 07:29
 
 Liste des tâches en attente du projet Rosace. Claude peut ajouter une
 ligne dès qu'une nouvelle idée apparaît en conversation. **Seul
@@ -8,6 +8,19 @@ l'utilisateur supprime une ligne ou la marque `[x]` (terminée)** —
 Claude peut le suggérer, jamais le faire lui-même.
 
 ## Bugs / fiabilité matérielle
+
+- [ ] Réduire `SETTLE_AFTER_STOP_SECONDS` (`stop_phd2_guiding`, 5 s
+      aujourd'hui) si plusieurs nuits sans « USB reset » confirment la piste
+- [ ] Images de guidage vides (nuit 09-20 : ~16 échecs de suite après
+      23:05Z) : comprendre — nuages ? arbres ? Horizon relevé de +10° en
+      attendant
+- [ ] Scheduler : reporter une cible après un échec (retentée aussitôt 2–4 fois)
+- [ ] Détecter une image de guidage « sans fond » (niveau ≈ noir) et
+      mettre le scheduler en attente
+- [ ] Étape SEQUENCER en jaune (avertissement) quand une étape non
+      bloquante échoue — backend + GUI
+- [ ] Focus : 0/11 mesures réussies — élargir fenêtre/roundness, SNR ≈ 5–10
+- [ ] Mesurer l'horizon réel (est az 55–100°, nord az ~15°)
 
 - [ ] **URGENT** — bêta CMi saturé (spectre) : le temps de pose à mag0
       (`exposure_time_mag0_seconds`) est probablement trop long pour les
@@ -141,6 +154,23 @@ Claude peut le suggérer, jamais le faire lui-même.
       pour les observations suivantes tant que la série du jour est
       réutilisée — pas de nouvelle donnée attendue avant une nouvelle
       série fraîche)
+- [ ] **URGENT (requalifié 2026-09-21)** — Mesure de focus
+      (`plugins/sequencer_plugins/focus/`) : ne trouve pas assez d'étoiles
+      en conditions réelles (constaté 2026-09-20, nuit du 20-21/09).
+      Analyse de la nuit du 20-21/09 : "No usable star to measure focus
+      sharpness" sur les 11/11 observations où `pointing_72ed` a réussi
+      cette nuit-là (0% toute la nuit, contre 4/4 réussies lors d'un test
+      de jour à 15h32-15h34 le 20/09, FWHM ~2.9px) — probablement pas
+      qu'un seuil de SNR trop strict : `pointing_72ed` lui-même a fini par
+      échouer avec "no WCS solution" sur 27/31 observations de la nuit,
+      parfois avec jusqu'à 96 étoiles détectées par solve-field — un vrai
+      problème de mise au point (formes d'étoiles trop déformées pour être
+      appariées), pas un manque d'étoiles. Cohérent avec l'item focuser
+      "point dur mécanique" ci-dessus (2026-09-20) : la nuit a peut-être
+      démarré déjà mal focalisée, personne n'étant présent pour vérifier
+      visuellement avant une session différée. Vérifier d'abord
+      visuellement une image de guidage de cette nuit avant de toucher au
+      seuil de SNR. À regarder à tête reposée (pas pendant une session)
 - [ ] Messages d'erreur "[ERROR] Failed to set temperature (1)" répétés
       chaque minute dans le Journal (et rosace.log) après un arrêt de
       session en plein refroidissement de la caméra : le driver Atik

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 DISPLAY_NAME = "Stop guiding"
 
+import asyncio
 import logging
 
 from astropy.coordinates import SkyCoord
@@ -40,6 +41,15 @@ from ..acquisition_helpers import capture_guide_image
 from ..plate_solve_helper import solve_wcs, world_to_pixel
 
 log = logging.getLogger("spectro.subplugin.stop_phd2_guiding")
+
+# Pause between PHD2's stop and our own guide exposure on the same camera.
+# Found 2026-09-20: 3 of 11 post-science captures made right after
+# stop_capture() failed twice in the INDI ZWO driver, which then reset the
+# camera's USB port (all 3 events, nothing similar elsewhere) -- most likely
+# PHD2's last in-flight exposure still using the camera. PHD2's own guide
+# cycle is ~3.5s; 5s leaves a margin. An experiment: once a few nights show
+# no more resets, try shortening it (see TODO.md).
+SETTLE_AFTER_STOP_SECONDS = 5.0
 
 
 class StopPhd2GuidingPlugin(SubPlugin):
@@ -53,6 +63,25 @@ class StopPhd2GuidingPlugin(SubPlugin):
         await phd2.stop_capture()
         log.info("[STOP_PHD2_GUIDING] PHD2 guiding stopped")
 
+        await asyncio.sleep(SETTLE_AFTER_STOP_SECONDS)
+        log.info(
+            f"[STOP_PHD2_GUIDING] Waited {SETTLE_AFTER_STOP_SECONDS:.1f}s after PHD2 stop, "
+            f"taking the post-science guide image"
+        )
+
+        # The post-science check is a luxury: science is already on disk by now,
+        # so a camera/plate-solve failure here must not fail the observation
+        # (found 2026-09-20: 4 fully acquired observations were lost that way).
+        try:
+            await self._check_final_pointing(obs)
+        except Exception as e:
+            log.warning(
+                f"[STOP_PHD2_GUIDING] Post-science pointing check failed, observation "
+                f"continues ({type(e).__name__}: {e})"
+            )
+        return obs
+
+    async def _check_final_pointing(self, obs: Observation) -> None:
         target = obs.scheduler_data.get("target")
         queried_name = obs.scheduler_data.get("queried_name")
         guiding_params = SUBPLUGIN_PARAMS.get("guiding", {})
@@ -80,4 +109,3 @@ class StopPhd2GuidingPlugin(SubPlugin):
         obs.sequencer_data["stop_phd2_guiding"] = {
             "guide_image": image.name, "residual_arcsec": residual_arcsec,
         }
-        return obs

@@ -51,6 +51,7 @@ def mock_dependencies(monkeypatch):
     monkeypatch.setattr(stop_phd2_guiding, "capture_guide_image", capture_mock)
     monkeypatch.setattr(stop_phd2_guiding, "solve_wcs", solve_wcs_mock)
     monkeypatch.setattr(stop_phd2_guiding, "world_to_pixel", world_to_pixel_mock)
+    monkeypatch.setattr(stop_phd2_guiding, "SETTLE_AFTER_STOP_SECONDS", 0)
     monkeypatch.setattr(stop_phd2_guiding, "SUBPLUGIN_PARAMS", {
         "guiding": {
             "exposure_seconds": EXPOSURE_SECONDS, "sampling_arcsec": SAMPLING_ARCSEC,
@@ -98,6 +99,58 @@ class TestStopPhd2GuidingPlugin:
         assert call.kwargs["sampling_arcsec"] == SAMPLING_ARCSEC
         assert "record_error" not in call.kwargs
         assert "observation_id" not in call.kwargs
+
+    async def test_waits_between_phd2_stop_and_guide_capture(self, monkeypatch, mock_dependencies):
+        order = []
+        obs = _make_obs()
+        obs.hardware["phd2"].stop_capture.side_effect = lambda: order.append("stop")
+        monkeypatch.setattr(stop_phd2_guiding, "SETTLE_AFTER_STOP_SECONDS", 3.0)
+
+        async def fake_sleep(seconds):
+            order.append(("sleep", seconds))
+
+        async def fake_capture(*args, **kwargs):
+            order.append("capture")
+            return MagicMock()
+
+        monkeypatch.setattr(stop_phd2_guiding.asyncio, "sleep", fake_sleep)
+        mock_dependencies["capture_guide_image"].side_effect = fake_capture
+
+        await StopPhd2GuidingPlugin().execute(obs)
+
+        assert order == ["stop", ("sleep", 3.0), "capture"]
+
+    async def test_guide_capture_failure_does_not_fail_the_observation(self, mock_dependencies, caplog):
+        obs = _make_obs()
+        mock_dependencies["capture_guide_image"].side_effect = RuntimeError("Timeout while waiting for BLOB")
+
+        with caplog.at_level("WARNING"):
+            result = await StopPhd2GuidingPlugin().execute(obs)
+
+        assert result is obs
+        assert "stop_phd2_guiding" not in obs.sequencer_data
+        assert "Post-science pointing check failed" in caplog.text
+        assert "Timeout while waiting for BLOB" in caplog.text
+
+    async def test_plate_solve_failure_does_not_fail_the_observation(self, mock_dependencies):
+        obs = _make_obs()
+        mock_dependencies["solve_wcs"].side_effect = RuntimeError("no WCS solution")
+
+        result = await StopPhd2GuidingPlugin().execute(obs)
+
+        assert result is obs
+        assert "stop_phd2_guiding" not in obs.sequencer_data
+
+    async def test_phd2_stop_failure_still_fails_the_step(self, mock_dependencies):
+        # Only the post-science check is optional: if PHD2 itself can't be stopped, it
+        # keeps guiding into the next observation, which must not be silently ignored.
+        obs = _make_obs()
+        obs.hardware["phd2"].stop_capture.side_effect = RuntimeError("PHD2 unreachable")
+
+        with pytest.raises(RuntimeError, match="PHD2 unreachable"):
+            await StopPhd2GuidingPlugin().execute(obs)
+
+        mock_dependencies["capture_guide_image"].assert_not_awaited()
 
     async def test_sets_sequencer_data_with_guide_image_and_residual(self):
         obs = _make_obs()
