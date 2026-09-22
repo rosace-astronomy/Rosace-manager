@@ -9,10 +9,6 @@ Claude peut le suggérer, jamais le faire lui-même.
 
 ## Bugs / fiabilité matérielle
 
-- [ ] **URGENT** — Focus : étendre la zone de recherche d'étoiles pour la
-      mesure de focus à un carré centré sur le centre de l'image couvrant
-      70 % de sa surface (aujourd'hui fenêtre fixe de 400 px,
-      `WINDOW_SIZE` dans `focus.py`) (2026-09-21)
 - [ ] Réduire `SETTLE_AFTER_STOP_SECONDS` (`stop_phd2_guiding`, 5 s
       aujourd'hui) si plusieurs nuits sans « USB reset » confirment la piste
 - [ ] Scheduler : reporter une cible après un échec (retentée aussitôt 2–4 fois)
@@ -31,31 +27,7 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Mettre en place un calcul d'intensité du spectre "universel" (qui servira de mesure 
       pour la suite). Peut-être sortir la puissance totale (tous les pixels non noirs) et la valeur max. Idé de départ : faire une première passe avec un filtre médian pour virer les pixels chauds, détecter la zone de la fente, puis faire une détection de seuil du fond dimage à 3 sigmas. A creuser.
 - [ ] **CODÉ (2026-09-20), à valider sur le ciel** — Mise au point de la
-      caméra de guidage qui dérive en cours de nuit : identifiée comme
-      cause probable de la quasi-totalité des échecs de la nuit du
-      2026-09-19 (timeout de plate-solve Phase 1 systématique de 20h53 à
-      3h02, indépendamment de PHD2 — voir mémoire) ; effet de bord observé
-      le 2026-09-20 : étoile guide verrouillée sur un reflet au lieu d'une
-      vraie étoile (zêta Tau hors fente). Le focuser montre par ailleurs
-      un défaut mécanique côté guidage (point dur en descente, cf. item
-      câble/port USB plus bas — pas forcément lié).
-      Sub-plugin `focus` (`plugins/sequencer_plugins/focus/`) — remplace
-      l'ancien placeholder d'autofocus caméra science (jamais implémenté,
-      inutile pour l'Alpy 600/72ED, un seul `focus` gardé plutôt que
-      deux). Tourne à **chaque observation**, juste après `pointing_72ed`
-      dans `Be_stars.yaml` (mesure l'étoile guide réellement verrouillée
-      par PHD2 pour cette observation). Fenêtre centrale 400px, filtre les
-      pixels chauds/étoiles "en patate" (forme `photutils.DAOStarFinder`)
-      et les étoiles saturées, SNR mini 30 en dur, garde au max 25
-      étoiles, ajuste une gaussienne par étoile (`astropy.modeling`) et
-      logue en INFO la FWHM moyenne, le nombre d'étoiles retenues et le
-      SNR le plus faible. Diagnostic seulement pour l'instant (pas de
-      seuil de rejet/alerte, pas de casier, tout en dur dans le code —
-      un vrai autofocus reste un chantier futur séparé). Testé (9 tests
-      unitaires sur données synthétiques), pas encore vu tourner sur une
-      vraie nuit. Complémentaire à l'item plus haut sur la vérification
-      du résidu étoile-vs-fente : l'un prévient le défaut, l'autre détecte
-      le résultat.
+      caméra de guidage qui dérive en cours de nuit
 - [ ] Caméra grand champ (`pointing_camera`) : câble/port USB3 défectueux
       — diagnostic terminé (matériel confirmé), remplacement du câble/port
       encore à faire sur place. `journalctl -k` montre `usb
@@ -112,6 +84,7 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Revoir les bibliothèques "fragiles"/peu maintenues du projet — une ou
       deux repérées, probablement liées au chantier ASCOM/Windows (à
       confirmer/préciser lesquelles) (2026-09-20)
+- [ ] Pour le calcul de foc, on peut pondérer la valeur moyenne de fWHM retenue en appliquant un coef de pondération proportionnel à la distance au centre du carré (100% au centre, 30% dans les coins). Pour durcir la valeur retenue.
 
 ## Chantiers plus lointains
 
