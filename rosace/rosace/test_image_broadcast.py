@@ -47,6 +47,15 @@ class TestBroadcast:
         assert len(ws1.sent) == 1
         assert len(ws2.sent) == 1
 
+    async def test_includes_source_when_given(self):
+        broadcaster = WebSocketImageBroadcaster()
+        ws = FakeWebSocket()
+        broadcaster.add_client(ws)
+
+        await broadcaster.broadcast("guidage", source="focus")
+
+        assert ws.sent == [{"msg": IMAGE_NEW_MSG, "params": {"panel": "guidage", "source": "focus"}}]
+
     async def test_removes_client_when_send_fails(self):
         broadcaster = WebSocketImageBroadcaster()
         ws = FakeWebSocket(fail=True)

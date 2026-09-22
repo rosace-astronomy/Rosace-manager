@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pytest
@@ -130,6 +130,22 @@ class TestMeasureFwhm:
         assert n_stars == 3
 
 
+class TestCentralWindow:
+
+    def test_uses_smaller_dimension_on_a_landscape_frame(self):
+        # Matches the real guiding camera's own orientation (e.g. 960x1280).
+        data = np.zeros((960, 1280))
+        window = focus_mod._central_window(data, 0.8)
+        assert window.shape == (768, 768)
+
+    def test_uses_smaller_dimension_on_a_portrait_frame(self):
+        # No such camera in use today, but the window must still be based on
+        # the smaller side (width here), not hardcode "height".
+        data = np.zeros((800, 600))
+        window = focus_mod._central_window(data, 0.5)
+        assert window.shape == (300, 300)
+
+
 def _make_obs(obs_dir, *, camera=None, spectroscope=None):
     obs = Observation(
         id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234",
@@ -191,3 +207,59 @@ class TestFocusPlugin:
 
         assert result is obs
         assert any("No usable star" in r.message for r in caplog.records)
+
+    async def test_captures_with_image_to_gui_and_focus_source(self, tmp_path, monkeypatch, rng):
+        monkeypatch.setattr(focus_mod, "SUBPLUGIN_PARAMS", {"guiding": {"exposure_seconds": 10.0}})
+
+        data = _blank_frame(rng)
+        guide_path = tmp_path / "GUIDING_test.fits"
+        fits.PrimaryHDU(data.astype(np.uint16)).writeto(guide_path, overwrite=True)
+        capture_mock = AsyncMock(return_value=guide_path)
+        monkeypatch.setattr(focus_mod, "capture_guide_image", capture_mock)
+
+        obs = _make_obs(tmp_path)
+        await FocusPlugin().execute(obs)
+
+        capture_mock.assert_awaited_once_with(obs, 10.0, image_to_gui=True, image_source="focus")
+
+    async def test_reads_window_fraction_from_subplugin_params(self, tmp_path, monkeypatch, rng):
+        monkeypatch.setattr(
+            focus_mod, "SUBPLUGIN_PARAMS",
+            {"guiding": {"exposure_seconds": 10.0}, "focus": {"window_fraction": 0.5}},
+        )
+
+        data = _blank_frame(rng)
+        guide_path = tmp_path / "GUIDING_test.fits"
+        fits.PrimaryHDU(data.astype(np.uint16)).writeto(guide_path, overwrite=True)
+
+        async def fake_capture_guide_image(obs, exposure_time, **kwargs):
+            return guide_path
+
+        monkeypatch.setattr(focus_mod, "capture_guide_image", fake_capture_guide_image)
+        measure_mock = MagicMock(return_value=None)
+        monkeypatch.setattr(focus_mod, "measure_fwhm", measure_mock)
+
+        obs = _make_obs(tmp_path)
+        await FocusPlugin().execute(obs)
+
+        measure_mock.assert_called_once()
+        assert measure_mock.call_args.args[1] == 0.5
+
+    async def test_falls_back_to_default_window_fraction_when_unconfigured(self, tmp_path, monkeypatch, rng):
+        monkeypatch.setattr(focus_mod, "SUBPLUGIN_PARAMS", {"guiding": {"exposure_seconds": 10.0}})
+
+        data = _blank_frame(rng)
+        guide_path = tmp_path / "GUIDING_test.fits"
+        fits.PrimaryHDU(data.astype(np.uint16)).writeto(guide_path, overwrite=True)
+
+        async def fake_capture_guide_image(obs, exposure_time, **kwargs):
+            return guide_path
+
+        monkeypatch.setattr(focus_mod, "capture_guide_image", fake_capture_guide_image)
+        measure_mock = MagicMock(return_value=None)
+        monkeypatch.setattr(focus_mod, "measure_fwhm", measure_mock)
+
+        obs = _make_obs(tmp_path)
+        await FocusPlugin().execute(obs)
+
+        assert measure_mock.call_args.args[1] == focus_mod.DEFAULT_WINDOW_FRACTION

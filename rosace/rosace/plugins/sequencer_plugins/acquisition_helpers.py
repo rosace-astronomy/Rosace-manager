@@ -56,6 +56,7 @@ async def capture_guide_image(
     dec_deg: float | None = None,
     target_name: str | None = None,
     image_to_gui: bool = False,
+    image_source: str | None = None,
     subtract_dark: bool = True,
 ) -> Path:
     """Switches obs.hardware["spectroscope"] to LightSource.SKY, exposes
@@ -131,7 +132,16 @@ async def capture_guide_image(
     -- and notifies connected GUI clients over the WebSocket
     (image_broadcast.py), so the web GUI's "Guidage" panel can fetch and
     display it. False by default: an existing caller that doesn't pass it
-    keeps behaving exactly as before, no extra write, no notification."""
+    keeps behaving exactly as before, no extra write, no notification.
+
+    image_source, when given alongside image_to_gui=True, is forwarded to
+    ws_image_broadcaster.broadcast() so the GUI can tell which sub-plugin
+    produced this particular capture -- used today by focus.py (passing
+    "focus") so the Guidage panel only draws its reference search-window
+    rectangle on a focus.py image, never on pointing_72ed/stop_phd2_guiding/
+    home_sync_am3's own guide-image captures, which don't pass it. None by
+    default (omitted from the broadcast message entirely, see
+    image_broadcast.py) -- an existing caller keeps behaving as before."""
     if (ra_deg is None) != (dec_deg is None):
         raise ValueError("capture_guide_image: ra_deg and dec_deg must be given together, or both omitted")
     if filename is None:
@@ -170,7 +180,7 @@ async def capture_guide_image(
     if image_to_gui:
         GUI_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
         image.writeto(GUI_PREVIEW_DIR / "guidage.fits", overwrite=True)
-        await ws_image_broadcaster.broadcast("guidage")
+        await ws_image_broadcaster.broadcast("guidage", source=image_source)
     return path
 
 

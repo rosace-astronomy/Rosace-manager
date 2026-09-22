@@ -12,6 +12,13 @@ Each panel has one fixed-name preview file (config.py's GUI_PREVIEW_DIR, e.g.
 "guidage.fits"), overwritten by each new capture -- so the broadcast message only ever
 needs to say *which panel* changed, never a filename: the GUI already knows the fixed
 URL for each panel (GET /images/{panel}) and just re-fetches it.
+
+An optional `source` identifies which sub-plugin produced this particular capture (e.g.
+"focus") -- omitted from the message entirely when not given, so an existing caller
+that never passes it keeps sending exactly the same message as before. Used today so
+the GUI can tell a focus.py guide image apart from every other Guidage-panel capture
+(pointing_72ed, stop_phd2_guiding, home_sync_am3, none of which pass it) and only then
+draw focus's own reference search-window rectangle -- see fits_viewer.ts.
 """
 
 from __future__ import annotations
@@ -33,10 +40,13 @@ class WebSocketImageBroadcaster:
     def remove_client(self, websocket: WebSocket) -> None:
         self._clients.discard(websocket)
 
-    async def broadcast(self, panel: str) -> None:
+    async def broadcast(self, panel: str, source: str | None = None) -> None:
         if not self._clients:
             return
-        message = {"msg": IMAGE_NEW_MSG, "params": {"panel": panel}}
+        params: dict[str, str] = {"panel": panel}
+        if source is not None:
+            params["source"] = source
+        message = {"msg": IMAGE_NEW_MSG, "params": params}
         for websocket in list(self._clients):
             try:
                 await websocket.send_json(message)

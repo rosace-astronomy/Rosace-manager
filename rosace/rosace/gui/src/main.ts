@@ -165,6 +165,12 @@ const AUTH_LOGOUT_MSG = "auth.logout";	// fired locally (Application.fireGlobal)
 // just reads it directly whenever a step-progress row is built.
 let subplugin_display_names: Record<string, Record<string, string>> = {};
 
+// focus sub-plugin's own search-window fraction (GET /config/focus), fetched once at
+// startup -- same "static for the server's lifetime" reasoning as subplugin_display_names
+// above. null when unconfigured (or not yet fetched): the Guidage panel then never draws
+// the reference rectangle at all -- see loadPanelImage/fetchFocusConfig below.
+let focus_window_fraction: number | null = null;
+
 const STAGE_LABEL: Record<StageType, { text: string, icon: string }> = {	//allow only a value of stages in stage_label
     scheduler: { text: "SCHEDULER", icon: null },
     sequencer: { text: "SEQUENCER", icon: null },
@@ -323,8 +329,15 @@ class MainView extends VBox {
 				this.logMany( lines.map( l => `[${l.level}] ${l.text}` ) );
 			}
 			else if( ev.msg === IMAGE_NEW_MSG ) {
-				const { panel } = ev.params as { panel: string };
+				const { panel, source } = ev.params as { panel: string, source?: string };
 				this.loadPanelImage( panel );
+				if( panel === "guidage" ) {
+					// Only a focus.py capture gets the reference window rectangle --
+					// explicitly cleared (not just left alone) on any other source, so
+					// it doesn't linger over the next pointing_72ed/stop_phd2_guiding/
+					// home_sync_am3 image pushed to this same panel.
+					this.guidage_viewer.setReferenceWindowFraction( source === "focus" ? focus_window_fraction : null );
+				}
 			}
 		} );
 
@@ -344,6 +357,7 @@ class MainView extends VBox {
 			this.fetchObs();
 			this.loadDemoImages();
 			this.fetchDisplayNames();
+			this.fetchFocusConfig();
 		});
     }
 
@@ -362,6 +376,23 @@ class MainView extends VBox {
 	/**
 	 * Fetched once, at startup -- see subplugin_display_names' own comment above.
 	 */
+
+	/**
+	 * Fetched once, at startup -- see focus_window_fraction's own comment above.
+	 */
+
+	private async fetchFocusConfig() {
+		try {
+			const res = await fetch( `${API}/config/focus`, { signal: AbortSignal.timeout(5000) } );
+			if( res.ok ) {
+				const body = await res.json() as { window_fraction: number | null };
+				focus_window_fraction = body.window_fraction;
+			}
+		}
+		catch( e ) {
+			this.showError( `focus config fetch error`, e.toString() );
+		}
+	}
 
 	private async fetchDisplayNames() {
 		try {

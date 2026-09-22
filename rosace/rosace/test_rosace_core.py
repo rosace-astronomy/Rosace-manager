@@ -2096,6 +2096,28 @@ class TestApiEndpoints:
         assert set(body) == {"sequencer", "reduction"}
         assert isinstance(body["sequencer"], dict) and body["sequencer"]
 
+    def test_focus_config_endpoint_returns_none_when_unconfigured(self, monkeypatch):
+        """An installation whose config declares no subplugin_params.focus at all
+        must get None back, not some silently-assumed default -- explicitly
+        monkeypatched rather than relying on whatever real config.yaml this test
+        process happened to resolve (which may itself declare the key)."""
+        import rosace.main as main_mod
+        monkeypatch.setattr(main_mod, "SUBPLUGIN_PARAMS", {})
+
+        with self._client() as client:
+            res = client.get("/config/focus")
+        assert res.status_code == 200
+        assert res.json() == {"window_fraction": None}
+
+    def test_focus_config_endpoint_returns_configured_value(self, monkeypatch):
+        import rosace.main as main_mod
+        monkeypatch.setattr(main_mod, "SUBPLUGIN_PARAMS", {"focus": {"window_fraction": 0.8}})
+
+        with self._client() as client:
+            res = client.get("/config/focus")
+        assert res.status_code == 200
+        assert res.json() == {"window_fraction": 0.8}
+
     def test_ws_logs_streams_log_records(self, monkeypatch):
         """End-to-end: a spectro.* log record reaches a connected /ws client as log.create."""
         import rosace.log_broadcast as log_broadcast_mod

@@ -76,6 +76,13 @@ export class FitsViewer extends VBox {
 	private stretchMin = 0;
 	private stretchMax = 0;
 
+	// Static reference rectangle (e.g. the focus sub-plugin's search window),
+	// set from outside via setReferenceWindowFraction() -- null means "don't
+	// draw one". Unlike `selection` above, this is never drawn by the user
+	// and always a square centered on the image, so only a single fraction
+	// (of the image's own smaller dimension) is needed, not four coordinates.
+	private referenceWindowFraction: number | null = null;
+
 	constructor( props: FitsViewerProps = {} ) {
 		super( props );
 		this.addClass( "fits-viewer" );
@@ -138,6 +145,21 @@ export class FitsViewer extends VBox {
 		this.stretchMax = max;
 
 		this.offscreen = renderToOffscreenCanvas( this.image, min, max );
+		this.canvas.redraw();
+	}
+
+	/**
+	 * Sets (or clears, with null) a static square reference rectangle, centered
+	 * on the image, whose side is `fraction` times the image's own smaller
+	 * dimension -- e.g. the focus sub-plugin's own search window. Unlike the
+	 * "Zone" selection above, this is never drawn by the user and has nothing
+	 * to do with the visualization stretch; it's purely an informational
+	 * overlay, recomputed from the currently-loaded image's own dimensions on
+	 * every paint(), never stored in image-space coordinates.
+	 */
+
+	setReferenceWindowFraction( fraction: number | null ) {
+		this.referenceWindowFraction = fraction;
 		this.canvas.redraw();
 	}
 
@@ -434,6 +456,21 @@ export class FitsViewer extends VBox {
 			ctx.lineWidth = 1;
 			ctx.setLineDash( [ 5, 4 ] );
 			ctx.strokeRect( x0, y0, w, h );
+			ctx.restore();
+		}
+
+		if( this.referenceWindowFraction ) {
+			// Centered square, same computation as focus.py::_central_window() --
+			// symmetric, so image-space top-down vs. bottom-up doesn't matter here.
+			const side = Math.min( this.image.width, this.image.height ) * this.referenceWindowFraction;
+			const x0 = this.offsetX + ( this.image.width  - side ) / 2 * this.scale;
+			const y0 = this.offsetY + ( this.image.height - side ) / 2 * this.scale;
+			const s = side * this.scale;
+
+			ctx.save();
+			ctx.strokeStyle = "#00e5ff";
+			ctx.lineWidth = 1;
+			ctx.strokeRect( x0, y0, s, s );
 			ctx.restore();
 		}
 	}

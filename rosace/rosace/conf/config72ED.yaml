@@ -177,3 +177,11 @@ subplugin_params:
     count: 5
     # FLAT exposure time (seconds).
     exposure_time_seconds: 3.0
+
+  focus:
+    # Fraction of the guiding camera's smaller frame dimension used as the
+    # side of the central square search window (PSF quality away from the
+    # optical axis -- coma, field curvature -- isn't representative of
+    # focus). Instrument-specific, like backlash_offset_deg: how far
+    # off-axis the optics stay clean varies with the actual guiding optics.
+    window_fraction: 0.9

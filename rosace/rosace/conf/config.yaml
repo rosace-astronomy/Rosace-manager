@@ -182,3 +182,11 @@ subplugin_params:
     count: 5
     # FLAT exposure time (seconds).
     exposure_time_seconds: 3.0
+
+  focus:
+    # Fraction of the guiding camera's smaller frame dimension used as the
+    # side of the central square search window -- see config72ED.yaml's own
+    # copy of this key for the full explanation. No real optics to protect
+    # here (CCD Simulator), but declared anyway so the GUI's reference
+    # rectangle is visible when testing against hardware_indi_simu too.
+    window_fraction: 0.9
