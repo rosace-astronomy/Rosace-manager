@@ -23,5 +23,6 @@ reduction:
   - dark        # Dark subtraction
   - flat        # Flat-field correction
   - extract     # 1D spectrum extraction
+  - export_demetra  # Demetra .obs.srl + ZIP export, in parallel with the chain above
 
 sharing: blank_share

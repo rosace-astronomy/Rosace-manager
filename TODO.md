@@ -26,6 +26,23 @@ Claude peut le suggérer, jamais le faire lui-même.
       (constaté 2026-09-20)
 - [ ] Mettre en place un calcul d'intensité du spectre "universel" (qui servira de mesure 
       pour la suite). Peut-être sortir la puissance totale (tous les pixels non noirs) et la valeur max. Idé de départ : faire une première passe avec un filtre médian pour virer les pixels chauds, détecter la zone de la fente, puis faire une détection de seuil du fond dimage à 3 sigmas. A creuser.
+- [ ] Calcul d'intensité du spectre : reprendre la définition des puissances
+      (`spectrum_flux_helpers.py`). Le « max colonne » actuel
+      (`peak_intensity`) est le pic de la coupe transversale (rapport ~7
+      avec la puissance totale), pas le max de la somme de chaque colonne
+      le long de la dispersion (rapport ~480) : à redéfinir avec
+      l'utilisateur, puis régénérer le rapport PDF de la nuit du 23/24
+      (constaté 2026-09-24)
+- [ ] Rapport de flux : tracer la loi de pose en magnitude
+      (`exposure_time_mag0 × 10^(mag/2.5)`, plafond `max_exposure_time`)
+      à côté des mesures, sur les graphes en fonction de la magnitude
+      (aujourd'hui seule la pente ajustée est dessinée) (2026-09-24)
+- [ ] Réajuster `exposure_time_mag0_seconds` (1,0 s dans `config72ED.yaml`)
+      d'après les mesures : le pixel max de la trace n'atteint que 14-16 %
+      de la saturation pour la plupart des étoiles (nuit 23/24), et la pente
+      mesurée par seconde (−0,33 à −0,36 dex/mag) est plus plate que la loi
+      (−0,40). Vérifier aussi les poses imposées dans la base (HD 250240 :
+      180 s × 20, très en dessous de la tendance) (2026-09-24)
 - [ ] **CODÉ (2026-09-20), à valider sur le ciel** — Mise au point de la
       caméra de guidage qui dérive en cours de nuit
 - [ ] Caméra grand champ (`pointing_camera`) : câble/port USB3 défectueux
@@ -85,6 +102,14 @@ Claude peut le suggérer, jamais le faire lui-même.
       deux repérées, probablement liées au chantier ASCOM/Windows (à
       confirmer/préciser lesquelles) (2026-09-20)
 - [ ] Pour le calcul de foc, on peut pondérer la valeur moyenne de fWHM retenue en appliquant un coef de pondération proportionnel à la distance au centre du carré (100% au centre, 30% dans les coins). Pour durcir la valeur retenue.
+- [ ] Dans `focus`, logger la température du focuser en même temps que la
+      date/heure de la mesure de FWHM.
+- [ ] Mettre en base de données la valeur de focus (FWHM), avec la date, la
+      température, etc. — à terme, y ajouter aussi l'intensité du spectre
+      une fois la bonne méthode de calcul disponible.
+- [ ] Faire un plan dobservation Be plus sophstiqué, pour ne pas refaire toujours les mêmes obserations. Prendre en compte les obserations récentes et les demandes de BeSS.
+- [ ] Mettre en place un système qui permet de ne pas consommer les étoiles qui ont plantées. Peut-être calculer un facteur global de priorité
+- [ ] Aller chercher toutes les Be dans BeSS. Et regarder le priorités d'observation BeSS. 
 
 ## Chantiers plus lointains
 

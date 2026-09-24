@@ -26,6 +26,10 @@ dependencies = [
     "pyindi-client>=2.2",
     "astropy>=6.0",
     "numpy>=1.26",
+    # reduction_plugins/axes_helpers.py: connected-component labelling and
+    # image rotation (also pulled in transitively by astropy/photutils, but
+    # imported directly here).
+    "scipy>=1.11",
     # focus SEQUENCER sub-plugin: star detection/shape filtering for the
     # guiding-camera focus-quality measurement (DAOStarFinder).
     "photutils>=1.13",
