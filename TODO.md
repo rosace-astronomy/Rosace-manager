@@ -96,6 +96,24 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Pipeline de réduction natif Rosace — bloqué sur des exemples XML
       Demetra
 - [ ] Calcul du centre de la fente.
+- [ ] Centre de la fente : première mesure (2026-09-24, images de guidage de
+      Vega, `find_axes(invert=True)`) → Y = 617,2 à X = 613, contre
+      `slit_y: 614` dans `config72ED.yaml` (+3,2 px ≈ 5,6″ ; la valeur
+      actuelle tombe sur le bord bas de la fente, qui occupe les lignes
+      613,6 à 620,4). Fente inclinée de +1,53° (Y croît avec X) : le Y n'a
+      de sens qu'à la colonne `slit_x`. À FAIRE après la nuit (le serveur
+      lit `slit_y` au démarrage) : corriger `slit_y`, redémarrer, et voir si
+      le flux augmente. Vérifier aussi la discordance dans le commentaire de
+      `config72ED.yaml` (mesure KStars (614, 617) → (613, 616) annoncée, mais
+      la valeur écrite est 614). Rapport : `Rosace_centre_fente_2026-09-24.pdf`
+- [ ] Centre de la fente : la première image de guidage de la nuit
+      (`GUIDING_RAW_HOMESYNC_10s_20260924_193401.fits`) montre la fente à
+      l'œil mais `find_axes(invert=True)` au seuil 5σ ne la retient pas
+      (contraste par pixel trop faible, bruit du ciel ~400 ADU). Essayer un
+      seuil plus bas, ou un filtrage le long de la fente. Idéalement : une
+      image de guidage dans le noir avec la lampe de calibration allumée
+      (fente brillante sur fond noir, sans étoiles), à mesurer avec
+      `invert=False` (2026-09-24)
 - [ ] Responsive design sur la GUI web (X4) pour tablette et téléphone
       (2026-09-20)
 - [ ] Revoir les bibliothèques "fragiles"/peu maintenues du projet — une ou
@@ -126,3 +144,30 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Rendre le log DEBUG du fichier réellement actif (logger_spectro est
       encore en INFO : aucun DEBUG n'atteint rosace.log) — utile si le bug
       de réutilisation des darks revient
+- [ ] Noirs : le premier noir de 180 s de la nuit montre une trace de
+      spectre — `DARK_0deg_5x180s_20260924_193701-1.fits` (session
+      2026-09-24, première image de la série, faite juste après la pose
+      scientifique sur Vega). À creuser : rémanence du capteur après une
+      image brillante, ou source lumineuse pas encore en position DARK au
+      moment de la première pose (délai de commutation du spectroscope) ?
+      Comparer avec les images 2 à 5 de la même série (2026-09-24)
+- [ ] Taille des images : toutes les images de la soirée du 2026-09-24
+      font 1304 × 976, contre 1391 × 1039 la nuit du 23 (même binning 1×1) —
+      mêmes symptômes que l'incident du 3 septembre (sous-fenêtre
+      `CCD_FRAME` restée sur le pilote Atik). À vérifier dans le panneau INDI
+      de KStars ; le spectre est peut-être rogné sur les bords. Noirs, biais,
+      plats et calibrations ont la même taille : leur réutilisation reste
+      cohérente. Rapport : `Rosace_M57_2026-09-24.pdf` (2026-09-24)
+- [ ] Rectangle plus clair dans les images scientifiques du 2026-09-24
+      (environ colonnes 255-710, lignes 200-655 à l'écran, plus une ligne
+      verticale vers x ≈ 710). Écart de niveau médian intérieur − extérieur :
+      biais +1, noir 180 s +2, Vega (1 s) +3, Sheliak (23 s) +8, M57 (180 s)
+      +12, calibration +23 ADU : lié à la lumière reçue, croît avec la pose,
+      cause inconnue (lumière parasite par une ouverture rectangulaire ?).
+      À vérifier sur les nuits précédentes (2026-09-24)
+- [ ] Spectre de M57 (raies d'émission) : le seuil 5σ ne retient que 4 des
+      9 pics du spectre en une dimension. Vérifier image par image les pics
+      des colonnes 111, 363, 459 et 675 ; le pic de la colonne 1266 est un
+      rayon cosmique (un pixel, ligne 559). Envisager un filtre des pixels
+      isolés avant la somme des lignes — à ne faire qu'avec l'accord de
+      l'utilisateur, qui veut d'abord des mesures inchangées (2026-09-24)
