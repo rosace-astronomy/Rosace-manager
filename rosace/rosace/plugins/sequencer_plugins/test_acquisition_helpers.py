@@ -10,9 +10,11 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
+from rosace.errors import SessionFatalError
+from rosace.hardware.errors import DeviceCommandError
 from rosace.hardware.spectroscope import LightSource
 from rosace.models import Observation
-from rosace.plugins.sequencer_plugins import acquisition_helpers
+from rosace.plugins.sequencer_plugins import acquisition_helpers, guiding_chain_recovery
 from rosace.plugins.sequencer_plugins.acquisition_helpers import (
     build_fits_root_name,
     capture_guide_image,
@@ -226,6 +228,44 @@ class TestCaptureGuideImage:
         await capture_guide_image(obs, 0.3, image_to_gui=True, image_source="focus")
 
         broadcast_mock.assert_awaited_once_with("guidage", source="focus")
+
+
+class TestCaptureGuideImageRecovery:
+    """The guide exposure goes through run_with_guiding_recovery() -- the
+    recovery logic itself is tested in test_guiding_chain_recovery.py, these
+    only check it is actually wired in."""
+
+    @pytest.fixture(autouse=True)
+    def no_pause(self, monkeypatch):
+        monkeypatch.setattr(guiding_chain_recovery, "PAUSE_BETWEEN_ATTEMPTS_SECONDS", 0.0)
+
+    async def test_dead_camera_is_recovered_and_the_exposure_replayed(self, tmp_path):
+        obs = _make_obs(tmp_path)
+        camera = obs.hardware["guiding_camera"]
+        # failed exposure, failed probe, successful probe after the reconnect, replayed exposure
+        camera.expose.side_effect = [DeviceCommandError("dead"), DeviceCommandError("dead"), None, _fake_image()]
+
+        path = await capture_guide_image(obs, 0.3, filename="GUIDING_test.fits")
+
+        assert path.exists()
+        camera.connect.assert_awaited_once()
+
+    async def test_healthy_camera_failure_propagates_untouched(self, tmp_path):
+        obs = _make_obs(tmp_path)
+        camera = obs.hardware["guiding_camera"]
+        camera.expose.side_effect = [DeviceCommandError("no frame"), None]  # failure, then a good probe
+
+        with pytest.raises(DeviceCommandError, match="no frame"):
+            await capture_guide_image(obs, 0.3)
+
+        camera.disconnect.assert_not_awaited()
+
+    async def test_unrecoverable_camera_raises_session_fatal_error(self, tmp_path):
+        obs = _make_obs(tmp_path)
+        obs.hardware["guiding_camera"].expose.side_effect = DeviceCommandError("CAMERA_REMOVED")
+
+        with pytest.raises(SessionFatalError):
+            await capture_guide_image(obs, 0.3)
 
 
 class TestCaptureGuideImageDarkSubtraction:

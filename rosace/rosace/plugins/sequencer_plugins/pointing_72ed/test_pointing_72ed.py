@@ -14,7 +14,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from astropy.coordinates import SkyCoord
 
+from rosace.errors import SessionFatalError
+from rosace.hardware.errors import DeviceCommandError
 from rosace.models import Observation, Target
+from rosace.plugins.sequencer_plugins import guiding_chain_recovery
 from rosace.plugins.sequencer_plugins.pointing_72ed import pointing_72ed
 from rosace.plugins.sequencer_plugins.pointing_72ed.pointing_72ed import Pointing72edPlugin
 
@@ -110,6 +113,42 @@ class TestPointing72edPlugin:
         await Pointing72edPlugin().execute(obs)
 
         obs.hardware["phd2"].stop_capture.assert_awaited_once_with()
+
+    async def test_dead_guiding_camera_at_first_phd2_call_stops_the_session(self, monkeypatch):
+        """The 2026-09-24 night: PHD2's stop_capture failed because the guiding
+        camera was gone. The guiding-chain recovery finds it dead and cannot
+        revive it -> SessionFatalError, before anything moves."""
+        monkeypatch.setattr(guiding_chain_recovery, "PAUSE_BETWEEN_ATTEMPTS_SECONDS", 0.0)
+        obs = _make_obs()
+        obs.hardware["phd2"].stop_capture.side_effect = DeviceCommandError("stuck")
+        obs.hardware["guiding_camera"].expose.side_effect = DeviceCommandError("CAMERA_REMOVED")
+
+        with pytest.raises(SessionFatalError):
+            await Pointing72edPlugin().execute(obs)
+
+        obs.hardware["mount"].slew_to.assert_not_awaited()
+
+    async def test_phd2_failure_with_a_healthy_camera_stays_an_ordinary_error(self):
+        obs = _make_obs()
+        obs.hardware["phd2"].stop_capture.side_effect = DeviceCommandError("stuck")
+
+        with pytest.raises(DeviceCommandError, match="stuck"):
+            await Pointing72edPlugin().execute(obs)
+
+        obs.hardware["guiding_camera"].disconnect.assert_not_awaited()
+
+    async def test_second_start_guiding_is_not_guarded(self):
+        """A recovery between set_lock_position() and the second start_guiding()
+        would lose PHD2's lock offset, and replaying would guide on the wrong
+        position -- so that call keeps the ordinary-error behavior."""
+        obs = _make_obs()
+        obs.hardware["phd2"].start_guiding.side_effect = [None, DeviceCommandError("boom")]
+        obs.hardware["guiding_camera"].expose.side_effect = DeviceCommandError("CAMERA_REMOVED")
+
+        with pytest.raises(DeviceCommandError, match="boom"):
+            await Pointing72edPlugin().execute(obs)
+
+        obs.hardware["guiding_camera"].expose.assert_not_awaited()
 
     async def test_reads_back_mount_position_after_each_slew(self):
         """DEBUG-only diagnostic added 2026-08-30 -- only checks the mount is

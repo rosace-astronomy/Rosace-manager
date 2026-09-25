@@ -27,6 +27,7 @@ from ....config import SUBPLUGIN_PARAMS
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
 from ..acquisition_helpers import capture_guide_image
+from ..guiding_chain_recovery import run_with_guiding_recovery
 from ..plate_solve_helper import solve_result, solve_wcs, world_to_pixel
 
 log = logging.getLogger("spectro.subplugin.pointing_72ed")
@@ -76,9 +77,11 @@ class Pointing72edPlugin(SubPlugin):
 
         # Step 0: stop any leftover PHD2 guiding/looping from the previous observation
         # (nothing else stops it explicitly) -- otherwise its own corrections would
-        # fight the Phase 1 slews below.
+        # fight the Phase 1 slews below. Guarded (see guiding_chain_recovery.py): this is the
+        # first PHD2 call of every observation, so it is where a dead guiding camera shows up
+        # first -- 28 of the 30 failures of the 2026-09-24 night failed right here.
         log.info(f"[POINTING_72ED] Stopping any leftover PHD2 capture before pointing to {queried_name}")
-        await phd2.stop_capture()
+        await run_with_guiding_recovery(obs, phd2.stop_capture, "PHD2 stop_capture")
 
         # ── Phase 1: initial pointing + mount-precision correction ──
 
@@ -147,8 +150,12 @@ class Pointing72edPlugin(SubPlugin):
         # INFO since 2026-09-07 (user's own call): unlike the other diagnostics added the
         # same day, settle timing stays operationally useful beyond the investigation itself.
         log.info(f"[POINTING_72ED] Starting PHD2 guiding on {queried_name}")
+        # Guarded, unlike the second start_guiding() below: replaying this one after a camera
+        # recovery is safe (nothing depends on PHD2's previous state yet), whereas the second
+        # one follows set_lock_position() -- a recovery in between would lose that offset, and
+        # replaying would then guide on the wrong position without any error.
         settle_start = time.monotonic()
-        await phd2.start_guiding()
+        await run_with_guiding_recovery(obs, phd2.start_guiding, "PHD2 start_guiding")
         log.info(f"[POINTING_72ED] PHD2 first settle took {time.monotonic() - settle_start:.1f}s")
 
         # Step 10: lock position PHD2 chose (its own guide star, generally not the target itself).

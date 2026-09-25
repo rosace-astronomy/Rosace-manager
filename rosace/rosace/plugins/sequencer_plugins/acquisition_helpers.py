@@ -22,6 +22,7 @@ from ...config import GUI_PREVIEW_DIR
 from ...hardware.spectroscope import LightSource
 from ...image_broadcast import ws_image_broadcaster
 from ...models import Observation
+from .guiding_chain_recovery import run_with_guiding_recovery
 
 ALLOWED_IMAGE_TYPES = {"STAR", "BIAS", "DARK", "FLAT", "CALIB", "GUIDING", "GUIDINGDARK"}
 
@@ -157,7 +158,9 @@ async def capture_guide_image(
         dark_median = fits.getdata(Path(obs.obs_dir) / dark_info["median_dark_file"])
 
     await obs.hardware["spectroscope"].set_light_source(LightSource.SKY)
-    image = await obs.hardware["guiding_camera"].expose(exposure_time)
+    image = await run_with_guiding_recovery(
+        obs, lambda: obs.hardware["guiding_camera"].expose(exposure_time), "guide image exposure"
+    )
     if ra_deg is not None:
         image[0].header["RA"] = (ra_deg, "J2000, stamped by Rosace")
         image[0].header["DEC"] = (dec_deg, "J2000, stamped by Rosace")

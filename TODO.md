@@ -1,6 +1,6 @@
 # TODO
 
-## Dernière mise à jour : 2026-09-21 07:29
+## Dernière mise à jour : 2026-09-25 08:15
 
 Liste des tâches en attente du projet Rosace. Claude peut ajouter une
 ligne dès qu'une nouvelle idée apparaît en conversation. **Seul
@@ -87,6 +87,21 @@ Claude peut le suggérer, jamais le faire lui-même.
       propre — pistes : remettre la consigne à l'ambiante avant la
       déconnexion, ou attendre la fin du refroidissement (voir l'item
       "Décider si CLOSE_SESSION doit attendre…" plus bas)
+- [ ] Caméra de guidage ASI120MM Mini (nuit 2026-09-24/25 perdue) : signaler à
+      indilib/indi-3rdparty que `indi_asi_ccd` (indi-asi 2.4+z, libasi 1.37)
+      fait un `USBDEVFS_RESET` à chaque exposition, sans propriété `USB_RESET`
+      pour l'éviter (preuve : `strace` + journal noyau du Stellarmate)
+- [ ] Hypothèse à tester : le `USBDEVFS_RESET` par exposition de l'ASI120 (hub
+      USB2 `ASM1074` partagé avec l'Atik) perturberait le transfert de l'Atik
+      (2026-09-18, `Image size is unexpected`) et peut-être le lien PHD2
+      (2026-09-19/20) — comparer `journalctl -k` du Stellarmate avec les
+      incidents Atik/PHD2 ; brancher l'ASI120 sur un autre hub/port pour voir
+- [ ] Essayer une `BandWidth` USB plus basse sur l'ASI120 (`CCD_CONTROLS`,
+      40 aujourd'hui) — simple essai, effet sur les échecs de réouverture non prouvé
+- [ ] Évaluer une autre caméra de guidage (autre fabricant) et/ou un hub USB à
+      alimentation commandable par port (`uhubctl`) pour couper/rallumer la
+      caméra à distance — un changement de caméra invalide `sampling_arcsec`,
+      `slit_x`/`slit_y`, gain/offset, darks et réglages de `focus`
 
 ## Chantiers proposés
 

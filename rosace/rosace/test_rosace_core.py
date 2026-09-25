@@ -1550,6 +1550,51 @@ class TestSessionRunner:
         assert len(scheduler_calls) == 1   # never restarted
         assert main_mod.state.is_running is False
 
+    async def test_session_fatal_error_from_sequencer_stops_session_and_still_closes(self, monkeypatch):
+        """SessionFatalError (e.g. a guiding camera that cannot be recovered) raised
+        by any plugin stops the session like SchedulerFatalError does -- no restart
+        from SCHEDULER -- and CLOSE_SESSION still runs."""
+        import rosace.main as main_mod
+        from rosace.errors import SessionFatalError
+
+        scheduler_calls = []
+        close_called = []
+
+        class FakeInit:
+            async def run(self, ctx):
+                Path("/tmp/fake_session_dir_session_fatal").mkdir(parents=True, exist_ok=True)
+                ctx.session_dir = "/tmp/fake_session_dir_session_fatal"
+                return ctx
+
+        class FakeScheduler:
+            async def run(self, obs):
+                scheduler_calls.append(1)
+                obs.scheduler_data["target"] = Target(name="TestStar", ra=0.0, dec=0.0)
+                obs.scheduler_data["queried_name"] = "TestStar"
+                obs.scheduler_data["program"] = "test_program"
+                return obs
+
+        class FakeSequencer:
+            async def run(self, obs):
+                raise SessionFatalError("guiding camera unresponsive after 2 recovery attempts")
+
+        class FakeClose:
+            async def run(self, ctx):
+                close_called.append(True)
+                return ctx
+
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.INIT_SESSION, FakeInit())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SCHEDULER, FakeScheduler())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SEQUENCER, FakeSequencer())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.CLOSE_SESSION, FakeClose())
+
+        main_mod.state.is_running = True
+        await main_mod.session_runner()
+
+        assert len(scheduler_calls) == 1   # never restarted
+        assert main_mod.state.is_running is False
+        assert close_called == [True]
+
     async def test_close_session_error_still_reaches_idle(self, monkeypatch):
         """If CLOSE_SESSION raises an exception, the state still goes back to IDLE."""
         import rosace.main as main_mod

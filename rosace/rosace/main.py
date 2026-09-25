@@ -186,6 +186,7 @@ from .database import (
     db_set_stage_status, db_get_recent_observations,
 )
 from .demo_seed import seed_demo_data
+from .errors import SessionFatalError
 from .observation_file import create_observation_file, write_observation_file
 from .plugins  import plugins
 from .plugins.pipeline_loader import get_display_names
@@ -387,8 +388,8 @@ async def _session_runner_body():
 
                 write_observation_file(obs)
 
-            except SchedulerFatalError as e:
-                log.error(f"[SCHEDULER] Fatal error, stopping session: {e}")
+            except (SchedulerFatalError, SessionFatalError) as e:
+                log.error(f"[{stage.value.upper()}] Fatal error, stopping session: {e}")
                 if obs:
                     await db_set_stage_status(obs.id, stage, "error")
                     await db_set_error(obs.id, str(e))
