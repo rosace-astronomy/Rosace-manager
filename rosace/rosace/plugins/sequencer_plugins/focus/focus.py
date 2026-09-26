@@ -50,12 +50,14 @@ from __future__ import annotations
 DISPLAY_NAME = "Focus"
 
 import logging
+import warnings
 
 import numpy as np
 from astropy.io import fits
 from astropy.modeling import fitting, models
 from astropy.stats import sigma_clipped_stats
 from photutils.detection import DAOStarFinder
+from photutils.utils.exceptions import NoDetectionsWarning
 
 from ....config import SUBPLUGIN_PARAMS
 from ....models import Observation
@@ -126,6 +128,15 @@ def _fit_fwhm(window: np.ndarray, x: float, y: float) -> float | None:
     return 2.3548 * (sx + sy) / 2
 
 
+def _find_sources(finder: DAOStarFinder, image: np.ndarray):
+    """Runs the finder without photutils' NoDetectionsWarning: an empty result
+    (None) is handled by the caller, which logs it itself -- the warning would
+    only add an untimestamped duplicate on the console, outside Rosace's log."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", NoDetectionsWarning)
+        return finder(image)
+
+
 def measure_fwhm(
     data: np.ndarray, window_fraction: float = DEFAULT_WINDOW_FRACTION
 ) -> tuple[float, int, float] | None:
@@ -145,7 +156,7 @@ def measure_fwhm(
     # computed.
     if log.isEnabledFor(logging.DEBUG):
         raw_finder = DAOStarFinder(fwhm=FWHM_KERNEL_PX, threshold=DETECTION_SIGMA * std)
-        raw_sources = raw_finder(window - median)
+        raw_sources = _find_sources(raw_finder, window - median)
         log.debug(
             f"[FOCUS] {0 if raw_sources is None else len(raw_sources)} candidate(s) "
             f"above {DETECTION_SIGMA}-sigma threshold, before shape filtering"
@@ -157,7 +168,7 @@ def measure_fwhm(
         sharpness_range=SHARPNESS_RANGE,
         roundness_range=(-ROUNDNESS_MAX_ABS, ROUNDNESS_MAX_ABS),
     )
-    sources = finder(window - median)
+    sources = _find_sources(finder, window - median)
     if sources is None:
         log.debug("[FOCUS] 0 candidate(s) left after shape filtering (sharpness/roundness)")
         return None

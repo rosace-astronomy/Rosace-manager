@@ -28,9 +28,11 @@ def _make_obs(
     calib_files=None,
     target=None,
     queried_name=None,
+    obs_id="obs12345",
+    session_id="sess1234",
 ) -> Observation:
     obs = Observation(
-        id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234",
+        id=obs_id, created_at=datetime.now(timezone.utc), session_id=session_id,
         obs_dir=str(obs_dir) if obs_dir else None,
     )
     if star_files is not None:
@@ -165,12 +167,68 @@ class TestExportDemetraPlugin:
         assert process is not None
         assert process.find(".//area_spectrum").attrib["Top"] == "468"
 
+        assert casier["zip_file"] == f"{tmp_path.name}_sess1234_demetra.zip"
         with zipfile.ZipFile(zip_path) as zf:
             names = zf.namelist()
         expected_raw = [n for files in all_files.values() for n in files]
         assert names[0] == casier["srl_file"]
         assert set(names) == {casier["srl_file"], *expected_raw}
         assert all("/" not in n for n in names)
+
+    async def test_session_observations_share_one_zip_with_calibrations_stored_once(self, tmp_path):
+        calibrations = {"bias_files": ["bias_1.fits"], "dark_files": ["dark_1.fits"],
+                        "flat_files": ["flat_1.fits"], "calib_files": ["calib_1.fits"]}
+        for name in ["vega_1.fits", "vega_2.fits", "deneb_1.fits", *sum(calibrations.values(), [])]:
+            (tmp_path / name).touch()
+        first = _make_obs(obs_dir=tmp_path, obs_id="obs1", queried_name="Vega",
+                          star_files=["vega_1.fits", "vega_2.fits"], **calibrations)
+        second = _make_obs(obs_dir=tmp_path, obs_id="obs2", queried_name="Deneb",
+                           star_files=["deneb_1.fits"], **calibrations)
+
+        await ExportDemetraPlugin().execute(first)
+        await ExportDemetraPlugin().execute(second)
+
+        first_casier = first.reduction_data["export_demetra"]
+        second_casier = second.reduction_data["export_demetra"]
+        assert first_casier["zip_file"] == second_casier["zip_file"]
+        assert len(list(tmp_path.glob("*_demetra.zip"))) == 1
+        with zipfile.ZipFile(tmp_path / first_casier["zip_file"]) as zf:
+            names = zf.namelist()
+            assert zf.testzip() is None
+        assert len(names) == len(set(names))  # no member stored twice
+        assert set(names) == {
+            first_casier["srl_file"], second_casier["srl_file"],
+            "vega_1.fits", "vega_2.fits", "deneb_1.fits", *sum(calibrations.values(), []),
+        }
+
+    async def test_each_session_gets_its_own_zip(self, tmp_path):
+        for name in _FULL_FILES.values():
+            (tmp_path / name[0]).touch()
+        first = _make_obs(obs_dir=tmp_path, obs_id="obs1", session_id="sessA", queried_name="Vega", **_FULL_FILES)
+        second = _make_obs(obs_dir=tmp_path, obs_id="obs2", session_id="sessB", queried_name="Deneb", **_FULL_FILES)
+
+        await ExportDemetraPlugin().execute(first)
+        await ExportDemetraPlugin().execute(second)
+
+        zips = sorted(p.name for p in tmp_path.glob("*_demetra.zip"))
+        assert zips == [f"{tmp_path.name}_sessA_demetra.zip", f"{tmp_path.name}_sessB_demetra.zip"]
+        with zipfile.ZipFile(tmp_path / zips[1]) as zf:
+            assert "bias_1.fits" in zf.namelist()  # each session's ZIP is complete on its own
+
+    async def test_re_exported_observation_adds_no_duplicate(self, tmp_path, caplog):
+        for name in _FULL_FILES.values():
+            (tmp_path / name[0]).touch()
+        obs = _make_obs(obs_dir=tmp_path, queried_name="Vega", **_FULL_FILES)
+
+        await ExportDemetraPlugin().execute(obs)
+        with caplog.at_level("WARNING", logger="spectro.subplugin.export_demetra"):
+            await ExportDemetraPlugin().execute(obs)
+
+        with zipfile.ZipFile(tmp_path / obs.reduction_data["export_demetra"]["zip_file"]) as zf:
+            names = zf.namelist()
+            assert zf.testzip() is None
+        assert len(names) == len(set(names)) == 6  # .obs.srl + 5 FITS
+        assert "already in" in caplog.text
 
     async def test_process_block_matches_template(self, tmp_path):
         files = {k: [f"{k}.fits"] for k in ("star_files", "bias_files", "dark_files", "flat_files", "calib_files")}

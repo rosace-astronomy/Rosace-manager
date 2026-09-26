@@ -1,8 +1,17 @@
 """
 REDUCTION sub-plugin — Export to Demetra
-Exports the observation as a Demetra-compatible .obs.srl project file plus a
-ZIP bundle of every FITS file it references, for reduction with Shelyak's
-Demetra software.
+Exports the observation as a Demetra-compatible .obs.srl project file and
+adds it, with every FITS file it references, to the session's single ZIP
+bundle, for reduction with Shelyak's Demetra software.
+
+One ZIP per session (<session dir>_<session_id>_demetra.zip, in the session
+directory), created by the session's first observation and completed by each
+next one: a file already in the ZIP is not added again, so the calibration
+frames (DARK/BIAS/FLAT/CALIB), shared by every observation of a session, are
+stored once. Demetra reads a ZIP holding several observations (confirmed by
+the user). If the server is killed while a file is being added, the session's
+ZIP may be damaged; every FITS and .obs.srl file stays in the session
+directory, so it can be rebuilt from them.
 """
 
 from __future__ import annotations
@@ -113,7 +122,8 @@ def _export_base_name(obs: Observation) -> str:
 
 
 class ExportDemetraPlugin(SubPlugin):
-    """Exports the observation as a Demetra-compatible .obs.srl + ZIP."""
+    """Exports the observation as a Demetra-compatible .obs.srl and adds it,
+    with its FITS files, to the session's ZIP."""
 
     async def execute(self, obs: Observation) -> Observation:
         if "star_spectra_images" not in obs.sequencer_data:
@@ -278,14 +288,33 @@ class ExportDemetraPlugin(SubPlugin):
         total_raw = len(star_files) + len(bias_files) + len(dark_files) + len(flat_files) + len(calib_files)
         log.info(f"[EXPORT_DEMETRA] Wrote Demetra project file {srl_filename} — {total_raw} raw file(s) referenced")
 
-        zip_filename = f"{base_name}_demetra.zip"
+        # One ZIP per session, appended to by each observation (mode "a" creates it on the
+        # first one). File names carry their timestamp, so a name already in the ZIP is the
+        # same file -- typically a calibration frame shared with an earlier observation.
+        # No await in this block: two post-observation reductions, running on the same
+        # event loop, can never write to the ZIP at the same time.
+        zip_filename = f"{obs_dir.name}_{obs.session_id}_demetra.zip"
         zip_path = obs_dir / zip_filename
-        with zipfile.ZipFile(zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-            zf.write(srl_path, arcname=srl_filename)
-            for _, _, files in baskets:
-                for f in files:
-                    zf.write(obs_dir / f, arcname=f)
-        log.info(f"[EXPORT_DEMETRA] Built ZIP {zip_filename} — {1 + total_raw} member(s)")
+        added = already = 0
+        with zipfile.ZipFile(zip_path, mode="a", compression=zipfile.ZIP_DEFLATED) as zf:
+            present = set(zf.namelist())
+            if srl_filename in present:
+                # A ZIP member can't be rewritten in place: a re-exported observation keeps
+                # the project file it was first exported with.
+                log.warning(f"[EXPORT_DEMETRA] {srl_filename} already in {zip_filename}, not replaced")
+            members = [(srl_path, srl_filename)] + [(obs_dir / f, f) for _, _, files in baskets for f in files]
+            for path, name in members:
+                if name in present:
+                    already += 1
+                    continue
+                zf.write(path, arcname=name)
+                present.add(name)
+                added += 1
+            total_members = len(present)
+        log.info(
+            f"[EXPORT_DEMETRA] Added {added} file(s) to {zip_filename} ({already} already present), "
+            f"{total_members} member(s) in total"
+        )
 
         obs.reduction_data["export_demetra"] = {"srl_file": srl_filename, "zip_file": zip_filename}
         return obs
