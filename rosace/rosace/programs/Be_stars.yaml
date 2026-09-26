@@ -9,7 +9,9 @@ sequencer:
   # The active hardware profile may prepend its own steps here (equipment-specific,
   # e.g. guiding_dark_acquisition and a mount's own homing/sync) -- see its
   # sequencer_prefix, if it declares one.
-  - pointing_72ed                # Telescope pointing
+  - slew_72ed                    # Slew + plate-solve correction (mount in its final position)
+  - slit_xy                      # Slit position in the guiding field (lamp-lit image), never blocking
+  - pointing_72ed                # PHD2 guiding, star put on the slit in force
   - focus                        # Guiding-camera focus sharpness measurement (diagnostic only)
   - star_spectra_acquisition     # Science exposure acquisition (switches spectro to SKY)
   - stop_phd2_guiding            # Stops guiding (PHD2) -- unnecessary/lost during darks/bias

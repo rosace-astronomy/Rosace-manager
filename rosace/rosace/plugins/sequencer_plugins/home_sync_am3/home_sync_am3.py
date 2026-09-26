@@ -46,7 +46,7 @@ plate-solve that still fails for some other reason (clouds, too few
 stars...) even on a slew that genuinely completed.
 
 Runs once per session, before the first real pointing (placed before
-pointing_72ed in the program YAML, via the active hardware profile's own
+slew_72ed in the program YAML, via the active hardware profile's own
 sequencer_prefix) -- not before every observation, since re-homing is
 comparatively slow and the mount is expected to hold its position for the
 rest of a session that stays connected throughout. Needs

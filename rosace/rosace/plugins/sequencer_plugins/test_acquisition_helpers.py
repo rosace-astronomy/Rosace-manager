@@ -20,6 +20,8 @@ from rosace.plugins.sequencer_plugins.acquisition_helpers import (
     capture_guide_image,
     capture_science_image,
     compute_exposure_time_and_count,
+    publish_guide_preview,
+    slit_position,
 )
 
 FIXED_TS = "20260807_143022"
@@ -228,6 +230,86 @@ class TestCaptureGuideImage:
         await capture_guide_image(obs, 0.3, image_to_gui=True, image_source="focus")
 
         broadcast_mock.assert_awaited_once_with("guidage", source="focus")
+
+    async def test_switches_spectroscope_to_requested_light_source(self, tmp_path):
+        obs = _make_obs(tmp_path)
+        obs.hardware["guiding_camera"].expose.return_value = _fake_image()
+
+        await capture_guide_image(obs, 0.1, light_source=LightSource.CALIB, subtract_dark=False)
+
+        obs.hardware["spectroscope"].set_light_source.assert_awaited_once_with(LightSource.CALIB)
+
+    async def test_waits_light_settle_seconds_before_exposing(self, tmp_path, monkeypatch):
+        calls = []
+        obs = _make_obs(tmp_path)
+        obs.hardware["spectroscope"].set_light_source.side_effect = lambda *_: calls.append("light")
+
+        async def _sleep(seconds):
+            calls.append(("sleep", seconds))
+
+        async def _expose(_):
+            calls.append("expose")
+            return _fake_image()
+
+        monkeypatch.setattr(acquisition_helpers.asyncio, "sleep", _sleep)
+        obs.hardware["guiding_camera"].expose.side_effect = _expose
+
+        await capture_guide_image(obs, 0.1, light_settle_seconds=1.0)
+
+        assert calls == ["light", ("sleep", 1.0), "expose"]
+
+    async def test_no_settle_pause_by_default(self, tmp_path, monkeypatch):
+        sleep_mock = AsyncMock()
+        monkeypatch.setattr(acquisition_helpers.asyncio, "sleep", sleep_mock)
+        obs = _make_obs(tmp_path)
+        obs.hardware["guiding_camera"].expose.return_value = _fake_image()
+
+        await capture_guide_image(obs, 0.3)
+
+        sleep_mock.assert_not_awaited()
+
+
+class TestPublishGuidePreview:
+
+    async def test_copies_image_and_broadcasts_source_and_overlay(self, tmp_path, monkeypatch):
+        gui_dir = tmp_path / "gui_preview"
+        monkeypatch.setattr(acquisition_helpers, "GUI_PREVIEW_DIR", gui_dir)
+        broadcast_mock = AsyncMock()
+        monkeypatch.setattr(acquisition_helpers.ws_image_broadcaster, "broadcast", broadcast_mock)
+        image_path = tmp_path / "GUIDING_RAW_x.fits"
+        fits.PrimaryHDU(np.full(_DEFAULT_FRAME, 7, dtype=np.uint16)).writeto(image_path)
+        overlay = {"zone": [0, 0, 3, 3], "line": None, "point": None}
+
+        await publish_guide_preview(image_path, source="slit_xy", overlay=overlay)
+
+        assert (fits.getdata(gui_dir / "guidage.fits") == 7).all()
+        broadcast_mock.assert_awaited_once_with("guidage", source="slit_xy", overlay=overlay)
+
+
+class TestSlitPosition:
+
+    @pytest.fixture(autouse=True)
+    def _default_slit(self, monkeypatch):
+        monkeypatch.setattr(
+            acquisition_helpers, "SUBPLUGIN_PARAMS", {"guiding": {"slit_x": 613, "slit_y": 614}}
+        )
+
+    def test_default_when_slit_xy_did_not_run(self, tmp_path):
+        obs = _make_obs(tmp_path)
+
+        assert slit_position(obs) == (613.0, 614.0)
+
+    def test_calculated_position_when_slit_xy_succeeded(self, tmp_path):
+        obs = _make_obs(tmp_path)
+        obs.sequencer_data["slit_xy"] = {"status": "calculated", "slit_x": 613.0, "slit_y": 617.23, "image": "a.fits"}
+
+        assert slit_position(obs) == (613.0, 617.23)
+
+    def test_default_when_slit_xy_failed(self, tmp_path):
+        obs = _make_obs(tmp_path)
+        obs.sequencer_data["slit_xy"] = {"status": "default", "image": None}
+
+        assert slit_position(obs) == (613.0, 614.0)
 
 
 class TestCaptureGuideImageRecovery:

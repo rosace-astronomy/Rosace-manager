@@ -56,6 +56,18 @@ class TestBroadcast:
 
         assert ws.sent == [{"msg": IMAGE_NEW_MSG, "params": {"panel": "guidage", "source": "focus"}}]
 
+    async def test_includes_overlay_when_given(self):
+        broadcaster = WebSocketImageBroadcaster()
+        ws = FakeWebSocket()
+        broadcaster.add_client(ws)
+        overlay = {"zone": [313.0, 584.0, 913.0, 644.0], "line": None, "point": None}
+
+        await broadcaster.broadcast("guidage", source="slit_xy", overlay=overlay)
+
+        assert ws.sent == [
+            {"msg": IMAGE_NEW_MSG, "params": {"panel": "guidage", "source": "slit_xy", "overlay": overlay}}
+        ]
+
     async def test_removes_client_when_send_fails(self):
         broadcaster = WebSocketImageBroadcaster()
         ws = FakeWebSocket(fail=True)

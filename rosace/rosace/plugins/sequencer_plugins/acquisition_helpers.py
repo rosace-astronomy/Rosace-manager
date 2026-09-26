@@ -9,8 +9,10 @@ out logic that would otherwise be duplicated across sub-plugins.
 
 from __future__ import annotations
 
+import asyncio
 import math
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -18,7 +20,7 @@ from typing import Any
 import numpy as np
 from astropy.io import fits
 
-from ...config import GUI_PREVIEW_DIR
+from ...config import GUI_PREVIEW_DIR, SUBPLUGIN_PARAMS
 from ...hardware.spectroscope import LightSource
 from ...image_broadcast import ws_image_broadcaster
 from ...models import Observation
@@ -59,8 +61,11 @@ async def capture_guide_image(
     image_to_gui: bool = False,
     image_source: str | None = None,
     subtract_dark: bool = True,
+    light_source: LightSource = LightSource.SKY,
+    light_settle_seconds: float = 0.0,
 ) -> Path:
-    """Switches obs.hardware["spectroscope"] to LightSource.SKY, exposes
+    """Switches obs.hardware["spectroscope"] to light_source (SKY unless told
+    otherwise), waits light_settle_seconds, exposes
     obs.hardware["guiding_camera"] for exposure_time seconds, and writes the
     untouched raw exposure to disk. Returns the written path -- of the
     dark-corrected copy described below when subtract_dark=True (the
@@ -86,7 +91,7 @@ async def capture_guide_image(
     Raises RuntimeError if guiding_dark_acquisition hasn't run yet for this
     session -- no silent fallback that skips the correction, since an
     uncorrected image is exactly the failure mode this mechanism exists to
-    prevent. Every actual caller today (pointing_72ed.py,
+    prevent. Every plate-solving caller (slew_72ed.py, pointing_72ed.py,
     stop_phd2_guiding.py) needs the corrected copy for plate-solving,
     hence the True default -- an existing caller that doesn't pass this
     parameter keeps getting exactly that.
@@ -135,11 +140,19 @@ async def capture_guide_image(
     display it. False by default: an existing caller that doesn't pass it
     keeps behaving exactly as before, no extra write, no notification.
 
+    light_source defaults to LightSource.SKY, the only correct value for a
+    real guide image -- a caller never needs to pass it for that. Only
+    slit_xy.py passes another one (CALIB/FLAT: the slit seen against a
+    lamp-lit background), together with light_settle_seconds, a pause
+    between the spectroscope command and the start of the exposure, so the
+    lamp is really on before a short exposure starts. 0 by default: every
+    other caller keeps behaving exactly as before.
+
     image_source, when given alongside image_to_gui=True, is forwarded to
     ws_image_broadcaster.broadcast() so the GUI can tell which sub-plugin
     produced this particular capture -- used today by focus.py (passing
     "focus") so the Guidage panel only draws its reference search-window
-    rectangle on a focus.py image, never on pointing_72ed/stop_phd2_guiding/
+    rectangle on a focus.py image, never on slew_72ed/pointing_72ed/stop_phd2_guiding/
     home_sync_am3's own guide-image captures, which don't pass it. None by
     default (omitted from the broadcast message entirely, see
     image_broadcast.py) -- an existing caller keeps behaving as before."""
@@ -157,7 +170,9 @@ async def capture_guide_image(
             )
         dark_median = fits.getdata(Path(obs.obs_dir) / dark_info["median_dark_file"])
 
-    await obs.hardware["spectroscope"].set_light_source(LightSource.SKY)
+    await obs.hardware["spectroscope"].set_light_source(light_source)
+    if light_settle_seconds > 0:
+        await asyncio.sleep(light_settle_seconds)
     image = await run_with_guiding_recovery(
         obs, lambda: obs.hardware["guiding_camera"].expose(exposure_time), "guide image exposure"
     )
@@ -185,6 +200,38 @@ async def capture_guide_image(
         image.writeto(GUI_PREVIEW_DIR / "guidage.fits", overwrite=True)
         await ws_image_broadcaster.broadcast("guidage", source=image_source)
     return path
+
+
+async def publish_guide_preview(
+    image_path: Path, source: str | None = None, overlay: dict | None = None
+) -> None:
+    """Shows an already-written guide image on the GUI's "Guidage" panel:
+    copies it to GUI_PREVIEW_DIR/"guidage.fits" and notifies connected
+    clients, forwarding source and overlay (see image_broadcast.py).
+
+    For a caller that can only describe what to draw on the image once it
+    has analysed it -- slit_xy.py, which captures with image_to_gui=False,
+    measures the slit, then publishes the image with its overlay."""
+    GUI_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(image_path, GUI_PREVIEW_DIR / "guidage.fits")
+    await ws_image_broadcaster.broadcast("guidage", source=source, overlay=overlay)
+
+
+def slit_position(obs: Observation) -> tuple[float, float]:
+    """Slit position (x, y) in the guiding camera's field to use for this
+    observation, in Rosace's pixel convention (0-indexed, Y up).
+
+    The position calculated by slit_xy.py when it succeeded for this
+    observation (sequencer_data["slit_xy"]["status"] == "calculated"),
+    otherwise the default subplugin_params.guiding.slit_x/slit_y -- also
+    when the program doesn't run slit_xy at all. The one place that decides
+    which slit position is in force, read by pointing_72ed.py and
+    stop_phd2_guiding.py."""
+    measured = obs.sequencer_data.get("slit_xy")
+    if measured and measured.get("status") == "calculated":
+        return float(measured["slit_x"]), float(measured["slit_y"])
+    guiding_params = SUBPLUGIN_PARAMS.get("guiding", {})
+    return float(guiding_params["slit_x"]), float(guiding_params["slit_y"])
 
 
 async def capture_science_image(

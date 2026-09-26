@@ -17,8 +17,13 @@ An optional `source` identifies which sub-plugin produced this particular captur
 "focus") -- omitted from the message entirely when not given, so an existing caller
 that never passes it keeps sending exactly the same message as before. Used today so
 the GUI can tell a focus.py guide image apart from every other Guidage-panel capture
-(pointing_72ed, stop_phd2_guiding, home_sync_am3, none of which pass it) and only then
+(slew_72ed, pointing_72ed, stop_phd2_guiding, home_sync_am3, none of which pass it) and only then
 draw focus's own reference search-window rectangle -- see fits_viewer.ts.
+
+An optional `overlay` (a small JSON-serialisable dict) carries per-image geometry the GUI
+draws on top of the image -- used today by slit_xy.py (search zone, measured slit line,
+retained slit point, in Rosace's pixel convention). Omitted from the message when not
+given, same as `source`.
 """
 
 from __future__ import annotations
@@ -40,12 +45,14 @@ class WebSocketImageBroadcaster:
     def remove_client(self, websocket: WebSocket) -> None:
         self._clients.discard(websocket)
 
-    async def broadcast(self, panel: str, source: str | None = None) -> None:
+    async def broadcast(self, panel: str, source: str | None = None, overlay: dict | None = None) -> None:
         if not self._clients:
             return
-        params: dict[str, str] = {"panel": panel}
+        params: dict = {"panel": panel}
         if source is not None:
             params["source"] = source
+        if overlay is not None:
+            params["overlay"] = overlay
         message = {"msg": IMAGE_NEW_MSG, "params": params}
         for websocket in list(self._clients):
             try:

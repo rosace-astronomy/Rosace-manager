@@ -1,6 +1,6 @@
 # ── Demo-only override of programs/Be_stars.yaml ────────────────────────────
 # The real Be_stars.yaml (rosace/programs/) drives the actual 72ED pipeline
-# (pointing_72ed, real hardware) — unusable with this image's
+# (slew_72ed/slit_xy/pointing_72ed, real hardware) — unusable with this image's
 # sequencer_backend=internal. seed_demo_data.py seeds a "Be_stars" targets.db
 # program (for a realistic catalogue), so a program YAML of that exact name
 # must exist and must be backend-agnostic. This file is copied over the real

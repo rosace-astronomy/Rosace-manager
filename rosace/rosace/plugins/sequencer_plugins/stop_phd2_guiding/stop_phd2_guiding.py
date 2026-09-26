@@ -37,7 +37,7 @@ from astropy.coordinates import SkyCoord
 from ....config import SUBPLUGIN_PARAMS
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
-from ..acquisition_helpers import capture_guide_image
+from ..acquisition_helpers import capture_guide_image, slit_position
 from ..plate_solve_helper import solve_wcs, world_to_pixel
 
 log = logging.getLogger("spectro.subplugin.stop_phd2_guiding")
@@ -87,8 +87,8 @@ class StopPhd2GuidingPlugin(SubPlugin):
         guiding_params = SUBPLUGIN_PARAMS.get("guiding", {})
         exposure_seconds = guiding_params["exposure_seconds"]
         sampling_arcsec = guiding_params.get("sampling_arcsec")
-        slit_x = guiding_params["slit_x"]
-        slit_y = guiding_params["slit_y"]
+        # The slit in force for this observation: slit_xy's calculated position, or the default
+        slit_x, slit_y = slit_position(obs)
         target_coord = SkyCoord(ra=target.ra, dec=target.dec, unit="deg", frame="icrs")
 
         image = await capture_guide_image(
@@ -102,7 +102,7 @@ class StopPhd2GuidingPlugin(SubPlugin):
         residual_arcsec = (dx**2 + dy**2) ** 0.5 * (sampling_arcsec or 0.0)
         log.info(
             f"[STOP_PHD2_GUIDING] Post-science residual for {queried_name} ({image.name}): "
-            f"target at ({x:.1f}, {y:.1f})px, slit at ({slit_x:.1f}, {slit_y:.1f})px, "
+            f"target at ({x:.1f}, {y:.1f})px, slit at ({slit_x:.2f}, {slit_y:.2f})px, "
             f"dx={dx:.1f}px dy={dy:.1f}px ({residual_arcsec:.1f}\")"
         )
 

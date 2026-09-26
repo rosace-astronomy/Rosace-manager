@@ -117,8 +117,9 @@ subplugin_params:
   # proper stack (cosmic-ray rejection, etc.) instead of a single frame.
   min_exposure_count: 3
 
-  # Also shared at the root -- read by pointing_72ed, stop_phd2_guiding
-  # (all four) and guiding_dark_acquisition (exposure_seconds only). Grouped
+  # Also shared at the root -- read by slew_72ed, pointing_72ed,
+  # stop_phd2_guiding (all four), slit_xy (slit_x/slit_y, the default it
+  # measures around) and guiding_dark_acquisition (exposure_seconds only). Grouped
   # under one key since they describe a single coherent concept: the optical
   # alignment/plate-scale of the whole telescope+spectro+guiding-camera
   # assembly, not a property of the guiding camera device in isolation --
@@ -147,7 +148,7 @@ subplugin_params:
     min_target_altitude_deg: 10
     # Hour-angle window (degrees, each side of the meridian) inside which a
     # target is not offered, skipped without being consumed. Meant for a
-    # German-equatorial mount: pointing_72ed's two-step slew starts
+    # German-equatorial mount: slew_72ed's two-step slew starts
     # backlash_offset_deg (hardware YAML) of RA before the exact position, so a
     # target just past the meridian is approached from before it and reached
     # after it -> pier flip. Set at least backlash_offset_deg + 1 (margin for the

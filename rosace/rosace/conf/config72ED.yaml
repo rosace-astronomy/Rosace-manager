@@ -118,8 +118,9 @@ subplugin_params:
   # proper stack (cosmic-ray rejection, etc.) instead of a single frame.
   min_exposure_count: 5
 
-  # Also shared at the root -- read by pointing_72ed, stop_phd2_guiding
-  # (all four) and guiding_dark_acquisition (exposure_seconds only). Grouped
+  # Also shared at the root -- read by slew_72ed, pointing_72ed,
+  # stop_phd2_guiding (all four), slit_xy (slit_x/slit_y, the default it
+  # measures around) and guiding_dark_acquisition (exposure_seconds only). Grouped
   # under one key since they describe a single coherent concept: the optical
   # alignment/plate-scale of the whole telescope+spectro+guiding-camera
   # assembly, not a property of the guiding camera device in isolation --
@@ -141,6 +142,28 @@ subplugin_params:
     # convention (-1 per axis).
     slit_x: 613
     slit_y: 614
+
+  slit_xy:
+    # Light source for the slit image: CALIB, FLAT or SKY (never DARK -- the
+    # slit would not be visible). With a lamp the field is bright and
+    # star-free, the slit a dark line across it.
+    light_source: CALIB
+    # Exposure time (seconds) of the slit image.
+    exposure_seconds: 0.05
+    # Pause (seconds) between the spectroscope command and the exposure, so
+    # the lamp is really on when a short exposure starts.
+    light_settle_seconds: 1
+    # Total width/height (pixels) of the search zone, centred on the default
+    # slit_x/slit_y above; none = the whole width/height of the image.
+    slit_x_area: 900
+    slit_y_area: 120
+    # Pixels added to the slit Y that slit_xy measures on the CALIB lamp image:
+    # the slit seen against the lamp sits higher than where the sky's light goes
+    # through it. Measured 2026-09-26 (pairs of CALIB/SKY images taken seconds
+    # apart, 5 telescope positions, both pier sides): sky (band fit) minus
+    # slit_xy's lamp value = -0.96 px (-0.92 to -1.00), independent of the
+    # telescope's orientation.
+    offset_y: -1.0
 
   scheduler_rosace_2026:
     # Full path (any location, not necessarily under base_data_dir) to the

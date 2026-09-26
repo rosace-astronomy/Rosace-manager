@@ -6,7 +6,7 @@ import { VBox, HBox, Button, Label, Application, BoxProps, Image, Listbox, ListI
 import "./main.scss";
 
 import { LoginView, fetchCurrentUser, logout as authLogout, UserOut } from "./auth";
-import { FitsViewer } from "./widgets/fits_viewer";
+import { FitsViewer, SlitOverlay } from "./widgets/fits_viewer";
 
 import play_icon from "./assets/play.svg";
 import stop_icon from "./assets/stop.svg";
@@ -329,14 +329,15 @@ class MainView extends VBox {
 				this.logMany( lines.map( l => `[${l.level}] ${l.text}` ) );
 			}
 			else if( ev.msg === IMAGE_NEW_MSG ) {
-				const { panel, source } = ev.params as { panel: string, source?: string };
+				const { panel, source, overlay } = ev.params as { panel: string, source?: string, overlay?: SlitOverlay };
 				this.loadPanelImage( panel );
 				if( panel === "guidage" ) {
-					// Only a focus.py capture gets the reference window rectangle --
-					// explicitly cleared (not just left alone) on any other source, so
-					// it doesn't linger over the next pointing_72ed/stop_phd2_guiding/
-					// home_sync_am3 image pushed to this same panel.
+					// Only a focus.py capture gets the reference window rectangle, and only a
+					// slit_xy.py capture the slit overlay -- each explicitly cleared (not just
+					// left alone) on any other source, so it doesn't linger over the next
+					// image pushed to this same panel.
 					this.guidage_viewer.setReferenceWindowFraction( source === "focus" ? focus_window_fraction : null );
+					this.guidage_viewer.setSlitOverlay( source === "slit_xy" && overlay ? overlay : null );
 				}
 			}
 		} );

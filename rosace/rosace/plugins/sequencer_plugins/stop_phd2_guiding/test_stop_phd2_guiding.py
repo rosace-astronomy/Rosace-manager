@@ -14,6 +14,7 @@ import pytest
 from astropy.coordinates import SkyCoord
 
 from rosace.models import Observation, Target
+from rosace.plugins.sequencer_plugins import acquisition_helpers
 from rosace.plugins.sequencer_plugins.stop_phd2_guiding import stop_phd2_guiding
 from rosace.plugins.sequencer_plugins.stop_phd2_guiding.stop_phd2_guiding import StopPhd2GuidingPlugin
 
@@ -52,12 +53,13 @@ def mock_dependencies(monkeypatch):
     monkeypatch.setattr(stop_phd2_guiding, "solve_wcs", solve_wcs_mock)
     monkeypatch.setattr(stop_phd2_guiding, "world_to_pixel", world_to_pixel_mock)
     monkeypatch.setattr(stop_phd2_guiding, "SETTLE_AFTER_STOP_SECONDS", 0)
-    monkeypatch.setattr(stop_phd2_guiding, "SUBPLUGIN_PARAMS", {
-        "guiding": {
-            "exposure_seconds": EXPOSURE_SECONDS, "sampling_arcsec": SAMPLING_ARCSEC,
-            "slit_x": SLIT_X, "slit_y": SLIT_Y,
-        },
-    })
+    guiding = {
+        "exposure_seconds": EXPOSURE_SECONDS, "sampling_arcsec": SAMPLING_ARCSEC,
+        "slit_x": SLIT_X, "slit_y": SLIT_Y,
+    }
+    monkeypatch.setattr(stop_phd2_guiding, "SUBPLUGIN_PARAMS", {"guiding": guiding})
+    # slit_position() (not patched) reads the default slit from acquisition_helpers' own copy
+    monkeypatch.setattr(acquisition_helpers, "SUBPLUGIN_PARAMS", {"guiding": guiding})
     return {"capture_guide_image": capture_mock, "solve_wcs": solve_wcs_mock, "world_to_pixel": world_to_pixel_mock}
 
 
@@ -164,3 +166,14 @@ class TestStopPhd2GuidingPlugin:
         data = obs.sequencer_data["stop_phd2_guiding"]
         assert data["guide_image"] == GUIDE_IMAGE_NAME
         assert data["residual_arcsec"] == pytest.approx(expected_residual)
+
+    async def test_residual_is_measured_against_the_calculated_slit(self):
+        obs = _make_obs()
+        obs.sequencer_data["slit_xy"] = {"status": "calculated", "slit_x": SLIT_X, "slit_y": 15.0, "image": "a.fits"}
+
+        await StopPhd2GuidingPlugin().execute(obs)
+
+        expected_residual = (
+            (TARGET_PIXEL_X - SLIT_X) ** 2 + (TARGET_PIXEL_Y - 15.0) ** 2
+        ) ** 0.5 * SAMPLING_ARCSEC
+        assert obs.sequencer_data["stop_phd2_guiding"]["residual_arcsec"] == pytest.approx(expected_residual)

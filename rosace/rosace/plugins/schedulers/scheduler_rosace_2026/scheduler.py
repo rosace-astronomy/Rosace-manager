@@ -20,7 +20,7 @@ OBSERVATION_LIST_PATH = Path(
 ).expanduser()
 MIN_TARGET_ALTITUDE_DEG = _params.get("min_target_altitude_deg", 10)
 # Hour-angle window (degrees, each side of the meridian) inside which a target is
-# not offered: pointing_72ed's two-step slew starts backlash_offset_deg (hardware
+# not offered: slew_72ed's two-step slew starts backlash_offset_deg (hardware
 # YAML, 2 deg) of RA before the exact position, so a target just past the meridian
 # gets an approach point before it and an exact point after it -> pier flip.
 # 0 (the default) disables the check: no real mount, no flip (demo, simulator).

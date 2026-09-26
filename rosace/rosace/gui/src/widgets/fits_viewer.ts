@@ -34,6 +34,18 @@ interface SelectionRect {
 	y1: number;
 }
 
+/**
+ * Overlay sent by the slit_xy sub-plugin with its guide image, in Rosace's
+ * pixel convention: zone = [x0, y0, x1, y1] outer pixel edges, line =
+ * [xa, ya, xb, yb] measured slit line, point = [x, y] retained slit position
+ * (line/point null when the measurement failed).
+ */
+export interface SlitOverlay {
+	zone: [ number, number, number, number ] | null;
+	line: [ number, number, number, number ] | null;
+	point: [ number, number ] | null;
+}
+
 export interface FitsViewerProps extends BoxProps {
 }
 
@@ -82,6 +94,11 @@ export class FitsViewer extends VBox {
 	// and always a square centered on the image, so only a single fraction
 	// (of the image's own smaller dimension) is needed, not four coordinates.
 	private referenceWindowFraction: number | null = null;
+
+	// Per-image overlay of the slit_xy sub-plugin (search zone, measured slit
+	// line, retained slit point), set from outside via setSlitOverlay() --
+	// null means "don't draw one".
+	private slitOverlay: SlitOverlay | null = null;
 
 	constructor( props: FitsViewerProps = {} ) {
 		super( props );
@@ -161,6 +178,30 @@ export class FitsViewer extends VBox {
 	setReferenceWindowFraction( fraction: number | null ) {
 		this.referenceWindowFraction = fraction;
 		this.canvas.redraw();
+	}
+
+	/**
+	 * Sets (or clears, with null) the slit_xy overlay. Its coordinates are in
+	 * Rosace's pixel convention (0-indexed, pixel centres on integers, Y
+	 * upwards -- see toCanvas()), sent by the backend with the image itself.
+	 */
+
+	setSlitOverlay( overlay: SlitOverlay | null ) {
+		this.slitOverlay = overlay;
+		this.canvas.redraw();
+	}
+
+	/**
+	 * Converts a point in Rosace's pixel convention (0-indexed, pixel centre on
+	 * integers, Y upwards -- FITS row 0 is the bottom row) to canvas coordinates:
+	 * the image is displayed top-down, so row y is drawn at height - 1 - y.
+	 */
+
+	private toCanvas( x: number, y: number ): { x: number, y: number } {
+		return {
+			x: this.offsetX + ( x + 0.5 ) * this.scale,
+			y: this.offsetY + ( this.image.height - y - 0.5 ) * this.scale,
+		};
 	}
 
 	/**
@@ -473,6 +514,59 @@ export class FitsViewer extends VBox {
 			ctx.strokeRect( x0, y0, s, s );
 			ctx.restore();
 		}
+
+		if( this.slitOverlay ) {
+			this.paintSlitOverlay( ctx, this.slitOverlay );
+		}
+	}
+
+	/**
+	 * slit_xy overlay: search zone (dashed), measured slit line (solid) and
+	 * retained slit point (cross) -- each colour distinct from the yellow
+	 * "Zone" selection and the cyan focus window.
+	 */
+
+	private paintSlitOverlay( ctx: CanvasEx, overlay: SlitOverlay ) {
+		ctx.save();
+		ctx.lineWidth = 1;
+
+		if( overlay.zone ) {
+			const [ x0, y0, x1, y1 ] = overlay.zone;
+			// zone values are pixel edges (e.g. -0.5 = left edge of column 0), which
+			// toCanvas() maps exactly onto the drawn pixel boundaries; y1 is the top
+			const a = this.toCanvas( x0, y1 );
+			const b = this.toCanvas( x1, y0 );
+			ctx.strokeStyle = "#ff66ff";
+			ctx.setLineDash( [ 6, 4 ] );
+			ctx.strokeRect( a.x, a.y, b.x - a.x, b.y - a.y );
+			ctx.setLineDash( [] );
+		}
+
+		if( overlay.line ) {
+			const [ xa, ya, xb, yb ] = overlay.line;
+			const a = this.toCanvas( xa, ya );
+			const b = this.toCanvas( xb, yb );
+			ctx.strokeStyle = "#ff3b30";
+			ctx.beginPath();
+			ctx.moveTo( a.x, a.y );
+			ctx.lineTo( b.x, b.y );
+			ctx.stroke();
+		}
+
+		if( overlay.point ) {
+			const p = this.toCanvas( overlay.point[0], overlay.point[1] );
+			const arm = 8;
+			ctx.strokeStyle = "#39ff14";
+			ctx.lineWidth = 2;
+			ctx.beginPath();
+			ctx.moveTo( p.x - arm, p.y );
+			ctx.lineTo( p.x + arm, p.y );
+			ctx.moveTo( p.x, p.y - arm );
+			ctx.lineTo( p.x, p.y + arm );
+			ctx.stroke();
+		}
+
+		ctx.restore();
 	}
 }
 

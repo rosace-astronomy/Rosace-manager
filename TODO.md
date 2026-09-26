@@ -219,3 +219,9 @@ Claude peut le suggérer, jamais le faire lui-même.
       rayon cosmique (un pixel, ligne 559). Envisager un filtre des pixels
       isolés avant la somme des lignes — à ne faire qu'avec l'accord de
       l'utilisateur, qui veut d'abord des mesures inchangées (2026-09-24)
+- [ ] `slit_xy` (2026-09-26, codé, pas encore testé sur le ciel) : première
+      nuit, vérifier la ligne `[SLIT_XY]` du log (Y attendu ≈ 617 à la
+      colonne 613), la surimpression zone/ligne/croix sur le panneau Guidage
+      (GUI à recompiler), et que la fente est bien une ligne sombre sur
+      l'image lampe CALIB à 0,1 s. Suivre ensuite le Y mesuré d'une cible à
+      l'autre (flexion ?) et le résidu final de `stop_phd2_guiding`.
