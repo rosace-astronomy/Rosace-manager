@@ -17,6 +17,14 @@ class Mount(Protocol):
         """Returns the mount's currently reported (ra, dec), J2000 degrees."""
         ...
 
+    async def get_pier_side(self) -> str | None:
+        """Returns which side of the pier the mount is on right now: "east"
+        or "west", or None if the mount can't tell. Same convention as
+        ASCOM's SideOfPier and INDI's TELESCOPE_PIER_SIDE: "east" means
+        the mount sits east of the pier with the tube pointing west (hour
+        angle > 0), "west" the reverse."""
+        ...
+
     async def park(self) -> None:
         """Slew to the mount's home/reference position and lock it there --
         no further motion is possible until unpark() is called."""

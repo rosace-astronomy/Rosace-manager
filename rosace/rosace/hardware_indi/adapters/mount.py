@@ -39,6 +39,17 @@ class MountAdapter:
             raise DeviceCommandError(f"get_position() failed: {e}") from e
         return float(coord.ra.deg), float(coord.dec.deg)
 
+    async def get_pier_side(self) -> str | None:
+        try:
+            switches = await asyncio.to_thread(self._indi_mount.get_pier_side)
+        except Exception as e:
+            raise DeviceCommandError(f"get_pier_side() failed: {e}") from e
+        if switches.get("PIER_EAST"):
+            return "east"
+        if switches.get("PIER_WEST"):
+            return "west"
+        return None
+
     async def park(self) -> None:
         try:
             await asyncio.to_thread(self._indi_mount.park)

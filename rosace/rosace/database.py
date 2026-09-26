@@ -86,7 +86,8 @@ async def db_init() -> None:
                 mount_ra_deg    REAL NOT NULL,
                 mount_dec_deg   REAL NOT NULL,
                 solved_ra_deg   REAL NOT NULL,
-                solved_dec_deg  REAL NOT NULL
+                solved_dec_deg  REAL NOT NULL,
+                pier_side       TEXT
             )
         """)
         await db.commit()
@@ -284,6 +285,7 @@ async def db_insert_pointing_error(
     mount_dec_deg: float,
     solved_ra_deg: float,
     solved_dec_deg: float,
+    pier_side: str | None = None,
 ) -> None:
     """Records one plate-solve pointing measurement (mount-reported position
     vs. plate-solved position, both J2000) for trending pointing/polar-alignment
@@ -291,12 +293,16 @@ async def db_insert_pointing_error(
     is worth keeping — see plugins/sequencer_plugins/plate_solve_helper.py::
     solve_wcs()'s record_error argument. target_name is
     redundant with observation_id (joinable via the observations table) but
-    kept for human readability, same precedent as observations.target_name."""
+    kept for human readability, same precedent as observations.target_name.
+    pier_side is the side the mount reported at that moment ("east": mount
+    east of the pier, tube pointing west; "west": the reverse -- see
+    hardware/mount.py::Mount.get_pier_side()), or None if unknown; NULL on
+    every row recorded before 2026-09-26."""
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         await db.execute(
             """INSERT INTO pointing_errors
-               (observation_id, target_name, recorded_at, mount_ra_deg, mount_dec_deg, solved_ra_deg, solved_dec_deg)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (observation_id, target_name, recorded_at, mount_ra_deg, mount_dec_deg, solved_ra_deg, solved_dec_deg, pier_side)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 observation_id,
                 target_name,
@@ -305,6 +311,7 @@ async def db_insert_pointing_error(
                 mount_dec_deg,
                 solved_ra_deg,
                 solved_dec_deg,
+                pier_side,
             )
         )
         await db.commit()

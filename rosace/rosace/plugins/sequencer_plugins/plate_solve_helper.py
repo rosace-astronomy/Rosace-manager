@@ -68,6 +68,7 @@ async def solve_wcs(
     timeout: float = 30,
     record_error: bool = False,
     observation_id: str | None = None,
+    pier_side: str | None = None,
 ) -> None:
     """Runs astrometry.net's solve-field on fits_path, replacing the file
     in place with astrometry's own solved copy (same header plus WCS
@@ -106,6 +107,9 @@ async def solve_wcs(
     goes nowhere. When record_error=False (the default), none of this
     runs at all -- the whole computation exists only to feed the DB
     write, so there's nothing to do or log without it.
+
+    pier_side ("east"/"west", see hardware/mount.py::Mount.get_pier_side())
+    is stored as-is with that record; ignored when record_error=False.
     """
     if record_error and not observation_id:
         raise ValueError("solve_wcs: observation_id is required when record_error=True")
@@ -204,6 +208,7 @@ async def solve_wcs(
         await db_insert_pointing_error(
             observation_id, target_name, mount_ra, mount_dec,
             solved_coord.ra.degree, solved_coord.dec.degree,
+            pier_side=pier_side,
         )
 
 

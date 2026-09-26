@@ -109,10 +109,17 @@ class Pointing72edPlugin(SubPlugin):
         )
         log.info(f"[POINTING_72ED] Guiding image acquisition: {initial_guide_image.name}")
 
-        # Step 3: plate solve + record the mount's pointing error
+        # Step 3: plate solve + record the mount's pointing error, with the pier
+        # side the mount reports -- best effort: a diagnostic value, never worth
+        # failing the pointing over
+        try:
+            pier_side = await mount.get_pier_side()
+        except Exception as e:
+            log.warning(f"[POINTING_72ED] Could not read the pier side, recorded as unknown: {e}")
+            pier_side = None
         await solve_wcs(
             str(initial_guide_image), sampling_arcsec=sampling_arcsec,
-            record_error=True, observation_id=obs.id,
+            record_error=True, observation_id=obs.id, pier_side=pier_side,
         )
 
         # Step 4: actual sky position at the slit

@@ -672,6 +672,25 @@ class TestDatabase:
         assert row["solved_ra_deg"] == pytest.approx(279.23)
         assert row["solved_dec_deg"] == pytest.approx(38.78)
         assert row["recorded_at"] is not None
+        assert row["pier_side"] is None
+
+    async def test_insert_pointing_error_records_pier_side(self):
+        import aiosqlite
+        from rosace.config import DB_PATH
+
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs, ctx.session_id)
+
+        await db_insert_pointing_error(obs.id, "Vega", 279.20, 38.75, 279.23, 38.78, pier_side="west")
+
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                "SELECT pier_side FROM pointing_errors WHERE observation_id = ?", (obs.id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+        assert row[0] == "west"
 
     async def test_insert_pointing_error_allows_multiple_rows_per_observation(self):
         """Successive plate-solve measurements for the same observation each get

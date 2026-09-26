@@ -159,6 +159,25 @@ class TestPointing72edPlugin:
 
         assert obs.hardware["mount"].get_position.await_count == 2
 
+    async def test_records_pier_side_with_the_pointing_error(self, mock_dependencies):
+        obs = _make_obs()
+        obs.hardware["mount"].get_pier_side.return_value = "west"
+
+        await Pointing72edPlugin().execute(obs)
+
+        recorded = [c for c in mock_dependencies["solve_wcs"].await_args_list if c.kwargs.get("record_error")]
+        assert len(recorded) == 1
+        assert recorded[0].kwargs["pier_side"] == "west"
+
+    async def test_unreadable_pier_side_is_recorded_as_unknown(self, mock_dependencies):
+        obs = _make_obs()
+        obs.hardware["mount"].get_pier_side.side_effect = DeviceCommandError("no pier side")
+
+        await Pointing72edPlugin().execute(obs)
+
+        recorded = [c for c in mock_dependencies["solve_wcs"].await_args_list if c.kwargs.get("record_error")]
+        assert recorded[0].kwargs["pier_side"] is None
+
     async def test_two_step_slew_toward_target_then_corrected_position(self):
         obs = _make_obs()
 

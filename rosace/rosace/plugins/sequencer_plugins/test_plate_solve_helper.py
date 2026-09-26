@@ -322,6 +322,25 @@ class TestSolveWcs:
         assert rows[0]["mount_dec_deg"] == pytest.approx(38.78)
         assert rows[0]["solved_ra_deg"] == pytest.approx(279.23, abs=1e-6)
         assert rows[0]["solved_dec_deg"] == pytest.approx(38.78, abs=1e-6)
+        assert rows[0]["pier_side"] is None
+
+    async def test_record_error_stores_pier_side(self, tmp_path, monkeypatch):
+        import aiosqlite
+        from rosace.config import DB_PATH
+
+        await db_init()
+        _stub_which(monkeypatch)
+        _install_fake_solve(monkeypatch)
+        path = _make_guide_fits(tmp_path, ra=279.23, dec=38.78, target_name="Vega")
+
+        await solve_wcs(str(path), record_error=True, observation_id="obs-pier-side", pier_side="east")
+
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                "SELECT pier_side FROM pointing_errors WHERE observation_id = ?", ("obs-pier-side",)
+            ) as cursor:
+                row = await cursor.fetchone()
+        assert row[0] == "east"
 
     async def test_record_error_false_does_not_write_to_db(self, tmp_path, monkeypatch):
         import aiosqlite

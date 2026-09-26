@@ -115,6 +115,35 @@ class TestMountAdapter:
         with pytest.raises(DeviceCommandError, match="indi boom"):
             await adapter.sync_to_coordinates(ra=0.0, dec=0.0)
 
+    async def test_get_pier_side_east(self):
+        indi_mount = MagicMock()
+        indi_mount.get_pier_side.return_value = {"PIER_EAST": True, "PIER_WEST": False}
+        adapter = MountAdapter(indi_mount)
+
+        assert await adapter.get_pier_side() == "east"
+
+    async def test_get_pier_side_west(self):
+        indi_mount = MagicMock()
+        indi_mount.get_pier_side.return_value = {"PIER_EAST": False, "PIER_WEST": True}
+        adapter = MountAdapter(indi_mount)
+
+        assert await adapter.get_pier_side() == "west"
+
+    async def test_get_pier_side_none_when_no_switch_on(self):
+        indi_mount = MagicMock()
+        indi_mount.get_pier_side.return_value = {"PIER_EAST": False, "PIER_WEST": False}
+        adapter = MountAdapter(indi_mount)
+
+        assert await adapter.get_pier_side() is None
+
+    async def test_get_pier_side_wraps_underlying_error(self):
+        indi_mount = MagicMock()
+        indi_mount.get_pier_side.side_effect = RuntimeError("indi boom")
+        adapter = MountAdapter(indi_mount)
+
+        with pytest.raises(DeviceCommandError, match="indi boom"):
+            await adapter.get_pier_side()
+
     async def test_get_home_position_returns_ra_dec_from_indi_mount(self):
         indi_mount = MagicMock()
         indi_mount.get_home_position_icrs.return_value = SkyCoord(ra=100.0, dec=45.0, unit="deg", frame="icrs")
