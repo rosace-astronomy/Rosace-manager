@@ -142,6 +142,10 @@ async def solve_wcs(
         "--no-plots",
         "--overwrite",
         "--radius", str(radius_deg),
+        # 2x2 binning before source extraction: raises faint stars above the
+        # noise of a sky-limited guide image, needed on star-poor fields
+        # (4 Aql, behind the Aquila Rift) -- see HISTORY.md 2026-09-26.
+        "--downsample", "2",
     ]
     if ra_hint is not None:
         options += ["--ra", str(ra_hint), "--dec", str(dec_hint)]

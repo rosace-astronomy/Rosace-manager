@@ -90,7 +90,9 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Caméra de guidage ASI120MM Mini (nuit 2026-09-24/25 perdue) : signaler à
       indilib/indi-3rdparty que `indi_asi_ccd` (indi-asi 2.4+z, libasi 1.37)
       fait un `USBDEVFS_RESET` à chaque exposition, sans propriété `USB_RESET`
-      pour l'éviter (preuve : `strace` + journal noyau du Stellarmate)
+      pour l'éviter (preuve : `strace` + journal noyau du Stellarmate) —
+      piste retenue en priorité sur un correctif local (2026-09-25) ; rapport
+      soigné (versions exactes, logs, reproduction) avant envoi
 - [ ] Hypothèse à tester : le `USBDEVFS_RESET` par exposition de l'ASI120 (hub
       USB2 `ASM1074` partagé avec l'Atik) perturberait le transfert de l'Atik
       (2026-09-18, `Image size is unexpected`) et peut-être le lien PHD2
@@ -102,6 +104,13 @@ Claude peut le suggérer, jamais le faire lui-même.
       alimentation commandable par port (`uhubctl`) pour couper/rallumer la
       caméra à distance — un changement de caméra invalide `sampling_arcsec`,
       `slit_x`/`slit_y`, gain/offset, darks et réglages de `focus`
+- [ ] Erreur de pointage initiale d'environ 43′ d'un côté du pied (Vega,
+      Sheliak, Aigle, Cygne, Ophiuchus en soirée) contre 1-13′ de l'autre,
+      depuis le 2026-09-19 ; environ 20′ avant. Ne bloque pas le plate
+      solve (rayon 5°) mais a doublé — à comprendre (2026-09-26)
+- [ ] 4 Aql : vérifier sur le ciel que `--downsample 2` suffit (solvé hors
+      ligne sur les images du 23 et du 25/09, pas sur celle du 24/09) ; si
+      ça échoue encore, pistes : pose de guidage plus longue, gain (2026-09-26)
 
 ## Chantiers proposés
 
@@ -140,6 +149,10 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Mettre en base de données la valeur de focus (FWHM), avec la date, la
       température, etc. — à terme, y ajouter aussi l'intensité du spectre
       une fois la bonne méthode de calcul disponible.
+- [ ] Une fois le focus en base : l'afficher (GUI ou export) en fonction de
+      la température du focuser, pas seulement de l'heure/date — le focus
+      dépend surtout de la température, un historique chronologique seul
+      ne le montre pas (2026-09-25)
 - [ ] Faire un plan dobservation Be plus sophstiqué, pour ne pas refaire toujours les mêmes obserations. Prendre en compte les obserations récentes et les demandes de BeSS.
 - [ ] Mettre en place un système qui permet de ne pas consommer les étoiles qui ont plantées. Peut-être calculer un facteur global de priorité
 - [ ] Aller chercher toutes les Be dans BeSS. Et regarder le priorités d'observation BeSS. 
