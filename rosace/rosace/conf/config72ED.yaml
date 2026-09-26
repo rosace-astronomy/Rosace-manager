@@ -104,7 +104,10 @@ subplugin_params:
   # is read only by star_spectra_acquisition, but sits here too since it's
   # the third argument of the same compute_exposure_time_and_count() call
   # as the two above -- see acquisition_helpers.py.
-  exposure_time_mag0_seconds: 1.0
+  # 4.0 since 2026-09-26 (was 1.0): with 1.0 the brightest trace pixel stayed
+  # at 14-17% of 65535; 4.0 puts the brightest stars near 64% (5.0 would have
+  # given ~80%, too little margin for seeing and centring variations).
+  exposure_time_mag0_seconds: 4.0
   # 120s (not the 30s debug value used by the INDI-simulator config.yaml) --
   # the real ceiling for the 72ED's own science camera, above the simulator's
   # short debug value since this file is what actually drives real sessions.

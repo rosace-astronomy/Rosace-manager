@@ -116,7 +116,18 @@ Claude peut le suggérer, jamais le faire lui-même.
 
 - [ ] Distance à la Lune : filtre scheduler sur la distance de la cible à
       la Lune (seuil à définir, probablement selon la phase) — pas urgent
+- [ ] Temps de pose des étoiles faibles : la loi `exposure_time_mag0 ×
+      10^(mag/2,5)` vise l'approche de la saturation. Au-delà de
+      `max_exposure_time`, la durée est déjà découpée en poses de 180 s, mais
+      le temps total explose pour une étoile faible (magnitude 9,8 avec 4 s à
+      magnitude 0 : environ 33 600 s, soit 187 poses). Pistes : valeur en dur
+      par étoile dans `program_stars.exposure_time` (existe déjà, cas de
+      HD 250240), plafond de temps total par observation, voire un rapport
+      signal/bruit visé, calculé à partir des mesures de `spectrum_flux`
+      (2026-09-26)
 - [ ] Journalisation temporelle des étapes (time-series DB type InfluxDB)
+- [ ] `export_demetra` : produire un seul zip pour toute la session au lieu
+      d'un zip par observation (après le chantier `calculate_flux`) (2026-09-26)
 - [ ] Pipeline de réduction natif Rosace — bloqué sur des exemples XML
       Demetra
 - [ ] Calcul du centre de la fente.
@@ -163,6 +174,15 @@ Claude peut le suggérer, jamais le faire lui-même.
       environnement Windows
 - [ ] Deuxième instrument ("gros télescope", ex. UVEX) — driver
       IndiUsisSpectro existant, aucun profil matériel
+- [ ] Faire tourner REDUCTION → SHARING → ARCHIVE dans un thread dédié
+      (avec sa propre boucle asyncio), séparé du séquenceur : aujourd'hui
+      `run_post_obs()` est une tâche de la même boucle, donc tout calcul ou
+      toute écriture bloquante d'un sous-plugin de réduction fige le
+      séquenceur (probablement déjà le zip d'`export_demetra`, non mesuré).
+      Les sous-plugins restent séquentiels. À sécuriser :
+      `state.pending_post_obs`, instances de plugins partagées, arrêt de
+      session. `calculate_flux` est déjà dans `Be_stars.yaml` et bloque le
+      séquenceur environ 0,5 s par pose en attendant (accepté) (2026-09-26)
 
 ## Petits items
 

@@ -52,6 +52,8 @@ from rosace.database import (
     db_get_recent_observations,
     db_count_observations_for_target,
     db_insert_pointing_error,
+    db_insert_spectrum_flux,
+    SPECTRUM_FLUX_MEASUREMENT_COLUMNS,
 )
 from rosace.targets import (
     targets_db_init,
@@ -691,6 +693,40 @@ class TestDatabase:
             ) as cursor:
                 row = await cursor.fetchone()
         assert row[0] == "west"
+
+    async def test_insert_spectrum_flux(self):
+        import aiosqlite
+        from rosace.config import DB_PATH
+
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs, ctx.session_id)
+        measurement = {column: 1 for column in SPECTRUM_FLUX_MEASUREMENT_COLUMNS}
+        measurement.update(trace_method="bands", total_adu=1.5e7, sigma_axes_px=None, saturated=False)
+
+        await db_insert_spectrum_flux(obs.id, "16 Peg", 5.08, "16Peg_5x108s-1.fits", 108.0, measurement)
+
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM spectrum_flux WHERE observation_id = ?", (obs.id,)) as cursor:
+                rows = await cursor.fetchall()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["target_name"] == "16 Peg"
+        assert row["magnitude_v"] == pytest.approx(5.08)
+        assert row["image_name"] == "16Peg_5x108s-1.fits"
+        assert row["exposure_s"] == pytest.approx(108.0)
+        assert row["trace_method"] == "bands"
+        assert row["total_adu"] == pytest.approx(1.5e7)
+        assert row["sigma_axes_px"] is None
+        assert row["saturated"] == 0
+        assert row["recorded_at"] is not None
+
+    async def test_insert_spectrum_flux_names_a_missing_measurement(self):
+        measurement = {column: 1 for column in SPECTRUM_FLUX_MEASUREMENT_COLUMNS if column != "total_adu"}
+        with pytest.raises(KeyError, match="total_adu"):
+            await db_insert_spectrum_flux("obs", "Vega", 0.0, "Vega-1.fits", 1.0, measurement)
 
     async def test_insert_pointing_error_allows_multiple_rows_per_observation(self):
         """Successive plate-solve measurements for the same observation each get

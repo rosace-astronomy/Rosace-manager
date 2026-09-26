@@ -90,6 +90,35 @@ async def db_init() -> None:
                 pier_side       TEXT
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS spectrum_flux (
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                observation_id       TEXT NOT NULL REFERENCES observations(id),
+                target_name          TEXT NOT NULL,
+                magnitude_v          REAL,
+                image_name           TEXT NOT NULL,
+                recorded_at          TEXT NOT NULL,
+                exposure_s           REAL,
+                method_version       INTEGER NOT NULL,
+                center_x             REAL NOT NULL,
+                center_y             REAL NOT NULL,
+                angle_deg            REAL NOT NULL,
+                trace_method         TEXT NOT NULL,
+                bands_used           INTEGER NOT NULL,
+                trace_sigma_px       REAL NOT NULL,
+                sigma_axes_px        REAL,
+                background_adu       REAL NOT NULL,
+                background_noise_adu REAL NOT NULL,
+                total_adu            REAL NOT NULL,
+                column_max_adu       REAL NOT NULL,
+                column_max_x         INTEGER NOT NULL,
+                peak_pixel_adu       REAL NOT NULL,
+                peak_pixel_x         INTEGER NOT NULL,
+                peak_pixel_y         INTEGER NOT NULL,
+                saturated            INTEGER NOT NULL,
+                hot_pixels_replaced  INTEGER NOT NULL
+            )
+        """)
         await db.commit()
     log.info(f"[DB] Database initialised: {DB_PATH}")
 
@@ -316,3 +345,66 @@ async def db_insert_pointing_error(
         )
         await db.commit()
     log.info(f"[DB] Pointing error recorded for observation {observation_id} ({target_name})")
+
+
+# ─────────────────────────────────────────────────────────────
+# Spectrum flux
+# ─────────────────────────────────────────────────────────────
+
+# Measured values of one spectrum_flux row, filled from the calculate_flux
+# REDUCTION sub-plugin's result (plugins/reduction_plugins/spectrum_flux_helpers.py
+# ::SpectrumFlux) -- listed here so this module never imports a plugin.
+SPECTRUM_FLUX_MEASUREMENT_COLUMNS: tuple[str, ...] = (
+    "method_version",
+    "center_x",
+    "center_y",
+    "angle_deg",
+    "trace_method",
+    "bands_used",
+    "trace_sigma_px",
+    "sigma_axes_px",
+    "background_adu",
+    "background_noise_adu",
+    "total_adu",
+    "column_max_adu",
+    "column_max_x",
+    "peak_pixel_adu",
+    "peak_pixel_x",
+    "peak_pixel_y",
+    "saturated",
+    "hot_pixels_replaced",
+)
+
+
+async def db_insert_spectrum_flux(
+    observation_id: str,
+    target_name: str,
+    magnitude_v: float | None,
+    image_name: str,
+    exposure_s: float | None,
+    measurement: dict,
+) -> None:
+    """Records the flux measured on one raw science sub-exposure, for trending
+    spectrum intensity over time (transparency, exposure tuning). `measurement`
+    must hold every key of SPECTRUM_FLUX_MEASUREMENT_COLUMNS (a KeyError names
+    the missing one); extra keys are ignored. target_name and magnitude_v are
+    redundant with observations/targets.db but kept for readability, same
+    precedent as pointing_errors.target_name."""
+    values = [measurement[column] for column in SPECTRUM_FLUX_MEASUREMENT_COLUMNS]
+    columns = ("observation_id", "target_name", "magnitude_v", "image_name", "recorded_at", "exposure_s") + (
+        SPECTRUM_FLUX_MEASUREMENT_COLUMNS
+    )
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        await db.execute(
+            f"INSERT INTO spectrum_flux ({', '.join(columns)}) VALUES ({', '.join('?' * len(columns))})",
+            (
+                observation_id,
+                target_name,
+                magnitude_v,
+                image_name,
+                datetime.now(timezone.utc).isoformat(),
+                exposure_s,
+                *values,
+            ),
+        )
+        await db.commit()
