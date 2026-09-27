@@ -69,8 +69,10 @@ def setup(tmp_path, monkeypatch):
 
     state["capture"] = AsyncMock(side_effect=_capture)
     state["publish"] = AsyncMock()
+    state["sleep"] = AsyncMock()
     monkeypatch.setattr(slit_xy, "capture_guide_image", state["capture"])
     monkeypatch.setattr(slit_xy, "publish_guide_preview", state["publish"])
+    monkeypatch.setattr(slit_xy.asyncio, "sleep", state["sleep"])
     monkeypatch.setattr(slit_xy, "SUBPLUGIN_PARAMS", {
         "guiding": {"slit_x": DEFAULT_X, "slit_y": DEFAULT_Y},
         "slit_xy": state["params"],
@@ -243,6 +245,16 @@ class TestSlitXyCapture:
         await SlitXyPlugin().execute(obs)
 
         obs.hardware["spectroscope"].set_light_source.assert_awaited_with(LightSource.SKY)
+
+    async def test_waits_for_the_lamp_to_go_out_after_switching_back_to_sky(self, tmp_path, setup):
+        obs = _make_obs(tmp_path)
+        events = []
+        obs.hardware["spectroscope"].set_light_source.side_effect = lambda source: events.append(("light", source))
+        setup["sleep"].side_effect = lambda seconds: events.append(("sleep", seconds))
+
+        await SlitXyPlugin().execute(obs)
+
+        assert events[-2:] == [("light", LightSource.SKY), ("sleep", 1.0)]
 
 
 class TestSlitXyGuiOverlay:

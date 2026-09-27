@@ -19,15 +19,16 @@ Y is the measured line's height at that column.
 
 subplugin_params.slit_xy.offset_y (pixels, 0 by default) is then added to
 the measured Y: the slit seen against the calibration lamp is not exactly
-where the sky's light -- the star's -- goes through it (about 1 px higher on
-the 72ED, measured 2026-09-26, see HISTORY.md). A static correction, set in
-the configuration, better than none.
+where the sky's light -- the star's -- goes through it (measurements in
+HISTORY.md). A static correction, set in the configuration, better than none.
 
 Never blocking: any failure (unusable light source, capture error, nothing
 found, a feature that doesn't look like the slit) logs a WARNING and leaves
 the default position in force -- except SessionFatalError from the
 guiding-chain recovery, which must still stop the session. The spectroscope
-is always switched back to SKY afterwards.
+is always switched back to SKY afterwards, followed by the same
+light_settle_seconds pause: a lamp can keep shining for a moment after its
+power is cut, and the next guide exposure must not catch that light.
 
 Casier: sequencer_data["slit_xy"] = {"status": "calculated", "slit_x",
 "slit_y", "image"} or {"status": "default", "image"} (image None when the
@@ -43,6 +44,7 @@ from __future__ import annotations
 
 DISPLAY_NAME = "Slit XY"
 
+import asyncio
 import logging
 import math
 from dataclasses import dataclass
@@ -201,16 +203,17 @@ class SlitXyPlugin(SubPlugin):
             x_area = parse_area(params.get("slit_x_area"), "slit_x_area")
             y_area = parse_area(params.get("slit_y_area"), "slit_y_area")
             offset_y = parse_offset(params.get("offset_y", 0.0))
+            light_settle_seconds = params.get("light_settle_seconds", 1.0)
             try:
                 image_path = await capture_guide_image(
                     obs, params.get("exposure_seconds", 1.0),
                     target_name=queried_name,
                     light_source=light_source,
-                    light_settle_seconds=params.get("light_settle_seconds", 1.0),
+                    light_settle_seconds=light_settle_seconds,
                     subtract_dark=False,
                 )
             finally:
-                await _restore_sky(obs)
+                await _restore_sky(obs, light_settle_seconds)
             data = fits.getdata(image_path)
             zone = search_zone(data.shape, default_x, default_y, x_area, y_area)
             measurement = measure_slit(data, zone, default_x)
@@ -242,12 +245,16 @@ class SlitXyPlugin(SubPlugin):
         return obs
 
 
-async def _restore_sky(obs: Observation) -> None:
-    """Best effort: the next guide capture switches to SKY on its own anyway."""
+async def _restore_sky(obs: Observation, light_settle_seconds: float) -> None:
+    """Best effort: the next guide capture switches to SKY on its own anyway.
+    Then waits light_settle_seconds, so the lamp is really off before the
+    next exposure."""
     try:
         await obs.hardware["spectroscope"].set_light_source(LightSource.SKY)
     except Exception as e:
         log.warning(f"[SLIT_XY] Could not switch the spectroscope back to SKY: {e}")
+    if light_settle_seconds > 0:
+        await asyncio.sleep(light_settle_seconds)
 
 
 async def _publish(
