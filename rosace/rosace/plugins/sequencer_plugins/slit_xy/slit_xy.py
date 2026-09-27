@@ -65,7 +65,7 @@ ALLOWED_LIGHT_SOURCES = ("CALIB", "FLAT", "SKY")
 
 # A detection is only trusted when it looks like the slit: a long, thin feature...
 MIN_ELONGATION = 10.0
-# ...close to horizontal (the 72ED's slit is tilted about +1.5 deg).
+# ...close to horizontal.
 MAX_ANGLE_DEG = 10.0
 
 

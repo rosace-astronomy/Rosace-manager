@@ -132,38 +132,37 @@ subplugin_params:
     # Exposure time (seconds) for a direct guiding-camera capture.
     exposure_seconds: 10
     # Plate scale (arcsec/pixel) of the guiding camera behind this telescope.
-    sampling_arcsec: 1.75
+    # QHY5III174M since 2026-09-27: measured by a plate solve the same day.
+    sampling_arcsec: 2.69
     # Spectrograph slit position in the guiding camera's field, in pixels.
     # Zero-indexed (pixel (0,0) = center of the first pixel, matching
     # astropy's WCS.pixel_to_world()) -- if read off a FITS viewer such as
-    # DS9 (one-indexed), subtract 1 from each axis first. Measured by eye in
-    # KStars (one-indexed: KStars' first pixel is (1,1), confirmed
-    # 2026-09-04) as (614, 617), converted here to Rosace's zero-indexed
-    # convention (-1 per axis).
-    slit_x: 613
-    slit_y: 614
+    # DS9 or KStars (one-indexed), subtract 1 from each axis first.
+    # Measured 2026-09-27 on a sky image with slit_xy's own method: the slit
+    # runs from x=698 to x=1218, tilted about +0.25 deg; slit_x is its middle.
+    slit_x: 958
+    slit_y: 529.3
 
   slit_xy:
     # Light source for the slit image: CALIB, FLAT or SKY (never DARK -- the
     # slit would not be visible). With a lamp the field is bright and
     # star-free, the slit a dark line across it.
-    light_source: CALIB
+    light_source: FLAT
     # Exposure time (seconds) of the slit image.
-    exposure_seconds: 0.05
+    exposure_seconds: 0.01
     # Pause (seconds) between the spectroscope command and the exposure, so
     # the lamp is really on when a short exposure starts.
     light_settle_seconds: 1
     # Total width/height (pixels) of the search zone, centred on the default
     # slit_x/slit_y above; none = the whole width/height of the image.
-    slit_x_area: 900
-    slit_y_area: 120
-    # Pixels added to the slit Y that slit_xy measures on the CALIB lamp image:
-    # the slit seen against the lamp sits higher than where the sky's light goes
-    # through it. Measured 2026-09-26 (pairs of CALIB/SKY images taken seconds
-    # apart, 5 telescope positions, both pier sides): sky (band fit) minus
-    # slit_xy's lamp value = -0.96 px (-0.92 to -1.00), independent of the
-    # telescope's orientation.
-    offset_y: -1.0
+    slit_x_area: 600
+    slit_y_area: 60
+    # Pixels added to the slit Y that slit_xy measures on the lamp image, to
+    # get where the sky's light goes through the slit (the lamp does not
+    # light the slit exactly as the sky does). Measured 2026-09-27 on SKY/FLAT
+    # images taken within 30 s, one telescope position: sky minus FLAT =
+    # +0.15 / +0.16 px.
+    offset_y: 0.15
 
   scheduler_rosace_2026:
     # Full path (any location, not necessarily under base_data_dir) to the

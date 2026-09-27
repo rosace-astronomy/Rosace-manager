@@ -225,3 +225,7 @@ Claude peut le suggérer, jamais le faire lui-même.
       (GUI à recompiler), et que la fente est bien une ligne sombre sur
       l'image lampe CALIB à 0,1 s. Suivre ensuite le Y mesuré d'une cible à
       l'autre (flexion ?) et le résidu final de `stop_phd2_guiding`.
+- [ ] `slit_xy` : baisser le gain de la caméra de guidage uniquement pour
+      l'image lampe (CALIB/FLAT) de mesure de la fente, pour éviter la
+      saturation, puis revenir au gain de guidage avant la pose
+      suivante (2026-09-27)

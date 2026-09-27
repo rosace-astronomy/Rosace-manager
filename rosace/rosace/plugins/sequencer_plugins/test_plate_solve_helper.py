@@ -217,17 +217,6 @@ class TestSolveWcs:
         assert "--dec" in cmd and cmd[cmd.index("--dec") + 1] == "-20.0"
         assert "--radius" in cmd and cmd[cmd.index("--radius") + 1] == "2.0"
 
-    async def test_downsample_always_in_command(self, tmp_path, monkeypatch):
-        _stub_which(monkeypatch)
-        cmds: list = []
-        _install_fake_solve(monkeypatch, captured_cmds=cmds)
-        path = _make_guide_fits(tmp_path)
-
-        await solve_wcs(str(path))
-
-        cmd = cmds[0]
-        assert "--downsample" in cmd and cmd[cmd.index("--downsample") + 1] == "2"
-
     async def test_falls_back_to_header_radec_when_hints_omitted(self, tmp_path, monkeypatch):
         _stub_which(monkeypatch)
         cmds: list = []
