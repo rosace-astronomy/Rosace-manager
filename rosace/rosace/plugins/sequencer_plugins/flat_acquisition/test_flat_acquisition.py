@@ -49,13 +49,13 @@ def fixed_flat_exposure_time(monkeypatch):
     monkeypatch.setattr(fa_mod, "FLAT_EXPOSURE_TIME_SECONDS", 3.0)
 
 
-def _write_flat_fits(directory, *, exptime=3.0, naxis=FRAME_SIZE, index=1):
+def _write_flat_fits(directory, *, exptime=3.0, naxis=FRAME_SIZE, index=1, timestamp="20260815_120000"):
     directory.mkdir(parents=True, exist_ok=True)
     width, height = naxis
     data = np.zeros((height, width), dtype=np.uint16)
     hdu = fits.PrimaryHDU(data)
     hdu.header["EXPTIME"] = exptime
-    filename = f"FLAT_2x3s_2026081{index}_120000.fits"
+    filename = f"FLAT_2x3s_{timestamp}-{index}.fits"
     hdu.writeto(directory / filename, overwrite=True)
     return filename
 
@@ -107,6 +107,18 @@ class TestFindUsableFlatSeries:
             tmp_path, count_required=2, exposure_time_required=3.0, frame_size=FRAME_SIZE,
         )
         assert result is not None
+
+    def test_skips_older_interrupted_and_wrong_size_series(self, tmp_path):
+        """Night 2026-09-27: an interrupted 1-file series in the wrong frame
+        size sat first in the session directory and hid the complete series
+        shot after it -- every observation reshot its flats."""
+        _write_flat_fits(tmp_path, index=1, naxis=(50, 40), timestamp="20260815_120000")
+        _write_flat_fits(tmp_path, index=1, timestamp="20260815_130000")
+        _write_flat_fits(tmp_path, index=2, timestamp="20260815_130000")
+        result = _find_usable_flat_series(
+            tmp_path, count_required=2, exposure_time_required=3.0, frame_size=FRAME_SIZE,
+        )
+        assert result == ["FLAT_2x3s_20260815_130000-1.fits", "FLAT_2x3s_20260815_130000-2.fits"]
 
 
 def _make_obs(obs_dir, *, camera=None, spectroscope=None, stop_check=None):

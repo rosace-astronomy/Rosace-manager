@@ -366,7 +366,8 @@ async def _session_runner_body():
                         hardware_config=session.hardware_config,
                         ambient_temperature_deg_c=session.ambient_temperature_deg_c,
                         camera_target_temperature_deg_c=session.camera_target_temperature_deg_c,
-                        stop_check=lambda: not state.is_running,
+                        # No stop_check: a stop request lets the current observation
+                        # finish every series it has started (see CLAUDE.md, State machine).
                     )
                 else:
                     await db_set_stage_status(obs.id, stage, "running")

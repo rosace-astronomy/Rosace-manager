@@ -55,7 +55,7 @@ def _write_bias_fits(directory, *, temp_c=TARGET_TEMP, exptime=0.0, naxis=FRAME_
     data = np.zeros((height, width), dtype=np.uint16)
     hdu = fits.PrimaryHDU(data)
     hdu.header["EXPTIME"] = exptime
-    filename = f"BIAS_{round(temp_c)}deg_0_00s_2026081{index}_120000.fits"
+    filename = f"BIAS_{round(temp_c)}deg_0_00s_20260815_120000-{index}.fits"
     hdu.writeto(directory / filename, overwrite=True)
     return filename
 

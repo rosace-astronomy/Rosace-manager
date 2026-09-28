@@ -1738,10 +1738,10 @@ class TestSessionRunner:
         assert active_during_run == [True]
         assert main_mod.state.session_active is False
 
-    async def test_stop_check_reflects_is_running(self, monkeypatch, tmp_path):
-        """Every freshly-created Observation gets a stop_check() that reflects
-        state.is_running live — used by sub-plugins whose work spans several
-        internal steps, to interrupt themselves between two of their own steps."""
+    async def test_observation_gets_no_stop_check(self, monkeypatch, tmp_path):
+        """A stop request must let the current observation finish: no
+        stop_check is handed to it, so no sub-plugin cuts a series short
+        (night of 2026-09-27: a stop left 1-frame calibration series behind)."""
         import rosace.main as main_mod
 
         captured_stop_check = []
@@ -1767,10 +1767,7 @@ class TestSessionRunner:
         main_mod.state.is_running = True
         await main_mod.session_runner()
 
-        assert len(captured_stop_check) == 1
-        stop_check = captured_stop_check[0]
-        assert callable(stop_check)
-        assert stop_check() is True  # state.is_running was flipped to False by FakeScheduler
+        assert captured_stop_check == [None]
 
     async def test_live_hardware_is_not_deep_copied_into_post_obs_task(self, monkeypatch, tmp_path):
         """Regression: model_copy(deep=True, update={"hardware": {}}) still tried

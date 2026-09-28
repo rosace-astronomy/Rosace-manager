@@ -60,7 +60,7 @@ def _write_dark_fits(directory, *, temp_c=TARGET_TEMP, exptime=300, naxis=FRAME_
     data = np.zeros((height, width), dtype=np.uint16)
     hdu = fits.PrimaryHDU(data)
     hdu.header["EXPTIME"] = exptime
-    filename = f"DARK_{round(temp_c)}deg_{exptime}s_2026081{index}_120000.fits"
+    filename = f"DARK_{round(temp_c)}deg_{exptime}s_20260815_120000-{index}.fits"
     hdu.writeto(directory / filename, overwrite=True)
     return filename
 

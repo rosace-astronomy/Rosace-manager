@@ -36,8 +36,8 @@ Alt/Az -> RA/Dec uses astro_math.py's own pure-trigonometry conversion
 reasoning as the scheduler's altitude check (see astro_math.py's own
 docstring): no IERS/network dependency, plenty accurate for this purpose.
 
-Every slew here already goes through IndiMount's own post-slew position
-verification (see hardware_indi/devices/mount.py's SLEW_POSITION_TOLERANCE_ARCMIN)
+Every slew here already goes through IndiMount's own slew wait (see
+hardware_indi/devices/mount.py's _wait_for_slew())
 -- the 2026-09-11 field-test incident that motivated *this* retry loop was
 itself caused by a slew silently returning before the mount had actually
 gotten there, so the two fixes are complementary: the verification catches

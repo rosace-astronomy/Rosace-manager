@@ -83,11 +83,14 @@ class TestTemperatureBucketDirname:
         assert temperature_bucket_dirname(5) == "TempPlus5degrees"
 
 
-def _write_frame_fits(path, *, image_type="DARK", naxis1=100, naxis2=80, exptime=300, temp_c=-5, index=1):
+def _write_frame_fits(path, *, image_type="DARK", naxis1=100, naxis2=80, exptime=300, temp_c=-5, index=1,
+                      timestamp="20260815_120000"):
+    """One file of a series, named like a real capture: every file of a
+    series shares the same root (same timestamp), plus its own "-<index>"."""
     data = np.zeros((naxis2, naxis1), dtype=np.uint16)
     hdu = fits.PrimaryHDU(data)
     hdu.header["EXPTIME"] = exptime
-    filename = f"{image_type}_{round(temp_c)}deg_{exptime}s_2026081{index}_120000.fits"
+    filename = f"{image_type}_{round(temp_c)}deg_{exptime}s_{timestamp}-{index}.fits"
     hdu.writeto(path / filename, overwrite=True)
     return filename
 
@@ -209,6 +212,60 @@ class TestFindUsableFrameSeries:
         )
         assert result is not None
         assert len(result) == 2
+
+    def test_files_of_different_series_are_not_combined(self, tmp_path):
+        """Two incomplete series must never add up to a usable one."""
+        _write_frame_fits(tmp_path, index=1, timestamp="20260815_120000")
+        _write_frame_fits(tmp_path, index=1, timestamp="20260815_130000")
+        assert find_usable_frame_series(
+            tmp_path, image_type="DARK", temp_c=-5, count_required=2,
+            exposure_time_required=300, frame_size=(100, 80),
+        ) is None
+
+    def test_skips_an_older_interrupted_series(self, tmp_path):
+        """Night 2026-09-27: a series cut short by a stop request (1 file out
+        of 5) sat first in the session directory and hid every complete
+        series shot after it -- each observation reshot its darks."""
+        _write_frame_fits(tmp_path, index=1, timestamp="20260815_120000")
+        for i in range(1, 4):
+            _write_frame_fits(tmp_path, index=i, timestamp="20260815_130000")
+        result = find_usable_frame_series(
+            tmp_path, image_type="DARK", temp_c=-5, count_required=3,
+            exposure_time_required=300, frame_size=(100, 80),
+        )
+        assert result == [f"DARK_-5deg_300s_20260815_130000-{i}.fits" for i in range(1, 4)]
+
+    def test_skips_an_older_series_of_another_frame_size(self, tmp_path):
+        """Same night: an older series shot while the camera's CCD_FRAME was
+        stuck on a sub-window must not block a newer full-frame one."""
+        for i in range(1, 3):
+            _write_frame_fits(tmp_path, naxis1=90, naxis2=70, index=i, timestamp="20260815_120000")
+            _write_frame_fits(tmp_path, index=i, timestamp="20260815_130000")
+        result = find_usable_frame_series(
+            tmp_path, image_type="DARK", temp_c=-5, count_required=2,
+            exposure_time_required=300, frame_size=(100, 80),
+        )
+        assert result == [f"DARK_-5deg_300s_20260815_130000-{i}.fits" for i in range(1, 3)]
+
+    def test_picks_the_most_recent_of_several_usable_series(self, tmp_path):
+        for timestamp in ("20260815_130000", "20260815_120000", "20260816_010000"):
+            for i in range(1, 3):
+                _write_frame_fits(tmp_path, index=i, timestamp=timestamp)
+        result = find_usable_frame_series(
+            tmp_path, image_type="DARK", temp_c=-5, count_required=2,
+            exposure_time_required=300, frame_size=(100, 80),
+        )
+        assert result == [f"DARK_-5deg_300s_20260816_010000-{i}.fits" for i in range(1, 3)]
+
+    def test_returns_files_in_capture_order_beyond_nine(self, tmp_path):
+        """"-10" must come after "-9", not after "-1"."""
+        for i in range(1, 12):
+            _write_frame_fits(tmp_path, index=i)
+        result = find_usable_frame_series(
+            tmp_path, image_type="DARK", temp_c=-5, count_required=11,
+            exposure_time_required=300, frame_size=(100, 80),
+        )
+        assert result == [f"DARK_-5deg_300s_20260815_120000-{i}.fits" for i in range(1, 12)]
 
 
 class TestCopyDarksFromLibrary:

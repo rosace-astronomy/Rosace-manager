@@ -108,43 +108,99 @@ def find_usable_frame_series(
 ) -> list[str] | None:
     """Looks for a usable DARK or BIAS series in `directory` (the session
     directory, or -- DARK only -- one dark-library temperature bucket, same
-    rule either way, see CLAUDE.md's dark_acquisition section): at least
-    count_required files of this image_type ("DARK" or "BIAS") within
-    TEMPERATURE_TOLERANCE_DEG_C of this temperature (parsed from the
+    rule either way, see CLAUDE.md's dark_acquisition section).
+
+    A series is every file of this image_type ("DARK" or "BIAS") sharing the
+    same root name -- the filename minus the trailing "-<N>" index each
+    capture appends (see summarize_series_root_name()). Only files within
+    TEMPERATURE_TOLERANCE_DEG_C of this temperature count (parsed from the
     filename convention build_fits_root_name() already writes, e.g.
     "..._-5deg_...", see acquisition_helpers.py -- not read from the FITS
-    header, which carries no temperature card of its own), whose first
-    file's FITS header (read alone, not the pixel data) reports the same
-    frame size (NAXIS1/NAXIS2) as frame_size (the camera's *currently
-    configured* CCD_FRAME, sub-framed or not -- see
-    hardware/camera.py::Camera.get_frame_size(), not the sensor's maximum
-    capability) and an EXPTIME at least exposure_time_required minus
-    EXPOSURE_TIME_TOLERANCE_SECONDS. Returns the first count_required
-    matching filenames (sorted -- the trailing timestamp in each name makes
-    this chronological), or None if no usable series was found. Never opens
-    more than one file's header."""
+    header, which carries no temperature card of its own). Series are tried
+    newest first (capture timestamp embedded in the root name); the first one
+    with at least count_required files whose first file's FITS header (read
+    alone, not the pixel data) reports the same frame size (NAXIS1/NAXIS2)
+    as frame_size (the camera's *currently configured* CCD_FRAME, sub-framed
+    or not -- see hardware/camera.py::Camera.get_frame_size(), not the
+    sensor's maximum capability) and an EXPTIME at least
+    exposure_time_required minus EXPOSURE_TIME_TOLERANCE_SECONDS wins.
+    Returns its first count_required filenames (in capture order), or None
+    if no series qualifies. Opens at most one header per series.
+
+    Each series is judged on its own: one that doesn't qualify -- cut short
+    by a stop request, or shot at another frame size -- is skipped rather
+    than hiding every other usable series behind it (see HISTORY.md,
+    2026-09-27)."""
     if not directory.is_dir():
         return None
 
     candidates = []
-    for p in sorted(directory.glob(f"{image_type}_*.fits")):
+    for p in directory.glob(f"{image_type}_*.fits"):
         match = _TEMP_TOKEN_RE.search(p.name)
         if match is None:
             continue
         if abs(int(match.group(1)) - temp_c) <= TEMPERATURE_TOLERANCE_DEG_C:
             candidates.append(p)
-    if len(candidates) < count_required:
-        return None
 
-    selected = candidates[:count_required]
-    header = fits.getheader(selected[0])
-    if (header.get("NAXIS1"), header.get("NAXIS2")) != tuple(frame_size):
-        return None
-    exptime = header.get("EXPTIME")
-    if exptime is None or exptime < exposure_time_required - EXPOSURE_TIME_TOLERANCE_SECONDS:
-        return None
+    return pick_most_recent_usable_series(
+        candidates, count_required=count_required,
+        exposure_time_required=exposure_time_required, frame_size=frame_size,
+    )
 
-    return [p.name for p in selected]
+
+def pick_most_recent_usable_series(
+    candidates: list[Path],
+    *,
+    count_required: int,
+    exposure_time_required: float,
+    frame_size: tuple[int, int],
+) -> list[str] | None:
+    """Groups candidate files into series (same root name, minus the
+    trailing "-<N>" index) and returns the first count_required filenames,
+    in capture order, of the most recent series (capture timestamp embedded
+    in the root name) that has at least count_required files and whose first
+    file's FITS header reports this frame size and an EXPTIME at least
+    exposure_time_required minus EXPOSURE_TIME_TOLERANCE_SECONDS -- or None.
+    Shared by the DARK/BIAS lookup above and flat_acquisition, which only
+    differ in how they pick their candidates. Opens at most one header per
+    series."""
+    series: dict[str, list[Path]] = {}
+    for p in candidates:
+        series.setdefault(_SERIES_INDEX_RE.sub("", p.stem), []).append(p)
+
+    for root in sorted(series, key=_series_sort_key, reverse=True):
+        files = sorted(series[root], key=_series_index)
+        if len(files) < count_required:
+            continue
+        selected = files[:count_required]
+        header = fits.getheader(selected[0])
+        if (header.get("NAXIS1"), header.get("NAXIS2")) != tuple(frame_size):
+            continue
+        exptime = header.get("EXPTIME")
+        if exptime is None or exptime < exposure_time_required - EXPOSURE_TIME_TOLERANCE_SECONDS:
+            continue
+        return [p.name for p in selected]
+
+    return None
+
+
+_TIMESTAMP_TOKEN_RE = re.compile(r"_(\d{8}_\d{6})")
+_SERIES_INDEX_NUMBER_RE = re.compile(r"-(\d+)$")
+
+
+def _series_sort_key(root: str) -> tuple[str, str]:
+    """Chronological key for a series root name: its embedded capture
+    timestamp (build_fits_root_name()'s YYYYMMDD_HHMMSS token), the root name
+    itself as a tie-breaker. A root without a timestamp sorts oldest."""
+    match = _TIMESTAMP_TOKEN_RE.search(root)
+    return (match.group(1) if match else "", root)
+
+
+def _series_index(path: Path) -> int:
+    """Per-file index within a series ("-3" -> 3), numeric so "-10" comes
+    after "-9"; 0 for a single-file series with no index suffix."""
+    match = _SERIES_INDEX_NUMBER_RE.search(path.stem)
+    return int(match.group(1)) if match else 0
 
 
 def copy_darks_from_library(library_dir: Path, filenames: list[str], dest_dir: Path) -> list[str]:

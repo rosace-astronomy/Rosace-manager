@@ -130,11 +130,14 @@ class Observation(BaseModel):
     # by session_runner() the same way hardware itself is.
     hardware_config: dict[str, dict[str, Any]] = Field(default_factory=dict, exclude=True)
 
-    # Live callback, set by session_runner() (main.py) on every freshly-created
-    # Observation — lets a sub-plugin whose own work spans several internal
-    # steps (e.g. star_spectra_acquisition.py's multi-sub-exposure loop) notice a stop request
-    # between two of its own steps, not just between stages. None outside a
-    # real session run (e.g. in tests) — callers must check for that. Same
+    # Live callback that would let a sub-plugin whose own work spans several
+    # internal steps (e.g. star_spectra_acquisition.py's multi-sub-exposure
+    # loop) notice a stop request between two of its own steps, not just
+    # between stages. session_runner() (main.py) deliberately leaves it None
+    # today: a stop request lets the current observation finish every series
+    # it has started (a cut-short calibration series is useless). The
+    # sub-plugins' checks stay in place for a future "stop now" option. None
+    # outside a real session run too — callers must check for that. Same
     # "live, not persisted" pattern as hardware above: a plain callable can't
     # be deep-copied either, so it's also cleared before session_runner()'s
     # model_copy(deep=True) handoff to the background post-obs task (which has
@@ -192,8 +195,8 @@ class SessionContext(BaseModel):
     # sub-plugins only ever see Observation, never SessionContext.
     hardware_config: dict[str, dict[str, Any]] = Field(default_factory=dict, exclude=True)
 
-    # Live callback, same role and lifecycle as Observation.stop_check above —
-    # set by session_runner() right before INIT_SESSION runs (the one stage
+    # Live callback, same role as Observation.stop_check above, but actually
+    # set — by session_runner() right before INIT_SESSION runs (the one stage
     # that acts on a SessionContext, not yet an Observation), so a
     # multi-step wait inside INIT_SESSION (e.g. camera_cooldown.py's cooldown
     # poll loop) can notice a stop request without importing main.py itself.

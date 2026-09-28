@@ -30,14 +30,12 @@ DISPLAY_NAME = "Flat"
 import logging
 from pathlib import Path
 
-from astropy.io import fits
-
 from ....config import SUBPLUGIN_PARAMS
 from ....hardware.spectroscope import LightSource
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
 from ..acquisition_helpers import build_fits_root_name, capture_science_image
-from ..dark_library_helpers import EXPOSURE_TIME_TOLERANCE_SECONDS, summarize_series_root_name
+from ..dark_library_helpers import pick_most_recent_usable_series, summarize_series_root_name
 
 log = logging.getLogger("spectro.subplugin.flat_acquisition")
 
@@ -54,30 +52,26 @@ def _find_usable_flat_series(
     frame_size: tuple[int, int],
 ) -> list[str] | None:
     """Looks for a usable FLAT series in `directory` (the session
-    directory): at least count_required FLAT_*.fits files whose first
-    file's FITS header (read alone, not the pixel data) reports the same
-    frame size as frame_size (the camera's currently configured CCD_FRAME,
-    see hardware/camera.py::Camera.get_frame_size()) and an EXPTIME at
-    least exposure_time_required minus EXPOSURE_TIME_TOLERANCE_SECONDS. No
-    staleness check at all, unlike DARK/BIAS (temperature-tolerant, see
-    find_usable_frame_series() in dark_library_helpers.py) or CALIB
+    directory): the most recent series of FLAT_*.fits files (same root name,
+    minus the trailing "-<N>" index) with at least count_required files whose
+    first file's FITS header (read alone, not the pixel data) reports the
+    same frame size as frame_size (the camera's currently configured
+    CCD_FRAME, see hardware/camera.py::Camera.get_frame_size()) and an
+    EXPTIME at least exposure_time_required minus
+    EXPOSURE_TIME_TOLERANCE_SECONDS -- see
+    dark_library_helpers.py::pick_most_recent_usable_series(), shared with
+    DARK/BIAS. No staleness check at all, unlike DARK/BIAS
+    (temperature-tolerant, see find_usable_frame_series()) or CALIB
     (age-based) -- flat-field correction depends on neither, so once a
     matching series exists in the session directory it's reused for the
-    rest of it. Returns the first count_required matching filenames
-    (sorted), or None if no usable series was found."""
-    candidates = sorted(directory.glob("FLAT_*.fits")) if directory.is_dir() else []
-    if len(candidates) < count_required:
+    rest of it. Returns its first count_required filenames, or None if no
+    usable series was found."""
+    if not directory.is_dir():
         return None
-
-    selected = candidates[:count_required]
-    header = fits.getheader(selected[0])
-    if (header.get("NAXIS1"), header.get("NAXIS2")) != tuple(frame_size):
-        return None
-    exptime = header.get("EXPTIME")
-    if exptime is None or exptime < exposure_time_required - EXPOSURE_TIME_TOLERANCE_SECONDS:
-        return None
-
-    return [p.name for p in selected]
+    return pick_most_recent_usable_series(
+        list(directory.glob("FLAT_*.fits")), count_required=count_required,
+        exposure_time_required=exposure_time_required, frame_size=frame_size,
+    )
 
 
 class FlatAcquisitionPlugin(SubPlugin):

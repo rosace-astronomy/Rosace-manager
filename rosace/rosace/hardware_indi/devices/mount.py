@@ -11,6 +11,7 @@ import logging
 import time
 
 # Indi stuff
+import PyIndi
 from ..wrapper.indi_device import IndiDevice
 
 # Rosace stuff
@@ -23,26 +24,28 @@ from astropy.coordinates import SkyCoord
 from astropy.coordinates import ICRS
 from astropy.coordinates import FK5
 
-# EQUATORIAL_EOD_COORD can already sit at IPS_OK from an immediately
-# preceding command on the same property (e.g. a SYNC, which completes
-# near-instantly) when a slew's own set_number() write is sent -- so its
-# sync=True property-status wait can return before the mount has actually
-# reached, or even started slewing to, the requested coordinate. Confirmed
-# in the field 2026-09-11: a slew issued ~100ms after a sync returned
-# immediately while the mount was still sitting at the pre-sync position,
-# then physically slewed during the following exposure, trailing the star
-# across the frame. _verify_slew_reached() below is the defense: never
-# trust the property wait alone for a slew, always cross-check position.
+# A slew is over when the mount says so: the driver sets EQUATORIAL_EOD_COORD
+# to BUSY when it starts moving and back to OK when it has arrived. The
+# catch is the start: right after another command on the same property (a
+# SYNC, or the previous slew), the property still reads OK, and a wait that
+# only looks for OK can see that stale OK before the driver has switched to
+# BUSY -- it then returns while the mount has not even left (field test
+# 2026-09-11: a 50 deg slew "finished" 97 ms after a sync, the mount then
+# moved during the next exposure). _wait_for_slew() below therefore waits
+# for BUSY first, then for OK (see HISTORY.md, 2026-09-12 and 2026-09-27).
 #
-# Tolerance is deliberately loose (real successful slews land within a few
-# arcsec of commanded, see HISTORY.md) but still far tighter than the
-# smallest deliberate back-to-back slew this codebase issues today
-# (the 2 deg backlash-approach offset, hardware YAML's backlash_offset_deg)
-# -- so two genuinely close, unrelated targets can't accidentally mask a
-# stuck slew, without risking false positives on normal precision noise.
+# If no BUSY is seen within SLEW_START_TIMEOUT_SECONDS (already on target,
+# or a slew so short it started and ended between two reads), the position
+# decides: on target is fine, anywhere else means the command was not
+# carried out. The position is also checked once after OK, as a consistency
+# check. Tolerance: real completed slews land within a few arcsec, and the
+# smallest deliberate back-to-back slew is the 2 deg backlash approach
+# (hardware YAML's backlash_offset_deg), so 10' cannot mistake one of those
+# slews for another.
 SLEW_POSITION_TOLERANCE_ARCMIN = 10.0
-SLEW_VERIFY_TIMEOUT_SECONDS = 180
-SLEW_VERIFY_POLL_INTERVAL_SECONDS = 0.5
+SLEW_START_TIMEOUT_SECONDS = 5
+SLEW_FINISH_TIMEOUT_SECONDS = 60
+SLEW_POLL_INTERVAL_SECONDS = 0.05
 
 class IndiMount(IndiDevice):
     """
@@ -103,42 +106,69 @@ class IndiMount(IndiDevice):
             Slew to a coordinate and stop upon receiving coordinates.
         """
         self.on_coord_set('SLEW')
-        self.set_coord(coord)
+        self.set_coord(coord, wait=False)
         if not self.is_parked:
-            self._verify_slew_reached(coord)
+            self._wait_for_slew(coord)
 
     def slew_to_coord_and_track(self, coord):
         """
             Slew to a coordinate and track upon receiving coordinates.
         """
         self.on_coord_set('TRACK')
-        self.set_coord(coord)
+        self.set_coord(coord, wait=False)
         if not self.is_parked:
-            self._verify_slew_reached(coord)
+            self._wait_for_slew(coord)
 
-    def _verify_slew_reached(self, target_coord):
-        """See the module-level comment on SLEW_POSITION_TOLERANCE_ARCMIN."""
-        actual = self.get_current_coordinates()
-        separation_arcmin = target_coord.separation(actual).arcmin
-        if separation_arcmin <= SLEW_POSITION_TOLERANCE_ARCMIN:
-            return
-        self.logger.warning(
-            f"Slew reported complete but mount is {separation_arcmin:.1f}' from target "
-            f"(commanded RA={target_coord.ra.deg:.4f} DEC={target_coord.dec.deg:.4f}, "
-            f"reports RA={actual.ra.deg:.4f} DEC={actual.dec.deg:.4f}) -- waiting for it to actually arrive"
-        )
+    def _wait_for_slew(self, target_coord):
+        """Waits for the mount to report the slew started (BUSY), then
+        finished (OK) -- see the module-level comment above
+        SLEW_POSITION_TOLERANCE_ARCMIN. Raises RuntimeError if the command
+        was not carried out, the slew does not finish in time, the driver
+        reports an alert, or the mount says it has arrived somewhere else."""
         started = time.time()
-        while separation_arcmin > SLEW_POSITION_TOLERANCE_ARCMIN:
-            if time.time() - started > SLEW_VERIFY_TIMEOUT_SECONDS:
+        while self._coord_state() != PyIndi.IPS_BUSY:
+            if time.time() - started > SLEW_START_TIMEOUT_SECONDS:
+                separation_arcmin = self._separation_arcmin(target_coord)
+                if separation_arcmin <= SLEW_POSITION_TOLERANCE_ARCMIN:
+                    self.logger.info(
+                        f"No slew seen, mount already on target ({separation_arcmin:.1f}' from commanded)"
+                    )
+                    return
                 raise RuntimeError(
-                    f"Mount never reached target after slew: still {separation_arcmin:.1f}' away "
+                    f"Mount never started slewing: still {separation_arcmin:.1f}' from target "
                     f"(commanded RA={target_coord.ra.deg:.4f} DEC={target_coord.dec.deg:.4f}) "
-                    f"after {SLEW_VERIFY_TIMEOUT_SECONDS}s"
+                    f"after {SLEW_START_TIMEOUT_SECONDS}s"
                 )
-            time.sleep(SLEW_VERIFY_POLL_INTERVAL_SECONDS)
-            actual = self.get_current_coordinates()
-            separation_arcmin = target_coord.separation(actual).arcmin
-        self.logger.info(f"Mount reached target after extra wait ({separation_arcmin:.1f}' from commanded)")
+            time.sleep(SLEW_POLL_INTERVAL_SECONDS)
+
+        started = time.time()
+        while (state := self._coord_state()) == PyIndi.IPS_BUSY:
+            if time.time() - started > SLEW_FINISH_TIMEOUT_SECONDS:
+                raise RuntimeError(
+                    f"Mount slew not finished after {SLEW_FINISH_TIMEOUT_SECONDS}s "
+                    f"(commanded RA={target_coord.ra.deg:.4f} DEC={target_coord.dec.deg:.4f})"
+                )
+            time.sleep(SLEW_POLL_INTERVAL_SECONDS)
+        if state == PyIndi.IPS_ALERT:
+            raise RuntimeError(
+                f"Mount driver reported an alert during the slew "
+                f"(commanded RA={target_coord.ra.deg:.4f} DEC={target_coord.dec.deg:.4f})"
+            )
+
+        separation_arcmin = self._separation_arcmin(target_coord)
+        if separation_arcmin > SLEW_POSITION_TOLERANCE_ARCMIN:
+            raise RuntimeError(
+                f"Mount reports the slew complete but is {separation_arcmin:.1f}' from target "
+                f"(commanded RA={target_coord.ra.deg:.4f} DEC={target_coord.dec.deg:.4f})"
+            )
+
+    def _coord_state(self):
+        """Current INDI state of EQUATORIAL_EOD_COORD (PyIndi.IPS_*): BUSY
+        while the driver is carrying out a slew."""
+        return self.get_prop('EQUATORIAL_EOD_COORD', 'number').getState()
+
+    def _separation_arcmin(self, target_coord):
+        return target_coord.separation(self.get_current_coordinates()).arcmin
 
     def sync_to_coord(self, coord):
         """
@@ -148,12 +178,16 @@ class IndiMount(IndiDevice):
         self.set_coord(coord)
         self.on_coord_set('TRACK')
 
-    def set_coord(self, coord):
+    def set_coord(self, coord, wait=True):
         """
         Subtleties here for INDILIB: coord should be given as FK% frame with Equatorial astrometric epoch
         of date coordinate (eod):  RA JNow RA, hours,  DEC JNow Dec, degrees +N
 
         As our software only manipulates ICRS J2000. We decided to convert to FK5 jnow for the generic case
+
+        wait=False sends the coordinate and returns at once: the slew methods
+        wait with _wait_for_slew() instead, since a plain wait for OK can see
+        the OK left by the previous command (see the module-level comment).
         """
         fk5_now = FK5(equinox=Time.now())
         coord_now = coord.transform_to(fk5_now)
@@ -165,7 +199,7 @@ class IndiMount(IndiDevice):
         else:
             coord_formatted = coord_now.to_string(style="hmsdms", sep=":", precision=1)
             self.logger.info(f"Now setting JNow coord: {rahour_decdeg} = {coord_formatted}")
-            self.set_number('EQUATORIAL_EOD_COORD', rahour_decdeg, sync=True,
+            self.set_number('EQUATORIAL_EOD_COORD', rahour_decdeg, sync=wait,
                             timeout=180)
 
     def on_coord_set(self, what_to_do='TRACK'):
