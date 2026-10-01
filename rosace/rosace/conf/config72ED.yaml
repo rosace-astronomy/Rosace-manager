@@ -176,6 +176,18 @@ subplugin_params:
     # meridian: 2 + 1 degree of margin.
     min_meridian_distance_deg: 3
 
+  selector:
+    # Installation settings of the multi-program selector
+    # (active_scheduler: selector) — see config.yaml.
+    # Altitude (degrees) below which the telescope never points, whatever the program.
+    min_altitude_deg: 10
+    # Same rule and value as scheduler_rosace_2026 above.
+    min_meridian_distance_deg: 3
+    # Fixed time per observation besides the exposure, to estimate its duration.
+    overhead_minutes: 5
+    # A planner that does not answer within this delay loses its turn.
+    planner_timeout_seconds: 10
+
   dark_acquisition:
     # Number of DARK frames per series, fixed for the whole session.
     count: 5

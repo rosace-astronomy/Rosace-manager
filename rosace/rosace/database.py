@@ -192,6 +192,26 @@ async def db_count_observations_for_target(program_name: str, target_name: str) 
             return row[0]
 
 
+async def db_get_successes_for_target(
+    program_name: str, target_name: str, now: datetime | None = None
+) -> tuple[int, datetime | None]:
+    """Number of successful observations (SEQUENCER completed) of a target for
+    a program during the current astronomical day, and the start time of the
+    most recent one (None if there is none) — the history helper offered to
+    the program schedulers. `now` defaults to the current time; a planner
+    passes its SchedulingContext.now."""
+    since = astronomical_day_start_utc(now)
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        async with db.execute(
+            """SELECT COUNT(*), MAX(created_at) FROM observations
+               WHERE created_at >= ? AND program_name = ? AND target_name = ?
+                 AND sequencer_status = 'done'""",
+            (since, program_name, target_name)
+        ) as cursor:
+            count, last = await cursor.fetchone()
+            return count, (datetime.fromisoformat(last) if last else None)
+
+
 async def db_set_yaml_file(obs_id: str, yaml_file: str) -> None:
     """Records the YAML file path for an observation."""
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:

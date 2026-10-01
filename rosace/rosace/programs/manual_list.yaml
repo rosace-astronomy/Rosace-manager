@@ -1,0 +1,15 @@
+# ── Program: manual list ──────────────────────────────────────────────────────
+# The minimal program, always present: its planner proposes the observations
+# listed by hand in the observation list (see
+# plugins/program_schedulers/manual_list/manual_list.py for the file format).
+# It has no sequencer/reduction/sharing of its own: each line names the program
+# whose YAML runs the observation.
+
+program: manual_list
+description: "Observations listed by hand by the observer"
+
+scheduler:
+  name: manual_list
+  params:
+    observation_list_path: ~/.rosace/targets/ObsListNew.txt
+    min_altitude_deg: 10    # this program's own minimum, on top of the installation floor

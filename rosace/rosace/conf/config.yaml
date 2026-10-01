@@ -157,6 +157,22 @@ subplugin_params:
     # disabled (default; no real mount, no flip).
     min_meridian_distance_deg: 0
 
+  selector:
+    # Installation settings of the multi-program selector
+    # (active_scheduler: selector), shared by every program's planner through
+    # plugins/program_schedulers/checks.py. Programs and their own settings
+    # are declared in programs/*.yaml (`scheduler:` key).
+    # Altitude (degrees) below which the telescope never points, whatever the program.
+    min_altitude_deg: 10
+    # Same rule as scheduler_rosace_2026's min_meridian_distance_deg (pier
+    # flip during the two-step slew); 0 = disabled.
+    min_meridian_distance_deg: 0
+    # Fixed time per observation besides the exposure (pointing, guiding,
+    # calibrations), added to the exposure to estimate its duration.
+    overhead_minutes: 5
+    # A planner that does not answer within this delay loses its turn.
+    planner_timeout_seconds: 10
+
   dark_acquisition:
     # Number of DARK frames per series, fixed for the whole session.
     count: 5

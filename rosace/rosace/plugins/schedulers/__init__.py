@@ -11,6 +11,11 @@ Each scheduler lives in its own subdirectory, with its own class and its own
 tests. To write a new one, duplicate schedulers/blank/ (the minimal example,
 which documents the scheduler_data contract every SCHEDULER plugin must
 honor), adapt it, then register the class below.
+
+`selector` is the multi-program scheduler: it registers nothing per program.
+To add a scientific program to it, do not touch this registry: write a
+planner (plugins/program_schedulers/, see blank_program/blank_program.py)
+and declare it in the program's YAML.
 """
 
 from ...config import ACTIVE_SCHEDULER
@@ -30,10 +35,12 @@ def _build_registry() -> dict[str, type]:
     """Builds the name -> class registry, importing each scheduler on demand."""
     from .scheduler_rosace_2026.scheduler import SchedulerPlugin
     from .blank.scheduler import BlankPlugin
+    from .selector.scheduler import SelectorPlugin
 
     return {
         "scheduler_rosace_2026": SchedulerPlugin,
         "blank": BlankPlugin,
+        "selector": SelectorPlugin,
     }
 
 

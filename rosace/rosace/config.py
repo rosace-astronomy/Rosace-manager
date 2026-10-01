@@ -166,7 +166,7 @@ except ValueError as e:
 # Name (registry in plugins/schedulers/__init__.py) of the SCHEDULER plugin
 # to use — each is an interchangeable target-selection algorithm, see
 # plugins/schedulers/blank/scheduler.py for the contract to honor.
-_VALID_SCHEDULERS = ("scheduler_rosace_2026", "blank")
+_VALID_SCHEDULERS = ("scheduler_rosace_2026", "blank", "selector")
 
 
 def _validate_active_scheduler(value: str) -> str:
