@@ -19,6 +19,7 @@ from ...config import HORIZON_FILE, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, SUBPL
 from ...database import db_get_last_failure
 from ...models import ExposureConfig
 from ...targets import Star
+from . import PRIORITY_SERIES, TimeWindow
 from ..schedulers.scheduler_rosace_2026.horizon import horizon_altitude_deg, load_horizon
 from ..sequencer_plugins.acquisition_helpers import compute_exposure_time_and_count
 
@@ -28,6 +29,7 @@ MIN_MERIDIAN_DISTANCE_DEG = _params.get("min_meridian_distance_deg", 0)   # 0 = 
 OVERHEAD_SECONDS = 60 * _params.get("overhead_minutes", 5)       # pointing, guiding, calibrations
 PLANNER_TIMEOUT_SECONDS = _params.get("planner_timeout_seconds", 10)
 FAILURE_BACKOFF_HOURS = _params.get("failure_backoff_hours", 1)   # no retry before this delay
+LOOKAHEAD_MINUTES = _params.get("lookahead_minutes", 60)   # how far ahead a booked observation is announced
 
 # Same root keys and defaults as star_spectra_acquisition, which does the
 # actual split into sub-exposures at acquisition time.
@@ -63,14 +65,18 @@ def check_feasible(
     now: datetime,
     min_altitude_deg: Optional[float] = None,
     duration_s: Optional[float] = None,
+    start: Optional[datetime] = None,
 ) -> Optional[str]:
-    """Returns None if the observation can be made now, otherwise the reason
+    """Returns None if the observation can be made, otherwise the reason
     (one short sentence, meant for the log).
 
     min_altitude_deg: the planner's own scientific minimum, on top of the
     installation floor. duration_s: defaults to estimate_duration_s(); a
     planner running a series passes the whole series' duration instead.
+    start: when the observation would begin, `now` by default; a booked
+    observation passes its launch_time().
     """
+    now = start or now
     if duration_s is None:
         duration_s = estimate_duration_s(star, exposure)
         if duration_s is None:
@@ -100,10 +106,50 @@ def check_feasible(
     return None
 
 
+def launch_time(window: Optional[TimeWindow]) -> Optional[datetime]:
+    """When an observation with this window may be launched: start_after (the
+    start of the science exposures) minus the fixed overhead (pointing,
+    calibrations). None when the window has no start."""
+    if window is None or window.start_after is None:
+        return None
+    return window.start_after - timedelta(seconds=OVERHEAD_SECONDS)
+
+
+def check_window(window: Optional[TimeWindow], now: datetime, duration_s: float) -> tuple[str, Optional[str]]:
+    """Status of an observation's time window at `now`, for an observation of
+    duration_s seconds:
+
+    - ("open", None): it can be launched now and ends before end_before;
+    - ("booked", None): its launch time is still ahead, within
+      LOOKAHEAD_MINUTES, and launched then it ends before end_before;
+    - ("refused", reason): window closed or too short, or launch too far ahead.
+    """
+    if window is None:
+        return "open", None
+    launch = launch_time(window)
+    start = max(now, launch) if launch else now
+    if window.end_before is not None and start + timedelta(seconds=duration_s) > window.end_before:
+        return "refused", (f"window too short or closed (would end after "
+                           f"{window.end_before:%H:%M} UT)")
+    if launch is None or launch <= now:
+        return "open", None
+    if launch - now > timedelta(minutes=LOOKAHEAD_MINUTES):
+        return "refused", (f"window opens at {window.start_after:%H:%M} UT, launch at "
+                           f"{launch:%H:%M} UT is more than {LOOKAHEAD_MINUTES:g} min ahead")
+    return "booked", None
+
+
+def backoff_applies(priority: int) -> bool:
+    """The failure backoff applies to every level except 1: the next element
+    of a series is retried at once, its planner bounds the retries."""
+    return priority != PRIORITY_SERIES
+
+
 async def check_not_recently_failed(program: str, target_name: str, now: datetime) -> Optional[str]:
     """Returns None if the target may be tried again for this program, otherwise
     the reason: its last observation tonight failed less than
-    FAILURE_BACKOFF_HOURS ago. target_name is the canonical name (targets.db)."""
+    FAILURE_BACKOFF_HOURS ago. target_name is the canonical name (targets.db).
+    Not applied to a level-1 candidate (backoff_applies())."""
     last_failure = await db_get_last_failure(program, target_name, now)
     if last_failure is None:
         return None

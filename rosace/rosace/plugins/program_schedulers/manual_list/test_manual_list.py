@@ -6,7 +6,7 @@ own program and stars, with unique names.
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -164,9 +164,10 @@ class TestLinesIgnored:
         ("1, {p}, {a}, none, none, none, x", "priority 1 is reserved"),
         ("5, {p}, {a}, none, none, none, x", "priority 5 not in"),
         ("abc, {p}, {a}, none, none, none, x", "invalid line"),
-        ("3, {p}, {a}, 2026-10-01T20:00, none, none, x", "Start_after not supported yet"),
-        ("3, {p}, {a}, none, 2026-10-01T23:00, none, x", "End_before not supported yet"),
-        ("3, {p}, {a}, none, none, true, x", "Series not supported yet"),
+        ("3, {p}, {a}, 8pm, none, none, x", "is not HH:MM nor YYYY-MM-DD HH:MM"),
+        ("3, {p}, {a}, none, 25:00, none, x", "is not HH:MM nor YYYY-MM-DD HH:MM"),
+        ("3, {p}, {a}, none, none, yes, x", "Series 'yes' is not true, false or none"),
+        ("3, {p}, {a}, 2026-10-01 23:00, 2026-10-01 22:00, none, x", "Start_after is not before End_before"),
     ])
     async def test_bad_line_ignored_others_kept(self, tmp_path, caplog, line_fields, message):
         a, b = f"A_{_uid()}", f"B_{_uid()}"
@@ -299,3 +300,243 @@ class TestFailures:
         await _observed(program, a, success=False)
 
         assert await ManualListScheduler().propose(_ctx(path)) is None
+
+
+@pytest.fixture
+def ten_minutes(monkeypatch):
+    """Every observation lasts 10 minutes: 5 x 60 s + 5 min overhead."""
+    monkeypatch.setattr(checks, "OVERHEAD_SECONDS", 300)
+    monkeypatch.setattr(checks, "MAX_EXPOSURE_TIME_SECONDS", 300)
+    monkeypatch.setattr(checks, "MIN_EXPOSURE_COUNT", 5)
+    monkeypatch.setattr(checks, "LOOKAHEAD_MINUTES", 60)
+    monkeypatch.setattr(checks, "FAILURE_BACKOFF_HOURS", 1)
+
+
+def _ut(minutes: float) -> str:
+    """A full UT date, `minutes` from now, as written in the observation list."""
+    return (datetime.now(timezone.utc) + timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M")
+
+
+class TestTimeFormat:
+
+    def test_clock_time_is_tonight(self):
+        # The astronomical night starts at local noon (10:00 or 11:00 UT in France).
+        now = datetime(2026, 10, 2, 20, 0, tzinfo=timezone.utc)
+        assert manual_list_mod._parse_ut("21:30", now) == datetime(2026, 10, 2, 21, 30, tzinfo=timezone.utc)
+        assert manual_list_mod._parse_ut("02:00", now) == datetime(2026, 10, 3, 2, 0, tzinfo=timezone.utc)
+        after_midnight = datetime(2026, 10, 3, 1, 0, tzinfo=timezone.utc)
+        assert manual_list_mod._parse_ut("21:30", after_midnight) == datetime(2026, 10, 2, 21, 30, tzinfo=timezone.utc)
+
+    def test_full_date(self):
+        now = datetime(2026, 10, 2, 20, 0, tzinfo=timezone.utc)
+        expected = datetime(2026, 10, 5, 21, 30, tzinfo=timezone.utc)
+        assert manual_list_mod._parse_ut("2026-10-05 21:30", now) == expected
+        assert manual_list_mod._parse_ut("2026-10-05T21:30", now) == expected
+
+    @pytest.mark.parametrize("value", ["21h30", "25:00", "2026-13-01 21:30", "tonight"])
+    def test_invalid(self, value):
+        with pytest.raises(ValueError):
+            manual_list_mod._parse_ut(value, datetime(2026, 10, 2, 20, 0, tzinfo=timezone.utc))
+
+
+class TestWindows:
+
+    async def test_open_window_proposed_with_its_window(self, tmp_path, ten_minutes):
+        a = f"A_{_uid()}"
+        program, _ = await _program_with_stars(a)
+        path = _write(tmp_path, f"3, {program}, {a}, {_ut(-30)}, {_ut(60)}, none, x\n")
+
+        candidate = await ManualListScheduler().propose(_ctx(path))
+
+        assert candidate.queried_name == a and candidate.priority == 3
+        assert candidate.window.end_before is not None
+
+    async def test_booked_line_returned_when_nothing_else(self, tmp_path, ten_minutes):
+        a = f"A_{_uid()}"
+        program, _ = await _program_with_stars(a)
+        path = _write(tmp_path, f"2, {program}, {a}, {_ut(31)}, none, none, x\n")
+
+        candidate = await ManualListScheduler().propose(_ctx(path))
+
+        assert candidate.queried_name == a and candidate.priority == 2
+        assert "booked" in candidate.reason
+
+    async def test_too_far_ahead_not_proposed(self, tmp_path, ten_minutes):
+        a = f"A_{_uid()}"
+        program, _ = await _program_with_stars(a)
+        path = _write(tmp_path, f"2, {program}, {a}, {_ut(120)}, none, none, x\n")
+
+        assert await ManualListScheduler().propose(_ctx(path)) is None
+
+    async def test_closed_window_not_proposed(self, tmp_path, ten_minutes):
+        a = f"A_{_uid()}"
+        program, _ = await _program_with_stars(a)
+        path = _write(tmp_path, f"2, {program}, {a}, none, {_ut(5)}, none, x\n")
+
+        assert await ManualListScheduler().propose(_ctx(path)) is None
+
+    async def test_filler_that_ends_before_the_booked_launch(self, tmp_path, ten_minutes):
+        # Booked at +31 min -> launch at +26; a 10-minute filler fits.
+        a, b = f"A_{_uid()}", f"B_{_uid()}"
+        program, _ = await _program_with_stars(a, b)
+        path = _write(tmp_path, f"2, {program}, {a}, {_ut(31)}, none, none, x\n"
+                                f"3, {program}, {b}, none, none, none, x\n")
+
+        candidate = await ManualListScheduler().propose(_ctx(path))
+
+        assert candidate.queried_name == b and candidate.window is None
+
+    async def test_no_filler_that_would_delay_the_booked_line(self, tmp_path, ten_minutes):
+        # Booked at +13 min -> launch at +8; a 10-minute filler would end too late.
+        a, b = f"A_{_uid()}", f"B_{_uid()}"
+        program, _ = await _program_with_stars(a, b)
+        path = _write(tmp_path, f"2, {program}, {a}, {_ut(13)}, none, none, x\n"
+                                f"3, {program}, {b}, none, none, none, x\n")
+
+        candidate = await ManualListScheduler().propose(_ctx(path))
+
+        assert candidate.queried_name == a and "booked" in candidate.reason
+
+    async def test_more_urgent_line_goes_first(self, tmp_path, ten_minutes):
+        a, b = f"A_{_uid()}", f"B_{_uid()}"
+        program, _ = await _program_with_stars(a, b)
+        path = _write(tmp_path, f"3, {program}, {a}, {_ut(13)}, none, none, x\n"
+                                f"2, {program}, {b}, none, none, none, x\n")
+
+        assert (await ManualListScheduler().propose(_ctx(path))).queried_name == b
+
+
+class TestSeries:
+
+    async def test_first_element_at_line_priority_then_level_1(self, tmp_path, ten_minutes):
+        a, b = f"A_{_uid()}", f"B_{_uid()}"
+        program, _ = await _program_with_stars(a, b)
+        path = _write(tmp_path, f"3, {program}, {a}, none, none, true, x\n"
+                                f"2, {program}, {b}, none, none, none, x\n")
+        await _observed(program, b)          # the priority-2 line is done
+
+        first = await ManualListScheduler().propose(_ctx(path))
+        assert first.queried_name == a and first.priority == 3
+
+        await _observed(program, a)
+        for _ in range(2):
+            following = await ManualListScheduler().propose(_ctx(path))
+            assert following.queried_name == a and following.priority == 1
+            assert "series in progress" in following.reason
+            await _observed(program, a)
+
+    async def test_failed_element_retried_at_once(self, tmp_path, ten_minutes):
+        a = f"A_{_uid()}"
+        program, _ = await _program_with_stars(a)
+        path = _write(tmp_path, f"3, {program}, {a}, none, none, true, x\n")
+        await _observed(program, a)
+        await _observed(program, a, success=False)
+        await _observed(program, a, success=False)
+
+        candidate = await ManualListScheduler().propose(_ctx(path))
+
+        assert candidate.queried_name == a and candidate.priority == 1
+
+    async def test_stopped_after_consecutive_failures_line_consumed(self, tmp_path, ten_minutes, caplog):
+        a = f"A_{_uid()}"
+        program, _ = await _program_with_stars(a)
+        path = _write(tmp_path, f"3, {program}, {a}, none, none, true, x\n")
+        await _observed(program, a)
+        for _ in range(3):
+            await _observed(program, a, success=False)
+
+        with caplog.at_level(logging.INFO, logger="spectro.plugin.planner.manual_list"):
+            assert await ManualListScheduler().propose(_ctx(path)) is None
+        assert any("series stopped after 3 consecutive failures" in r.getMessage() for r in caplog.records)
+
+    async def test_failure_limit_is_a_parameter(self, tmp_path, ten_minutes):
+        a = f"A_{_uid()}"
+        program, _ = await _program_with_stars(a)
+        path = _write(tmp_path, f"3, {program}, {a}, none, none, true, x\n")
+        await _observed(program, a)
+        for _ in range(3):
+            await _observed(program, a, success=False)
+
+        candidate = await ManualListScheduler().propose(_ctx(path, max_series_failures=4))
+
+        assert candidate.priority == 1
+
+    async def test_success_resets_the_failure_count(self, tmp_path, ten_minutes):
+        a = f"A_{_uid()}"
+        program, _ = await _program_with_stars(a)
+        path = _write(tmp_path, f"3, {program}, {a}, none, none, true, x\n")
+        for success in (True, False, False, True, False, False):
+            await _observed(program, a, success=success)
+
+        assert (await ManualListScheduler().propose(_ctx(path))).priority == 1
+
+    async def test_no_success_line_not_consumed(self, tmp_path, ten_minutes, monkeypatch):
+        a = f"A_{_uid()}"
+        program, _ = await _program_with_stars(a)
+        path = _write(tmp_path, f"3, {program}, {a}, none, none, true, x\n")
+        for _ in range(3):
+            await _observed(program, a, success=False)
+
+        # Stopped, and within the failure backoff: nothing.
+        assert await ManualListScheduler().propose(_ctx(path)) is None
+        # Backoff over: the series starts again at the line's priority.
+        monkeypatch.setattr(checks, "FAILURE_BACKOFF_HOURS", 0)
+        assert (await ManualListScheduler().propose(_ctx(path))).priority == 3
+
+    async def test_series_interrupted_by_another_observation_is_over(self, tmp_path, ten_minutes):
+        a, b = f"A_{_uid()}", f"B_{_uid()}"
+        program, _ = await _program_with_stars(a, b)
+        path = _write(tmp_path, f"3, {program}, {a}, none, none, true, x\n")
+        await _observed(program, a)
+        await _observed(program, b)          # something else was observed in between
+
+        assert await ManualListScheduler().propose(_ctx(path)) is None
+
+    async def test_bounded_series_must_be_feasible_until_its_end(self, tmp_path, ten_minutes, monkeypatch):
+        a = f"A_{_uid()}"
+        program, _ = await _program_with_stars(a)
+        start = datetime.now(timezone.utc)
+        monkeypatch.setattr(checks, "altitude_deg",
+                            lambda ra, dec, lat, lon, at: 45.0 if at < start + timedelta(minutes=60) else 5.0)
+        short = _write(tmp_path, f"3, {program}, {a}, none, {_ut(45)}, true, x\n")
+        assert (await ManualListScheduler().propose(_ctx(short))).queried_name == a
+
+        long = _write(tmp_path, f"3, {program}, {a}, none, {_ut(120)}, true, x\n")
+        assert await ManualListScheduler().propose(_ctx(long)) is None
+
+
+class TestWindowedLinesCounting:
+
+    async def test_success_of_an_ordinary_line_does_not_consume_a_windowed_one(self, tmp_path, ten_minutes):
+        # A booked series line and an ordinary line for the same star: once the
+        # ordinary line is observed, it is done, and the windowed line still waits.
+        a = f"A_{_uid()}"
+        program, _ = await _program_with_stars(a)
+        path = _write(tmp_path, f"2, {program}, {a}, {_ut(31)}, {_ut(60)}, true, booked series\n"
+                                f"2, {program}, {a}, none, none, none, ordinary\n")
+
+        first = await ManualListScheduler().propose(_ctx(path))
+        assert first.window is None                      # the ordinary line fills the wait
+        await _observed(program, a)
+
+        second = await ManualListScheduler().propose(_ctx(path))
+        assert second.window is not None and "booked" in second.reason
+
+    async def test_windowed_line_done_by_a_success_inside_its_window(self, tmp_path, ten_minutes):
+        a = f"A_{_uid()}"
+        program, _ = await _program_with_stars(a)
+        path = _write(tmp_path, f"2, {program}, {a}, {_ut(-20)}, {_ut(60)}, none, x\n")
+        await _observed(program, a)
+
+        assert await ManualListScheduler().propose(_ctx(path)) is None
+
+    async def test_series_not_running_before_its_window(self, tmp_path, ten_minutes, caplog):
+        a = f"A_{_uid()}"
+        program, _ = await _program_with_stars(a)
+        path = _write(tmp_path, f"2, {program}, {a}, {_ut(31)}, {_ut(60)}, true, x\n")
+        await _observed(program, a)                      # observed earlier, outside the window
+
+        with caplog.at_level(logging.INFO, logger="spectro.plugin.planner.manual_list"):
+            candidate = await ManualListScheduler().propose(_ctx(path))
+        assert candidate.priority == 2 and "booked" in candidate.reason
+        assert not any("series over" in r.getMessage() for r in caplog.records)

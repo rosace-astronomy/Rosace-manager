@@ -12,7 +12,7 @@ import asyncio
 import logging
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -78,11 +78,13 @@ def _observation_list(programs_dir, body: str):
     (programs_dir.parent / "ObservationList.txt").write_text(HEADER + body)
 
 
-def _declare_program(programs_dir, program: str, planner: str | None = None):
+def _declare_program(programs_dir, program: str, planner: str | None = None, share=None):
     """Writes programs/<program>.yaml, with a `scheduler` key if planner is given."""
     content = f"program: {program}\nsequencer: []\nreduction: []\nsharing: blank_share\n"
     if planner:
         content += f"scheduler:\n  name: {planner}\n"
+        if share is not None:
+            content += f"  share_percent: {share}\n"
     (programs_dir / f"{program}.yaml").write_text(content)
 
 
@@ -145,8 +147,8 @@ class BlockingPlanner:
         return None
 
 
-def _add_planner(selector, programs_dir, program, planner):
-    _declare_program(programs_dir, program, planner="test_double")
+def _add_planner(selector, programs_dir, program, planner, share=None):
+    _declare_program(programs_dir, program, planner="test_double", share=share)
     selector._planners[program] = planner
 
 
@@ -387,3 +389,183 @@ class TestRecordedColumns:
         assert proposed_by == "manual_list"
         assert duration == pytest.approx(600)
         assert outcome == "success" and ended_at is not None
+
+
+def _in(minutes: float) -> datetime:
+    return datetime.now(timezone.utc) + timedelta(minutes=minutes)
+
+
+@pytest.fixture
+def lookahead(monkeypatch):
+    monkeypatch.setattr(checks, "LOOKAHEAD_MINUTES", 60)
+    monkeypatch.setattr(checks, "FAILURE_BACKOFF_HOURS", 1)
+
+
+class TestWindows:
+    """The candidates below last about 6 minutes (mag 3: 5 x 16 s + 5 min overhead)."""
+
+    async def test_booked_waits_then_selected_at_launch(self, programs_dir, lookahead, caplog):
+        a = f"A_{_uid()}"
+        program = await _program_with_stars(programs_dir, a)
+        selector = SelectorPlugin()
+        planner = FixedPlanner(Candidate(queried_name=a, program=program, priority=2, reason="t",
+                                         window=TimeWindow(start_after=_in(31))))
+        _add_planner(selector, programs_dir, program, planner)
+        session = await _session()
+
+        with caplog.at_level(logging.INFO, logger="spectro.plugin.scheduler"):
+            obs = await selector.run(_obs(session.session_id))
+        assert obs.scheduler_data["target"] is None
+        assert any("Waiting for booked observation" in r.getMessage() for r in caplog.records)
+
+        # Launch time reached (science at +4 min, launch 1 min ago).
+        planner.candidate = planner.candidate.model_copy(update={"window": TimeWindow(start_after=_in(4))})
+        obs = await selector.run(_obs(session.session_id))
+        assert obs.scheduler_data["queried_name"] == a
+
+    async def test_immediate_candidate_that_would_delay_a_booked_one_is_dropped(self, programs_dir, lookahead):
+        a, b = f"A_{_uid()}", f"B_{_uid()}"
+        program_x = await _program_with_stars(programs_dir, a)
+        program_y = await _program_with_stars(programs_dir, b)
+        selector = SelectorPlugin()
+        _add_planner(selector, programs_dir, program_x, FixedPlanner(
+            Candidate(queried_name=a, program=program_x, priority=2, reason="t",
+                      window=TimeWindow(start_after=_in(10)))))          # launch at +5 min
+        _add_planner(selector, programs_dir, program_y, FixedPlanner(
+            Candidate(queried_name=b, program=program_y, priority=3, reason="t")))
+        session = await _session()
+
+        obs = await selector.run(_obs(session.session_id))
+        assert obs.scheduler_data["target"] is None
+
+    async def test_immediate_candidate_that_ends_in_time_fills_the_wait(self, programs_dir, lookahead):
+        a, b = f"A_{_uid()}", f"B_{_uid()}"
+        program_x = await _program_with_stars(programs_dir, a)
+        program_y = await _program_with_stars(programs_dir, b)
+        selector = SelectorPlugin()
+        _add_planner(selector, programs_dir, program_x, FixedPlanner(
+            Candidate(queried_name=a, program=program_x, priority=2, reason="t",
+                      window=TimeWindow(start_after=_in(31)))))          # launch at +26 min
+        _add_planner(selector, programs_dir, program_y, FixedPlanner(
+            Candidate(queried_name=b, program=program_y, priority=3, reason="t")))
+        session = await _session()
+
+        obs = await selector.run(_obs(session.session_id))
+        assert obs.scheduler_data["queried_name"] == b
+
+    async def test_more_urgent_candidate_not_dropped(self, programs_dir, lookahead):
+        a, b = f"A_{_uid()}", f"B_{_uid()}"
+        program_x = await _program_with_stars(programs_dir, a)
+        program_y = await _program_with_stars(programs_dir, b)
+        selector = SelectorPlugin()
+        _add_planner(selector, programs_dir, program_x, FixedPlanner(
+            Candidate(queried_name=a, program=program_x, priority=3, reason="t",
+                      window=TimeWindow(start_after=_in(10)))))
+        _add_planner(selector, programs_dir, program_y, FixedPlanner(
+            Candidate(queried_name=b, program=program_y, priority=2, reason="t")))
+        session = await _session()
+
+        obs = await selector.run(_obs(session.session_id))
+        assert obs.scheduler_data["queried_name"] == b
+
+    async def test_window_first_at_equal_level(self, programs_dir, lookahead, caplog):
+        a, b = f"A_{_uid()}", f"B_{_uid()}"
+        program_x = await _program_with_stars(programs_dir, a)
+        program_y = await _program_with_stars(programs_dir, b)
+        first, second = sorted([program_x, program_y])
+        stars = {program_x: a, program_y: b}
+        selector = SelectorPlugin()
+        _add_planner(selector, programs_dir, first, FixedPlanner(
+            Candidate(queried_name=stars[first], program=first, priority=3, reason="t")))
+        _add_planner(selector, programs_dir, second, FixedPlanner(
+            Candidate(queried_name=stars[second], program=second, priority=3, reason="t",
+                      window=TimeWindow(end_before=_in(60)))))
+        session = await _session()
+
+        with caplog.at_level(logging.INFO, logger="spectro.plugin.scheduler"):
+            obs = await selector.run(_obs(session.session_id))
+        assert obs.scheduler_data["program"] == second
+        assert any("decided by time window" in r.getMessage() for r in caplog.records)
+
+    async def test_series_element_not_blocked_by_failure_backoff(self, programs_dir, lookahead):
+        a = f"A_{_uid()}"
+        program = await _program_with_stars(programs_dir, a)
+        selector = SelectorPlugin()
+        _add_planner(selector, programs_dir, program, FixedPlanner(
+            Candidate(queried_name=a, program=program, priority=1, reason="series")))
+        session = await _session()
+        failed = _obs(session.session_id)
+        failed.scheduler_data = {"target": Target(name=a, ra=10.0, dec=20.0), "queried_name": a,
+                                 "program": program, "priority": 1}
+        await _record(failed, session.session_id, success=False)
+
+        obs = await selector.run(_obs(session.session_id))
+        assert obs.scheduler_data["queried_name"] == a
+
+
+class TestTimeShares:
+
+    async def _two_programs(self, programs_dir, share_x, share_y):
+        a, b = f"A_{_uid()}", f"B_{_uid()}"
+        program_x = await _program_with_stars(programs_dir, a)
+        program_y = await _program_with_stars(programs_dir, b)
+        selector = SelectorPlugin()
+        _add_planner(selector, programs_dir, program_x, FixedPlanner(
+            Candidate(queried_name=a, program=program_x, priority=3, reason="t")), share=share_x)
+        _add_planner(selector, programs_dir, program_y, FixedPlanner(
+            Candidate(queried_name=b, program=program_y, priority=3, reason="t")), share=share_y)
+        return selector, program_x, program_y
+
+    async def test_total_above_100_stops_the_session(self, programs_dir):
+        selector, _, _ = await self._two_programs(programs_dir, 70, 40)
+        session = await _session()
+        with pytest.raises(SchedulerFatalError, match="110 %"):
+            await selector.run(_obs(session.session_id))
+
+    async def test_total_below_100_warns(self, programs_dir, caplog):
+        selector, _, _ = await self._two_programs(programs_dir, 30, 40)
+        session = await _session()
+        with caplog.at_level(logging.WARNING, logger="spectro.plugin.scheduler"):
+            await selector.run(_obs(session.session_id))
+        assert any("add up to 70 % only" in r.getMessage() for r in caplog.records)
+
+    async def test_no_share_declared(self, programs_dir, caplog):
+        selector, program_x, program_y = await self._two_programs(programs_dir, None, None)
+        session = await _session()
+        with caplog.at_level(logging.INFO, logger="spectro.plugin.scheduler"):
+            obs = await selector.run(_obs(session.session_id))
+        assert any("No time share declared" in r.getMessage() for r in caplog.records)
+        assert obs.scheduler_data["program"] == min(program_x, program_y)   # program name
+
+    async def test_program_furthest_behind_its_share_goes_first(self, programs_dir, caplog):
+        selector, program_x, program_y = await self._two_programs(programs_dir, 50, 50)
+        session = await _session()
+        # The program first by name has already used telescope time.
+        first, second = sorted([program_x, program_y])
+        used = Observation(id=_uid(), created_at=datetime.now(timezone.utc) - timedelta(hours=2),
+                           session_id=session.session_id)
+        used.scheduler_data = {"target": Target(name="X", ra=1.0, dec=1.0), "queried_name": "X",
+                               "program": first, "priority": 3}
+        await _record(used, session.session_id)
+
+        with caplog.at_level(logging.INFO, logger="spectro.plugin.scheduler"):
+            obs = await selector.run(_obs(session.session_id))
+        assert obs.scheduler_data["program"] == second
+        assert any("decided by time share" in r.getMessage() for r in caplog.records)
+
+    async def test_manual_list_share_ignored(self, programs_dir, caplog):
+        manual = programs_dir / "manual_list.yaml"
+        manual.write_text(manual.read_text().replace("scheduler:\n", "scheduler:\n  share_percent: 50\n"))
+        session = await _session()
+        with caplog.at_level(logging.ERROR, logger="spectro.plugin.scheduler"):
+            await SelectorPlugin().run(_obs(session.session_id))
+        assert any("share_percent ignored" in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.parametrize("share", ["'half'", "150", "-5"])
+    async def test_invalid_share_ignored(self, programs_dir, caplog, share):
+        selector, _, _ = await self._two_programs(programs_dir, share, None)
+        session = await _session()
+        with caplog.at_level(logging.ERROR, logger="spectro.plugin.scheduler"):
+            obs = await selector.run(_obs(session.session_id))
+        assert obs.scheduler_data["target"] is not None
+        assert any("share_percent must be a number" in r.getMessage() for r in caplog.records)

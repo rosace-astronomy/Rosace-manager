@@ -190,6 +190,9 @@ subplugin_params:
     # A target whose observation failed is not proposed again before this
     # delay (hours); a failed observation never consumes its request.
     failure_backoff_hours: 1
+    # A booked observation (time window not open yet) is announced at most
+    # this many minutes before its launch.
+    lookahead_minutes: 60
 
   dark_acquisition:
     # Number of DARK frames per series, fixed for the whole session.

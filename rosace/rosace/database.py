@@ -206,21 +206,28 @@ async def db_count_observations_for_target(program_name: str, target_name: str) 
 
 
 async def db_get_successes_for_target(
-    program_name: str, target_name: str, now: datetime | None = None
+    program_name: str, target_name: str, now: datetime | None = None,
+    start: datetime | None = None, end: datetime | None = None,
 ) -> tuple[int, datetime | None]:
     """Number of successful observations (SEQUENCER completed) of a target for
     a program during the current astronomical day, and the start time of the
     most recent one (None if there is none) — the history helper offered to
     the program schedulers. `now` defaults to the current time; a planner
-    passes its SchedulingContext.now."""
+    passes its SchedulingContext.now. start/end (optional) keep only the
+    observations started in [start, end), e.g. inside a time window."""
     since = astronomical_day_start_utc(now)
-    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
-        async with db.execute(
-            """SELECT COUNT(*), MAX(created_at) FROM observations
+    query = """SELECT COUNT(*), MAX(created_at) FROM observations
                WHERE created_at >= ? AND program_name = ? AND target_name = ?
-                 AND sequencer_status = 'done'""",
-            (since, program_name, target_name)
-        ) as cursor:
+                 AND sequencer_status = 'done'"""
+    params: list = [since, program_name, target_name]
+    if start is not None:
+        query += " AND created_at >= ?"
+        params.append(start.astimezone(timezone.utc).isoformat())
+    if end is not None:
+        query += " AND created_at < ?"
+        params.append(end.astimezone(timezone.utc).isoformat())
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        async with db.execute(query, params) as cursor:
             count, last = await cursor.fetchone()
             return count, (datetime.fromisoformat(last) if last else None)
 
@@ -242,6 +249,50 @@ async def db_get_last_failure(
         ) as cursor:
             (last,) = await cursor.fetchone()
             return datetime.fromisoformat(last) if last else None
+
+
+async def db_count_trailing_failures(
+    program_name: str, target_name: str, now: datetime | None = None
+) -> int:
+    """Number of consecutive failed observations (SEQUENCER error) of a target
+    for a program since its last success, during the current astronomical day
+    — used by series planners to stop a series after repeated failures.
+    Observations still running (neither success nor failure) are not counted."""
+    since = astronomical_day_start_utc(now)
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        async with db.execute(
+            """SELECT sequencer_status FROM observations
+               WHERE created_at >= ? AND program_name = ? AND target_name = ?
+                 AND sequencer_status IN ('done', 'error')
+               ORDER BY created_at DESC""",
+            (since, program_name, target_name)
+        ) as cursor:
+            rows = await cursor.fetchall()
+    count = 0
+    for (status,) in rows:
+        if status != "error":
+            break
+        count += 1
+    return count
+
+
+async def db_get_program_time_s(since: datetime) -> dict[str, float]:
+    """Telescope time used per program since `since` (seconds): the sum of
+    ended_at - created_at (end of SEQUENCER, success or failure) of its
+    observations. Rows without ended_at (recorded before that column existed,
+    or still running) are ignored."""
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        async with db.execute(
+            """SELECT program_name, created_at, ended_at FROM observations
+               WHERE created_at >= ? AND ended_at IS NOT NULL AND program_name IS NOT NULL""",
+            (since.isoformat(),)
+        ) as cursor:
+            rows = await cursor.fetchall()
+    totals: dict[str, float] = {}
+    for program, created_at, ended_at in rows:
+        seconds = (datetime.fromisoformat(ended_at) - datetime.fromisoformat(created_at)).total_seconds()
+        totals[program] = totals.get(program, 0.0) + max(0.0, seconds)
+    return totals
 
 
 # Measurement name (Observation.measurements) -> column of the observations

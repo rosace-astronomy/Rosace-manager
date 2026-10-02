@@ -11,9 +11,12 @@ import pytest
 import pytest_asyncio
 from pydantic import ValidationError
 
-from rosace.database import db_init, db_insert_observation, db_insert_session, db_set_stage_status, db_stamp_stage, db_get_successes_for_target
+from rosace.database import (
+    db_count_trailing_failures, db_get_program_time_s, db_get_successes_for_target, db_init,
+    db_insert_observation, db_insert_session, db_set_stage_status, db_stamp_stage,
+)
 from rosace.models import ExposureConfig, Observation, OrchestratorStage, SessionContext, Target
-from rosace.plugins.program_schedulers import Candidate, load_planner
+from rosace.plugins.program_schedulers import Candidate, TimeWindow, load_planner
 from rosace.plugins.program_schedulers import checks
 from rosace.plugins.program_schedulers.manual_list.manual_list import ManualListScheduler
 from rosace.targets import Star
@@ -35,6 +38,7 @@ def _installation(monkeypatch):
     monkeypatch.setattr(checks, "MAX_EXPOSURE_TIME_SECONDS", 300)
     monkeypatch.setattr(checks, "MIN_EXPOSURE_COUNT", 5)
     monkeypatch.setattr(checks, "HORIZON_FILE", None)
+    monkeypatch.setattr(checks, "LOOKAHEAD_MINUTES", 60)
 
 
 def _altitude_over_time(monkeypatch, altitude_at):
@@ -150,6 +154,15 @@ class TestCheckFeasible:
         reason = checks.check_feasible(_star(), exposure, NOW, duration_s=2 * 3600)
         assert reason is not None and "below minimum altitude" in reason
 
+    def test_start_later(self, monkeypatch):
+        # High now, below the floor one hour later: a booked observation launched
+        # then is refused.
+        _altitude_over_time(monkeypatch, lambda minutes: 45.0 if minutes < 50 else 5.0)
+        exposure = ExposureConfig(exposure_time=60)
+        assert checks.check_feasible(_star(), exposure, NOW) is None
+        reason = checks.check_feasible(_star(), exposure, NOW, start=NOW + timedelta(hours=1))
+        assert reason is not None and "below minimum altitude" in reason
+
     def test_unknown_duration(self):
         reason = checks.check_feasible(_star(magnitude_v=None), ExposureConfig(), NOW)
         assert reason is not None and "duration unknown" in reason
@@ -219,3 +232,82 @@ class TestFailureBackoff:
         assert reason is not None and "not retried before 1 h" in reason
         later = now + timedelta(hours=1, minutes=1)
         assert await checks.check_not_recently_failed(program, target, later) is None
+
+
+def _at(minutes: float) -> datetime:
+    return NOW + timedelta(minutes=minutes)
+
+
+class TestWindow:
+
+    def test_launch_time_is_overhead_before_start(self):
+        assert checks.launch_time(TimeWindow(start_after=_at(30))) == _at(25)
+        assert checks.launch_time(TimeWindow(end_before=_at(30))) is None
+        assert checks.launch_time(None) is None
+
+    @pytest.mark.parametrize("window, status", [
+        (None, "open"),
+        (TimeWindow(start_after=_at(-10)), "open"),
+        (TimeWindow(start_after=_at(4)), "open"),                     # launch 1 min ago
+        (TimeWindow(end_before=_at(20)), "open"),                     # 10-min observation fits
+        (TimeWindow(start_after=_at(30)), "booked"),                  # launch in 25 min
+        (TimeWindow(start_after=_at(30), end_before=_at(40)), "booked"),
+        (TimeWindow(start_after=_at(90)), "refused"),                 # launch beyond the lookahead
+        (TimeWindow(end_before=_at(5)), "refused"),                   # would end too late
+        (TimeWindow(start_after=_at(30), end_before=_at(32)), "refused"),
+        (TimeWindow(end_before=_at(-1)), "refused"),                  # closed
+    ])
+    def test_status(self, window, status):
+        got, reason = checks.check_window(window, NOW, duration_s=600)
+        assert got == status
+        assert (reason is not None) == (status == "refused")
+
+    def test_backoff_not_applied_at_level_1(self):
+        assert checks.backoff_applies(2) and checks.backoff_applies(3)
+        assert not checks.backoff_applies(1)
+
+
+class TestHistoryHelpers:
+
+    @pytest_asyncio.fixture(autouse=True)
+    async def init_db(self):
+        await db_init()
+
+    async def _observation(self, session_id, program, target, minutes_ago, success):
+        obs = Observation(
+            id=str(uuid.uuid4())[:8],
+            created_at=datetime.now(timezone.utc) - timedelta(minutes=minutes_ago),
+            session_id=session_id,
+            scheduler_data={"target": Target(name=target, ra=1.0, dec=1.0),
+                            "queried_name": target, "program": program, "priority": 3},
+        )
+        await db_insert_observation(obs, session_id)
+        if success:
+            await db_stamp_stage(obs.id, OrchestratorStage.SEQUENCER)
+        else:
+            await db_set_stage_status(obs.id, OrchestratorStage.SEQUENCER, "error")
+
+    async def test_trailing_failures(self):
+        session = SessionContext(site_name="Test")
+        await db_insert_session(session)
+        program, target = f"prog_{uuid.uuid4().hex[:8]}", f"star_{uuid.uuid4().hex[:8]}"
+        assert await db_count_trailing_failures(program, target) == 0
+        await self._observation(session.session_id, program, target, 40, success=False)
+        await self._observation(session.session_id, program, target, 30, success=True)
+        await self._observation(session.session_id, program, target, 20, success=False)
+        await self._observation(session.session_id, program, target, 10, success=False)
+        assert await db_count_trailing_failures(program, target) == 2
+        await self._observation(session.session_id, program, target, 5, success=True)
+        assert await db_count_trailing_failures(program, target) == 0
+
+    async def test_program_time(self):
+        session = SessionContext(site_name="Test")
+        await db_insert_session(session)
+        program = f"prog_{uuid.uuid4().hex[:8]}"
+        since = datetime.now(timezone.utc) - timedelta(hours=1)
+        await self._observation(session.session_id, program, "A", 10, success=True)
+        await self._observation(session.session_id, program, "B", 20, success=False)
+        used = await db_get_program_time_s(since)
+        assert used[program] == pytest.approx(30 * 60, abs=10)
+        later = await db_get_program_time_s(datetime.now(timezone.utc))
+        assert program not in later

@@ -36,8 +36,11 @@ THE ANSWER: Candidate
                   otherwise None (computed from the magnitude). The split into
                   sub-exposures is decided at acquisition time by
                   star_spectra_acquisition, not here.
-    window        time window (start_after / end_before, UTC) — not supported
-                  yet: leave it None.
+    window        TimeWindow (UTC) or None. start_after = start of the science
+                  exposures (the observation is launched overhead_minutes
+                  earlier, checks.launch_time()); end_before = end of the
+                  whole observation. A candidate whose launch time is still
+                  ahead is "booked" (see below).
     reason        one readable sentence: why this target now. It goes to the
                   log and to the observation dossier ("last success 19 d ago").
 
@@ -56,9 +59,16 @@ HOW THE SELECTOR CHOOSES
 ------------------------
 1. collect one candidate (or none) per active program;
 2. keep the feasible ones (same checks as checks.py, see below);
-3. lowest level first; at equal level: at level 1 the program of the previous
+3. set aside a booked candidate (window not open yet, launch within
+   lookahead_minutes) and drop any immediate candidate, not more urgent than
+   it, that would end after its launch time;
+4. lowest level first; at equal level: at level 1 the program of the previous
    observation keeps the hand, then manual_list before the other programs,
-   then the program name (time shares will replace it later).
+   then a candidate with a window before one without (the window closing
+   first between two), then the program furthest behind its time share
+   (share_percent), then the program name;
+5. a booked candidate is never observed early: when it is the only one left,
+   nothing is observed and the selector asks again a minute later.
 
 RULES FOR A PLANNER
 -------------------
@@ -70,8 +80,13 @@ RULES FOR A PLANNER
   candidate for which both checks.check_feasible(star, exposure, ctx.now,
   min_altitude_deg) and await checks.check_not_recently_failed(program,
   star.name, ctx.now) return None (the second one refuses a target that failed
-  less than failure_backoff_hours ago). The selector re-runs the same checks;
-  a rejection there means a planner bug.
+  less than failure_backoff_hours ago — not applied at level 1, see series).
+  With a window, first call checks.check_window(window, ctx.now, duration):
+  "refused" -> do not propose it; "booked" -> check feasibility from
+  checks.launch_time(window) (check_feasible(..., start=...)). The selector
+  re-runs the same checks; a rejection there means a planner bug.
+- One candidate means: while your candidate is booked, you propose nothing
+  else (or something that ends before its launch, if you want to fill).
 - Keep no state between calls: everything you need (what was observed, when,
   with which result) is in rosace.db. A server restart then loses nothing.
   database.db_get_successes_for_target(program, target, ctx.now) gives the
@@ -96,8 +111,13 @@ The selector knows nothing about series: the planner does everything.
   duration to check_feasible(..., duration_s=...).
 - Propose the first element at its own level (2, 3 or 4), then every next
   element at level 1 (PRIORITY_SERIES), reading in rosace.db that the series
-  has started, until its end time. A mount flip between two elements is
-  accepted (each element is an ordinary observation).
+  has started (db_get_recent_observations(limit=1): the night's last
+  observation is yours), until its end time. A mount flip between two
+  elements is accepted (each element is an ordinary observation).
+- The failure backoff does not apply at level 1: a failed element is retried
+  at once. Bound the retries yourself, e.g. stop after N consecutive failures
+  (database.db_count_trailing_failures()); manual_list stops at
+  max_series_failures, 3 by default.
 
 DECLARING YOUR PROGRAM
 ----------------------
@@ -107,8 +127,12 @@ DECLARING YOUR PROGRAM
 2. Add a `scheduler` block to your program's YAML (programs/<program>.yaml):
        scheduler:
          name: <your_name>
+         share_percent: 30      # optional: target share of telescope time
          params: { ... }        # whatever your planner reads from ctx.params
    A program is active as soon as its YAML has a `scheduler` key.
+   share_percent only breaks ties at equal level (time over 60 rolling days,
+   failures included). The shares of all programs must not exceed 100 %
+   (the session stops otherwise); manual_list has none.
 3. Write <your_name>/test_<your_name>.py: no candidate when nothing is to do,
    a valid Candidate otherwise (priority 0-4, program set, reason set), and
    your own rules — see this planner's test file for the pattern.

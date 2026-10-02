@@ -13,3 +13,4 @@ scheduler:
   params:
     observation_list_path: ~/.rosace/targets/ObsListNew.txt
     min_altitude_deg: 10    # this program's own minimum, on top of the installation floor
+    max_series_failures: 3  # a series stops after this many consecutive failures

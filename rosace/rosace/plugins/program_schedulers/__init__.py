@@ -49,7 +49,11 @@ class SchedulingContext(BaseModel):
 
 
 class TimeWindow(BaseModel):
-    """The observation must start after start_after and end before end_before (UTC)."""
+    """Time constraint of an observation (UTC). start_after: the science
+    exposures start no earlier — the observation itself is launched the fixed
+    overhead before (checks.launch_time()). end_before: the whole observation
+    must be over. A candidate whose launch time is still ahead is "booked":
+    the selector waits for it rather than observing it now."""
     start_after: Optional[datetime] = None
     end_before: Optional[datetime] = None
 

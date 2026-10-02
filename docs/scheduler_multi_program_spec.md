@@ -1,8 +1,9 @@
-# Multi-program scheduling — specification v0.7
+# Multi-program scheduling — specification v0.8
 
-**Version 0.7 — 2 October 2026.** Implemented on branch `multi-program`: phase A (selector,
-shared checks, `manual_list` and `blank_program` planners) and phase B1 (failures, observation
-columns, measurements); phase B2 is not.
+**Version 0.8 — 2 October 2026.** Implemented on branch `multi-program`: phase A (selector,
+shared checks, `manual_list` and `blank_program` planners), phase B1 (failures, observation
+columns, measurements) and phase B2 (windows and booked observations, series in the manual
+list, time shares).
 Earlier versions (0.1–0.55, in French) were working drafts.
 
 ## 1. Principles
@@ -30,7 +31,7 @@ Earlier versions (0.1–0.55, in French) were working drafts.
 program: Be_stars
 scheduler:
   name: be_cadence        # plugins/program_schedulers/be_cadence/be_cadence.py
-  share_percent: 70       # phase B: target share of telescope time
+  share_percent: 70       # optional: target share of telescope time
   params: { ... }         # free-form, read by the planner
 sequencer: [...]
 reduction: [...]
@@ -65,7 +66,7 @@ planner), `site`, `program` (`None` for manual_list), `params` (the YAML's `para
 | `program` | Program whose YAML runs the observation. |
 | `priority` | 0 to 4 (section 5). |
 | `exposure` | As today: `exposure_time` = one sub-exposure if set in `targets.db`, else `None` (from magnitude). The split into sub-exposures stays in `star_spectra_acquisition`, unchanged. |
-| `window` | `start_after` / `end_before` (UTC). Phase B; rejected until then. |
+| `window` | `start_after` = start of the science exposures (the observation is launched `overhead_minutes` earlier); `end_before` = end of the whole observation (UTC). Launch still ahead, within `lookahead_minutes` (60) → **booked**. |
 | `reason` | One readable sentence, logged and written to the observation dossier. |
 
 **Threads and timeout.** Each planner runs in its own thread with its own event loop, bounded
@@ -91,8 +92,12 @@ Installation settings in `subplugin_params.selector` (`min_altitude_deg` 10,
   minimum) and above the local horizon, sampled every 5 minutes over the whole duration; the
   pointing must not straddle the meridian (current rule, at start). A series planner passes the
   whole series' duration.
+- `check_window(window, now, duration)` → `open`, `booked` or `refused` (closed, too short,
+  launch beyond `lookahead_minutes`); `check_feasible(..., start=launch)` for a booked one.
 - `check_not_recently_failed(program, target, now)` → refuses a target whose last observation
-  for this program failed less than `failure_backoff_hours` (1 h) ago.
+  for this program failed less than `failure_backoff_hours` (1 h) ago. Not applied at level 1:
+  a series retries at once, its planner bounds the retries
+  (`db_count_trailing_failures()`).
 - `database.db_get_successes_for_target(program, target, now)` → number of successful
   observations (SEQUENCER completed) tonight and the time of the last one.
 
@@ -112,33 +117,38 @@ A time constraint does not set the level; the planner chooses both.
 
 ```
 1. COLLECT    one candidate (or none) per active program
-2. FILTER     keep the feasible candidates (section 4)
-              [phase B: a candidate whose window is not open yet is set aside as a
-               "booked observation"]
-3. PROTECT    [phase B] drop any candidate that would make a booked observation of a
-              more urgent level miss its last possible start (end_before − its duration)
+2. FILTER     keep the feasible candidates (section 4); a candidate whose launch time
+              is still ahead is set aside as a booked observation
+3. PROTECT    drop any immediate candidate, not more urgent than a booked one, that
+              would end after its launch time (start_after − overhead)
 4. SORT       by level: 0, 1, 2, 3, 4
 5. TIE-BREAK  at equal level, in this order:
                 a. level 1: the program of the previous observation keeps the hand
                 b. manual_list before the other programs
-                c. [phase B] a candidate with a window before one without
+                c. a candidate with a window before one without
                    (between two windows, the one closing first)
-                d. [phase B] the program furthest behind its time share
-                   (until then: program name)
-6. DECIDE     first one -> scheduler_data; nobody -> target = None, main.py retries
+                d. the program furthest behind its time share
+                e. program name
+6. DECIDE     first immediate one -> scheduler_data; only booked ones (or nobody)
+              -> target = None, main.py asks again a minute later
 ```
 
-Filling the time before a booked observation uses only the candidates already received.
+Filling the time before a booked observation uses only the candidates already received. One
+candidate per planner: while `manual_list` waits for a booked line, it proposes only a line
+that ends before its launch (or a more urgent one), else the booked line itself. **Known
+limit**: a more urgent candidate of another program can still delay a booked manual line;
+filling with the candidates of every planner comes later.
 `scheduler_data` keeps `target`, `queried_name`, `program`, `priority`, `exposure` and adds
 `proposed_by`, `estimated_duration_s`, `reason`. One INFO line per round.
 
-## 7. Time shares (phase B)
+## 7. Time shares
 
 - Time used by an observation = `ended_at − created_at` (end of SEQUENCER), overhead and
   failures included. Share obtained = program time / total time, rolling 60 days. Deficit =
   target − obtained, no cap. Only breaks ties at equal level.
-- `share_percent` in the program YAML; checked at the first selector call of each session:
-  total below 100 % → warning, above 100 % → the session stops with an explicit message.
+- `share_percent` in the program YAML (optional); checked at the first selector call of each
+  session: total below 100 % → warning, above 100 % → the session stops with an explicit
+  message, none declared → shares off (rule d changes nothing).
 - Manual observations escape the shares (they go first at equal level) but their time counts
   for the program they execute.
 
@@ -149,8 +159,10 @@ database is the memory: planners count successes only (a failed observation neve
 manual list line), and the shared checks refuse a target that failed less than
 `failure_backoff_hours` (1 h) ago.
 
-**Series.** The planner's business: it knows the series has started (from `rosace.db`) and
-proposes the next element at level 1. A mount flip between two elements is accepted. Not
+**Series.** The planner's business: it knows the series has started (from `rosace.db`: the
+night's last observation is its own) and proposes the next element at level 1, without
+failure backoff; `manual_list` stops a series after `max_series_failures` (3) consecutive
+failures — a passing cloud gets 3 tries, each time. A mount flip between two elements is accepted. Not
 re-pointing between elements and when to calibrate: handled by the program concerned.
 
 **Manual list** (`ObservationList.txt`, re-read on every call, may be edited during a session):
@@ -161,11 +173,14 @@ Priority, Program, Star, Start_after, End_before, Series, comment
 ```
 
 - `Priority` 0, 2, 3 or 4 (1 reserved); ties keep the file order. `none` or empty = not given.
-- `Start_after`/`End_before` (UT) and `Series` (true/false): phase B; a line using them is
-  ignored until then. `Series` with `End_before` = bounded series; without = runs until the
-  next element is no longer feasible, a manual stop, or a level 0.
-- The same star on several lines: the k-th line of a (program, star) pair is done once that
-  pair has k successful observations tonight, whichever planner proposed them.
+- `Start_after`/`End_before` (UT, `HH:MM` = tonight's astronomical night, or
+  `YYYY-MM-DD HH:MM`) and `Series` (true/false). `Series` with `End_before` = bounded series,
+  feasible until its end before the first element; without = runs until the next element is
+  no longer feasible, a manual stop, or a level 0. A series line is done once the series is
+  over with ≥ 1 success; with none it stays available like any failed line.
+- The same star on several lines: a line with a window is done by a success started inside
+  its window; the k-th line without a window of a (program, star) pair is done once that pair
+  has k other successes tonight, whichever planner proposed them.
 - The same star several times in another program: the planner decides from the history.
 - File problems never stop the session: ERROR in the log (repeated at DEBUG while unchanged),
   the line or the whole file ignored until corrected.
@@ -205,7 +220,7 @@ pointing rule applies.
   `active_scheduler: selector`.
 - **Phase B1 (done)**: success-only counting and 1-hour backoff, new columns and
   `obs.measurements` (temperatures, pier side, slit, focus). Next: one simulator run.
-- **Phase B2**: time shares, windows and booked observations (one candidate per planner: a
-  planner whose candidate is booked proposes nothing else meanwhile), series in the manual
-  list; then the first program planner (Be).
-- **Later**: interruption, meridian tolerance, Moon, moving objects.
+- **Phase B2 (done)**: time shares, windows and booked observations, series in the manual
+  list. Next: one simulator run, then the first program planner (Be).
+- **Later**: interruption, meridian tolerance, Moon, moving objects, filling before a booked
+  observation with the candidates of every planner.
