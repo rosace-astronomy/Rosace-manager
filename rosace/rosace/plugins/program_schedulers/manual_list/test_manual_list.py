@@ -11,8 +11,8 @@ from datetime import datetime, timezone
 import pytest
 import pytest_asyncio
 
-from rosace.database import db_init, db_insert_observation, db_insert_session
-from rosace.models import Observation, SessionContext, Target
+from rosace.database import db_init, db_insert_observation, db_insert_session, db_set_stage_status, db_stamp_stage
+from rosace.models import Observation, OrchestratorStage, SessionContext, Target
 from rosace.plugins.program_schedulers import SchedulingContext, Site
 from rosace.plugins.program_schedulers import checks
 from rosace.plugins.program_schedulers.manual_list import manual_list as manual_list_mod
@@ -73,8 +73,9 @@ def _write(tmp_path, body: str, header: str = HEADER):
     return path
 
 
-async def _observed(program: str, star: str):
-    """Records one observation of `star` for `program` tonight."""
+async def _observed(program: str, star: str, success: bool = True):
+    """Records one observation of `star` for `program` tonight, successful
+    (SEQUENCER completed) or failed (SEQUENCER error)."""
     session = SessionContext(site_name="Test")
     await db_insert_session(session)
     obs = Observation(
@@ -83,6 +84,10 @@ async def _observed(program: str, star: str):
                         "program": program, "priority": 3},
     )
     await db_insert_observation(obs, session.session_id)
+    if success:
+        await db_stamp_stage(obs.id, OrchestratorStage.SEQUENCER)
+    else:
+        await db_set_stage_status(obs.id, OrchestratorStage.SEQUENCER, "error")
 
 
 class TestSelection:
@@ -269,3 +274,28 @@ class TestFeasibility:
 
         assert await ManualListScheduler().propose(_ctx(path, min_altitude_deg=20)) is not None
         assert await ManualListScheduler().propose(_ctx(path, min_altitude_deg=30)) is None
+
+
+class TestFailures:
+
+    async def test_failed_observation_does_not_consume_its_line(self, tmp_path, monkeypatch):
+        a, b = f"A_{_uid()}", f"B_{_uid()}"
+        program, _ = await _program_with_stars(a, b)
+        path = _write(tmp_path, f"2, {program}, {a}, none, none, none, x\n3, {program}, {b}, none, none, none, x\n")
+        await _observed(program, a, success=False)
+
+        # Within the backoff: a is skipped, b offered.
+        assert (await ManualListScheduler().propose(_ctx(path))).queried_name == b
+
+        # Backoff over: a is offered again, its line was not consumed.
+        monkeypatch.setattr(checks, "FAILURE_BACKOFF_HOURS", 0)
+        assert (await ManualListScheduler().propose(_ctx(path))).queried_name == a
+
+    async def test_failure_after_success_keeps_the_line_done(self, tmp_path):
+        a = f"A_{_uid()}"
+        program, _ = await _program_with_stars(a)
+        path = _write(tmp_path, f"3, {program}, {a}, none, none, none, x\n")
+        await _observed(program, a, success=True)
+        await _observed(program, a, success=False)
+
+        assert await ManualListScheduler().propose(_ctx(path)) is None

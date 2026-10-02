@@ -46,6 +46,20 @@ MAX_EXPOSURE_TIME_SECONDS = SUBPLUGIN_PARAMS.get("max_exposure_time_seconds", 30
 MIN_EXPOSURE_COUNT = SUBPLUGIN_PARAMS.get("min_exposure_count", 5)
 
 
+async def _record_temperatures(obs: Observation, camera) -> None:
+    """Records the ambient (focuser probe) and science-camera sensor
+    temperatures right before the science exposures, best effort: a reading
+    that fails is a warning, never a reason to lose the observation."""
+    sources = (("ambient_temp_c", obs.hardware.get("focuser")), ("camera_temp_c", camera))
+    for name, device in sources:
+        if device is None:
+            continue
+        try:
+            obs.measurements[name] = round(float(await device.get_temperature()), 2)
+        except Exception as e:
+            log.warning(f"[STAR_SPECTRA_ACQUISITION] Could not read {name}: {e}")
+
+
 class StarSpectraAcquisitionPlugin(SubPlugin):
     """Switches the spectroscope to SKY mode, then runs the science sub-exposure series."""
 
@@ -83,6 +97,7 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
 
         log.info(f"[STAR_SPECTRA_ACQUISITION] {count} exposure(s) of {exposure_time}s")
         camera = obs.hardware["science_camera"]
+        await _record_temperatures(obs, camera)
 
         queried_name = obs.scheduler_data.get("queried_name")
         root_name = build_fits_root_name(

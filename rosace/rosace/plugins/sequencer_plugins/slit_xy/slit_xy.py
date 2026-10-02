@@ -236,6 +236,7 @@ class SlitXyPlugin(SubPlugin):
             "slit_y": slit_y,
             "image": image_path.name,
         }
+        obs.measurements["slit_y_px"] = slit_y
         log.info(
             f"[SLIT_XY] Slit calculated at ({float(default_x):.2f}, {slit_y:.2f}) px on {image_path.name} "
             f"(measured {measurement.y_at_slit_x:.2f}, offset {offset_y:+.2f}; "

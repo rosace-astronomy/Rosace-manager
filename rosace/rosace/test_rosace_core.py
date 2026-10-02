@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -53,6 +54,8 @@ from rosace.database import (
     db_count_observations_for_target,
     db_insert_pointing_error,
     db_insert_spectrum_flux,
+    db_record_measurements,
+    db_get_last_failure,
     SPECTRUM_FLUX_MEASUREMENT_COLUMNS,
 )
 from rosace.targets import (
@@ -615,6 +618,78 @@ class TestDatabase:
             OrchestratorStage.ARCHIVE,
         ):
             await db_stamp_stage(obs.id, stage)
+
+    async def _row(self, obs_id: str, columns: str):
+        import aiosqlite
+        from rosace.database import DB_PATH
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(f"SELECT {columns} FROM observations WHERE id = ?", (obs_id,)) as cursor:
+                return await cursor.fetchone()
+
+    async def test_sequencer_end_sets_ended_at_and_outcome(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        success, failure = self._make_obs(ctx.session_id), self._make_obs(ctx.session_id)
+        await db_insert_observation(success, ctx.session_id)
+        await db_insert_observation(failure, ctx.session_id)
+
+        await db_stamp_stage(success.id, OrchestratorStage.SEQUENCER)
+        await db_set_stage_status(failure.id, OrchestratorStage.SEQUENCER, "error")
+
+        ended_at, outcome = await self._row(success.id, "ended_at, outcome")
+        assert outcome == "success" and ended_at is not None
+        ended_at, outcome = await self._row(failure.id, "ended_at, outcome")
+        assert outcome == "failed" and ended_at is not None
+
+    async def test_other_stages_leave_ended_at_alone(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs, ctx.session_id)
+
+        await db_stamp_stage(obs.id, OrchestratorStage.REDUCTION)
+        await db_set_stage_status(obs.id, OrchestratorStage.SHARING, "error")
+
+        assert await self._row(obs.id, "ended_at, outcome") == (None, None)
+
+    async def test_insert_stores_selector_fields_when_present(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        plain, selected = self._make_obs(ctx.session_id), self._make_obs(ctx.session_id)
+        selected.scheduler_data.update({"proposed_by": "manual_list", "estimated_duration_s": 420.0})
+        await db_insert_observation(plain, ctx.session_id)
+        await db_insert_observation(selected, ctx.session_id)
+
+        assert await self._row(plain.id, "proposed_by, estimated_duration_s") == (None, None)
+        assert await self._row(selected.id, "proposed_by, estimated_duration_s") == ("manual_list", 420.0)
+
+    async def test_record_measurements_declared_names_only(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs, ctx.session_id)
+
+        await db_record_measurements(obs.id, {"ambient_temp_c": 11.5, "pier_side": "west",
+                                              "something_else": 3})
+        await db_record_measurements(obs.id, {"focus_fwhm_px": 2.4})
+        await db_record_measurements(obs.id, {})
+
+        row = await self._row(obs.id, "ambient_temp_c, camera_temp_c, focus_fwhm_px, slit_y_px, pier_side")
+        assert row == (11.5, None, 2.4, None, "west")
+
+    async def test_last_failure(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        target = obs.scheduler_data["target"].name
+        program = f"prog_{uuid.uuid4().hex[:8]}"
+        obs.scheduler_data["program"] = program
+        await db_insert_observation(obs, ctx.session_id)
+
+        assert await db_get_last_failure(program, target) is None
+        await db_set_stage_status(obs.id, OrchestratorStage.SEQUENCER, "error")
+        last = await db_get_last_failure(program, target)
+        assert last is not None and last >= obs.created_at
 
     async def test_stamp_ignored_stage(self):
         """An unmapped stage (e.g. IDLE) doesn't raise an error."""

@@ -183,7 +183,7 @@ from .database import (
     db_init, db_insert_session, db_close_session,
     db_insert_observation, db_set_yaml_file,
     db_stamp_stage, db_set_error,
-    db_set_stage_status, db_get_recent_observations,
+    db_set_stage_status, db_get_recent_observations, db_record_measurements,
 )
 from .demo_seed import seed_demo_data
 from .errors import SessionFatalError
@@ -282,6 +282,15 @@ async def run_stage(
     return await plugins[stage].run(ctx)
 
 
+async def _persist_observation(obs: Observation) -> None:
+    """Writes the observation's YAML dossier and copies its measurements into
+    rosace.db (the columns declared by database.py) — after every stage, on
+    success and on error alike. Plugin-agnostic: obs.measurements is a plain
+    dict, filled by sub-plugins main.py knows nothing about."""
+    write_observation_file(obs)
+    await db_record_measurements(obs.id, obs.measurements)
+
+
 async def run_post_obs(obs: Observation) -> None:
     """Runs REDUCTION → SHARING → ARCHIVE in the background for a completed observation."""
     state.pending_post_obs += 1
@@ -291,12 +300,12 @@ async def run_post_obs(obs: Observation) -> None:
                 await db_set_stage_status(obs.id, stage, "running")
                 obs = await plugins[stage].run(obs)
                 await db_stamp_stage(obs.id, stage)  # sets done timestamp + status='done'
-                write_observation_file(obs)
+                await _persist_observation(obs)
             except Exception as e:
                 log.error(f"[{stage.value.upper()}] Background error: {e}")
                 await db_set_stage_status(obs.id, stage, "error")
                 await db_set_error(obs.id, str(e))
-                write_observation_file(obs)
+                await _persist_observation(obs)
                 break
     finally:
         state.pending_post_obs -= 1
@@ -387,14 +396,14 @@ async def _session_runner_body():
                 else:
                     await db_stamp_stage(obs.id, stage)
 
-                write_observation_file(obs)
+                await _persist_observation(obs)
 
             except (SchedulerFatalError, SessionFatalError) as e:
                 log.error(f"[{stage.value.upper()}] Fatal error, stopping session: {e}")
                 if obs:
                     await db_set_stage_status(obs.id, stage, "error")
                     await db_set_error(obs.id, str(e))
-                    write_observation_file(obs)
+                    await _persist_observation(obs)
                 state.is_running = False
                 obs = None
                 break
@@ -403,7 +412,7 @@ async def _session_runner_body():
                 if obs:
                     await db_set_stage_status(obs.id, stage, "error")
                     await db_set_error(obs.id, str(e))
-                    write_observation_file(obs)
+                    await _persist_observation(obs)
                 obs = None
                 break
         else:

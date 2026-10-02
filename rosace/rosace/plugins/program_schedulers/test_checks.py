@@ -11,7 +11,7 @@ import pytest
 import pytest_asyncio
 from pydantic import ValidationError
 
-from rosace.database import db_init, db_insert_observation, db_insert_session, db_stamp_stage, db_get_successes_for_target
+from rosace.database import db_init, db_insert_observation, db_insert_session, db_set_stage_status, db_stamp_stage, db_get_successes_for_target
 from rosace.models import ExposureConfig, Observation, OrchestratorStage, SessionContext, Target
 from rosace.plugins.program_schedulers import Candidate, load_planner
 from rosace.plugins.program_schedulers import checks
@@ -190,3 +190,32 @@ class TestSuccessesForTarget:
         other = await self._observation(session.session_id, f"{program}_other", target, 5, success=True)
         assert other is not None
         assert (await db_get_successes_for_target(program, target))[0] == 1
+
+
+class TestFailureBackoff:
+
+    @pytest_asyncio.fixture(autouse=True)
+    async def init_db(self):
+        await db_init()
+
+    async def test_recent_failure_refused_then_accepted(self, monkeypatch):
+        session = SessionContext(site_name="Test")
+        await db_insert_session(session)
+        program, target = f"prog_{uuid.uuid4().hex[:8]}", f"star_{uuid.uuid4().hex[:8]}"
+        now = datetime.now(timezone.utc)
+        monkeypatch.setattr(checks, "FAILURE_BACKOFF_HOURS", 1)
+
+        assert await checks.check_not_recently_failed(program, target, now) is None
+
+        obs = Observation(
+            id=str(uuid.uuid4())[:8], created_at=now - timedelta(minutes=20), session_id=session.session_id,
+            scheduler_data={"target": Target(name=target, ra=1.0, dec=1.0), "queried_name": target,
+                            "program": program, "priority": 3},
+        )
+        await db_insert_observation(obs, session.session_id)
+        await db_set_stage_status(obs.id, OrchestratorStage.SEQUENCER, "error")
+
+        reason = await checks.check_not_recently_failed(program, target, now)
+        assert reason is not None and "not retried before 1 h" in reason
+        later = now + timedelta(hours=1, minutes=1)
+        assert await checks.check_not_recently_failed(program, target, later) is None

@@ -25,6 +25,11 @@ Claude peut le suggérer, jamais le faire lui-même.
 
 ## Chantiers proposés
 
+- [ ] Flux dans la table `observations` : un résumé par observation
+      (flux médian en ADU/s, dispersion entre poses, nombre de poses
+      mesurées / saturées), calculé par `calculate_flux` et recopié via
+      `obs.measurements` (phase B du scheduler multi-programmes) ; le détail
+      pose par pose reste dans `spectrum_flux` (2026-10-02)
 - [ ] Distance à la Lune : filtre scheduler sur la distance de la cible à
       la Lune (seuil à définir, probablement selon la phase) — pas urgent
 - [ ] Temps de pose des étoiles faibles : la loi `exposure_time_mag0 ×

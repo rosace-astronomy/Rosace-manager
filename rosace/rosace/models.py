@@ -105,6 +105,13 @@ class Observation(BaseModel):
     sharing_data: dict[str, Any] = {}
     archive_data: dict[str, Any] = {}
 
+    # Measurements describing this observation (temperatures, pier side, focus
+    # FWHM...), under agreed names that describe the measurement, not the
+    # sub-plugin that made it. Written by sub-plugins; after every stage
+    # main.py copies the names declared in database.MEASUREMENT_COLUMNS into
+    # the observations table, without knowing who produced them.
+    measurements: dict[str, Any] = {}
+
     # Connected hardware adapters (see hardware/, hardware_indi/adapters/), keyed
     # by device name from the hardware YAML (e.g. "mount", "science_camera") —
     # copied from SessionContext.hardware by session_runner() before SEQUENCER

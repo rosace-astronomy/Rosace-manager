@@ -60,7 +60,8 @@ active_hardware: hardware_indi_simu
 # plugins/schedulers/blank/scheduler.py for the contract a new one must
 # follow. A selector key, not a plugin setting itself — a plugin can't
 # declare its own selector. Exposed as ACTIVE_SCHEDULER in config.py.
-active_scheduler: scheduler_rosace_2026
+# active_scheduler: scheduler_rosace_2026
+active_scheduler: selector
 
 # Which SEQUENCER sub-plugin family to load: 'internal' (simulation, no
 # hardware) or 'indi' (real INDI protocol). Same reasoning as
@@ -143,7 +144,8 @@ subplugin_params:
   scheduler_rosace_2026:
     # Full path (any location, not necessarily under base_data_dir) to the
     # text file SCHEDULER reads to pick the next target.
-    observation_list_path: ~/.rosace/targets/ObservationList.txt
+    # observation_list_path: ~/.rosace/targets/ObservationList.txt
+    observation_list_path: ~/.rosace/targets/ObsListNew.txt
     # Minimum altitude (degrees) for a target to be considered observable.
     min_target_altitude_deg: 10
     # Hour-angle window (degrees, each side of the meridian) inside which a
@@ -172,6 +174,9 @@ subplugin_params:
     overhead_minutes: 5
     # A planner that does not answer within this delay loses its turn.
     planner_timeout_seconds: 10
+    # A target whose observation failed is not proposed again before this
+    # delay (hours); a failed observation never consumes its request.
+    failure_backoff_hours: 0.05
 
   dark_acquisition:
     # Number of DARK frames per series, fixed for the whole session.

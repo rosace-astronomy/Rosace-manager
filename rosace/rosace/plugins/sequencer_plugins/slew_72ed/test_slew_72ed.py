@@ -154,6 +154,7 @@ class TestSlew72edPlugin:
         recorded = [c for c in mock_dependencies["solve_wcs"].await_args_list if c.kwargs.get("record_error")]
         assert len(recorded) == 1
         assert recorded[0].kwargs["pier_side"] == "west"
+        assert obs.measurements["pier_side"] == "west"
 
     async def test_unreadable_pier_side_is_recorded_as_unknown(self, mock_dependencies):
         obs = _make_obs()
@@ -163,6 +164,7 @@ class TestSlew72edPlugin:
 
         recorded = [c for c in mock_dependencies["solve_wcs"].await_args_list if c.kwargs.get("record_error")]
         assert recorded[0].kwargs["pier_side"] is None
+        assert "pier_side" not in obs.measurements
 
     async def test_two_step_slew_toward_target_then_corrected_position(self):
         obs = _make_obs()

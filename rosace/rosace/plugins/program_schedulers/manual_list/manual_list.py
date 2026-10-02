@@ -18,8 +18,11 @@ File format (CSV with a header; `none` or an empty field = not given):
 
 Each line is a separate request, so the same star may appear on several
 lines. On every call, the k-th line naming a (program, star) pair counts as
-done once that pair has at least k observations during the current
-astronomical night (rosace.db; aliases of the same star count as that star).
+done once that pair has at least k SUCCESSFUL observations during the current
+astronomical night (rosace.db; aliases of the same star count as that star),
+whichever planner proposed them. A failed observation does not consume its
+line: the line is proposed again once the failure backoff (shared checks,
+failure_backoff_hours) has elapsed.
 
 The file may be edited during a session: it is re-read on every call and
 never modified. A problem (missing file, missing column, invalid line, bad
@@ -35,11 +38,11 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from ....database import db_count_observations_for_target
+from ....database import db_get_successes_for_target
 from ....models import ExposureConfig
 from ....targets import program_get_by_name, program_get_stars, star_get_by_name
 from .. import PRIORITY_SERIES, Candidate, SchedulingContext
-from ..checks import check_feasible
+from ..checks import check_feasible, check_not_recently_failed
 
 log = logging.getLogger("spectro.plugin.planner.manual_list")
 
@@ -157,14 +160,21 @@ class ManualListScheduler:
                              "exposure_time": matching.exposure_time})
 
         # The k-th line naming a (program, star) pair is done once that pair has
-        # k observations tonight: a star listed at priorities 2 and 4 lets a
-        # priority-3 line through between its two occurrences.
+        # k successful observations tonight: a star listed at priorities 2 and 4
+        # lets a priority-3 line through between its two occurrences.
         rank: dict[tuple[str, int], int] = {}
         for item in resolved:
             star = item["star_record"]
-            key = (item["program"].name, star.id)
+            program_name = item["program"].name
+            key = (program_name, star.id)
             rank[key] = rank.get(key, 0) + 1
-            if await db_count_observations_for_target(item["program"].name, star.name) >= rank[key]:
+            successes, _ = await db_get_successes_for_target(program_name, star.name, ctx.now)
+            if successes >= rank[key]:
+                continue
+
+            reason = await check_not_recently_failed(program_name, star.name, ctx.now)
+            if reason:
+                log.info(f"[SCHEDULER] {item['star']}: {reason}, line {item['line']} ignored")
                 continue
 
             exposure = ExposureConfig(exposure_time=item["exposure_time"])

@@ -1,7 +1,8 @@
-# Multi-program scheduling — specification v0.6
+# Multi-program scheduling — specification v0.7
 
-**Version 0.6 — 1 October 2026.** Phase A is implemented on branch `multi-program`
-(selector, shared checks, `manual_list` and `blank_program` planners); phase B is not.
+**Version 0.7 — 2 October 2026.** Implemented on branch `multi-program`: phase A (selector,
+shared checks, `manual_list` and `blank_program` planners) and phase B1 (failures, observation
+columns, measurements); phase B2 is not.
 Earlier versions (0.1–0.55, in French) were working drafts.
 
 ## 1. Principles
@@ -90,6 +91,8 @@ Installation settings in `subplugin_params.selector` (`min_altitude_deg` 10,
   minimum) and above the local horizon, sampled every 5 minutes over the whole duration; the
   pointing must not straddle the meridian (current rule, at start). A series planner passes the
   whole series' duration.
+- `check_not_recently_failed(program, target, now)` → refuses a target whose last observation
+  for this program failed less than `failure_backoff_hours` (1 h) ago.
 - `database.db_get_successes_for_target(program, target, now)` → number of successful
   observations (SEQUENCER completed) tonight and the time of the last one.
 
@@ -142,9 +145,9 @@ Filling the time before a booked observation uses only the candidates already re
 ## 8. Failures, series, manual list
 
 **Failures.** Success = SEQUENCER completed; failure = it raised; interrupted = failure. The
-database is the memory: planners count successes only (phase B for manual_list, which still
-consumes failed lines in phase A), and the shared checks will refuse a target that failed less
-than `failure_backoff_hours` (1 h) ago (phase B).
+database is the memory: planners count successes only (a failed observation never consumes a
+manual list line), and the shared checks refuse a target that failed less than
+`failure_backoff_hours` (1 h) ago.
 
 **Series.** The planner's business: it knows the series has started (from `rosace.db`) and
 proposes the next element at level 1. A mount flip between two elements is accepted. Not
@@ -162,7 +165,7 @@ Priority, Program, Star, Start_after, End_before, Series, comment
   ignored until then. `Series` with `End_before` = bounded series; without = runs until the
   next element is no longer feasible, a manual stop, or a level 0.
 - The same star on several lines: the k-th line of a (program, star) pair is done once that
-  pair has k observations tonight (k successes in phase B), whichever planner proposed them.
+  pair has k successful observations tonight, whichever planner proposed them.
 - The same star several times in another program: the planner decides from the history.
 - File problems never stop the session: ERROR in the log (repeated at DEBUG while unchanged),
   the line or the whole file ignored until corrected.
@@ -175,16 +178,19 @@ then goes back to SCHEDULER. The selector says yes only for a feasible level-0 c
 study: the hardware state left behind (an exposure already started runs to its end, PHD2
 guiding, a lamp on, a half-written file).
 
-## 10. Data recorded per observation (phase B)
+## 10. Data recorded per observation (B1, implemented)
 
-- New `observations` columns (`CREATE TABLE` for new databases, manual `ALTER` on the existing
-  one): `ended_at`, `outcome` (`success`/`failed`/`interrupted`), `proposed_by`, `level`,
-  `exposure_total_s`, and measurements (`ambient_temp_c`, `camera_temp_c`, `focus_fwhm_px`,
-  `slit_y_px`, `pier_side`…).
+- New `observations` columns, all nullable (`CREATE TABLE` for new databases, manual `ALTER`
+  on the existing one): `ended_at` and `outcome` (`success`/`failed`; `interrupted` later), set
+  by `database.py` when SEQUENCER ends or fails; `proposed_by` and `estimated_duration_s`, from
+  `scheduler_data`; measurements `ambient_temp_c`, `camera_temp_c`, `focus_fwhm_px`,
+  `slit_y_px`, `pier_side`. No `level` column (`priority` holds it), no `exposure_total_s`.
 - Measurements go through a generic `obs.measurements` dict (agreed name → value) written by
-  sub-plugins; at the end of the observation, `main.py` copies every name matching a column
-  declared in `database.py`, without knowing who produced it. The ambient temperature is read at
-  every observation.
+  sub-plugins: temperatures by `star_spectra_acquisition` right before the science exposures,
+  `pier_side` by `slew_72ed`, `slit_y_px` by `slit_xy`, `focus_fwhm_px` by `focus`. The
+  `observations` table is written by `main.py` only: after every stage, where it writes the
+  YAML dossier, it copies the names declared in `database.py::MEASUREMENT_COLUMNS`, without
+  knowing who produced them (same pattern as `scheduler_data` → `program_name`, `priority`).
 
 **Meridian, to study on the AM3**: how far it tracks past the meridian
 (`meridian_tolerance_deg`), what it does at that limit, which pier side it takes for a target
@@ -197,7 +203,9 @@ pointing rule applies.
   6), `manual_list` (new file format, windows/series refused, same choices as
   `scheduler_rosace_2026` — verified by a test), `blank_program`. Next: one real night with
   `active_scheduler: selector`.
-- **Phase B**: success-only counting and 1-hour backoff, new columns and `obs.measurements`
-  (temperature, pier side…), time shares, windows and booked observations, series, then the
-  first program planner (Be).
+- **Phase B1 (done)**: success-only counting and 1-hour backoff, new columns and
+  `obs.measurements` (temperatures, pier side, slit, focus). Next: one simulator run.
+- **Phase B2**: time shares, windows and booked observations (one candidate per planner: a
+  planner whose candidate is booked proposes nothing else meanwhile), series in the manual
+  list; then the first program planner (Be).
 - **Later**: interruption, meridian tolerance, Moon, moving objects.

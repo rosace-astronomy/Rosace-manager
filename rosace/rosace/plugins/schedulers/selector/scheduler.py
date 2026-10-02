@@ -38,7 +38,9 @@ from ...pipeline_loader import list_programs, load_program_yaml
 from ...program_schedulers import (
     PRIORITY_SERIES, Candidate, ProgramScheduler, SchedulingContext, Site, load_planner,
 )
-from ...program_schedulers.checks import PLANNER_TIMEOUT_SECONDS, check_feasible, estimate_duration_s
+from ...program_schedulers.checks import (
+    PLANNER_TIMEOUT_SECONDS, check_feasible, check_not_recently_failed, estimate_duration_s,
+)
 from .. import SchedulerFatalError
 
 log = logging.getLogger("spectro.plugin.scheduler")
@@ -191,7 +193,8 @@ class SelectorPlugin:
         duration_s = estimate_duration_s(star, candidate.exposure)
         if duration_s is None:
             return reject("duration unknown (no exposure time and no magnitude)")
-        why = check_feasible(star, candidate.exposure, now, duration_s=duration_s)
+        why = (check_feasible(star, candidate.exposure, now, duration_s=duration_s)
+               or await check_not_recently_failed(candidate.program, star.name, now))
         if why:
             return reject(why)
         return star, duration_s

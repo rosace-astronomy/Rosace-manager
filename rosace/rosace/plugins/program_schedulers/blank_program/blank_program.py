@@ -66,10 +66,12 @@ RULES FOR A PLANNER
   its own thread, with its own event loop: a slow or blocked planner never
   freezes Rosace, it only loses its turn (and is skipped while still running).
   Use the async helpers of targets.py and database.py as usual.
-- At most one candidate, and make sure it is feasible: call
-  checks.check_feasible(star, exposure, ctx.now, min_altitude_deg) and only
-  propose a candidate for which it returns None. The selector re-runs the same
-  checks; a rejection there means a planner bug.
+- At most one candidate, and make sure it is acceptable: only propose a
+  candidate for which both checks.check_feasible(star, exposure, ctx.now,
+  min_altitude_deg) and await checks.check_not_recently_failed(program,
+  star.name, ctx.now) return None (the second one refuses a target that failed
+  less than failure_backoff_hours ago). The selector re-runs the same checks;
+  a rejection there means a planner bug.
 - Keep no state between calls: everything you need (what was observed, when,
   with which result) is in rosace.db. A server restart then loses nothing.
   database.db_get_successes_for_target(program, target, ctx.now) gives the
@@ -114,7 +116,8 @@ DECLARING YOUR PROGRAM
 THIS EXAMPLE
 ------------
 Proposes, at level 3, the first star linked to its program in targets.db
-that has no successful observation tonight and is feasible now. Param:
+that has no successful observation tonight, did not fail in the last
+failure_backoff_hours, and is feasible now. Param:
 min_altitude_deg (default: the installation floor only).
 """
 
@@ -124,7 +127,7 @@ from ....database import db_get_successes_for_target
 from ....models import ExposureConfig
 from ....targets import program_get_by_name, program_get_stars
 from .. import PRIORITY_ORDINARY, Candidate, SchedulingContext
-from ..checks import check_feasible
+from ..checks import check_feasible, check_not_recently_failed
 
 log = logging.getLogger("spectro.plugin.planner.blank_program")
 
@@ -141,6 +144,8 @@ class BlankProgramScheduler:
         for star in await program_get_stars(program.id):
             successes, _ = await db_get_successes_for_target(program.name, star.name, ctx.now)
             if successes > 0:
+                continue
+            if await check_not_recently_failed(program.name, star.name, ctx.now) is not None:
                 continue
             exposure = ExposureConfig(exposure_time=star.exposure_time)
             if check_feasible(star, exposure, ctx.now, min_altitude_deg) is not None:

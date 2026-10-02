@@ -144,6 +144,7 @@ class TestSlitXyMeasurement:
         await SlitXyPlugin().execute(obs)
 
         assert obs.sequencer_data["slit_xy"]["slit_y"] == pytest.approx(TRUE_Y_AT_DEFAULT_X, abs=0.05)
+        assert obs.measurements["slit_y_px"] == obs.sequencer_data["slit_xy"]["slit_y"]
         overlay = setup["publish"].await_args.kwargs["overlay"]
         assert overlay["zone"] == [-0.5, -0.5, WIDTH - 0.5, HEIGHT - 0.5]
 
@@ -170,6 +171,7 @@ class TestSlitXyMeasurement:
         await SlitXyPlugin().execute(obs)
 
         assert obs.sequencer_data["slit_xy"] == {"status": "default", "image": IMAGE_NAME}
+        assert "slit_y_px" not in obs.measurements
 
     async def test_round_dark_spot_falls_back_to_default(self, tmp_path, setup):
         ys, xs = np.mgrid[0:HEIGHT, 0:WIDTH]

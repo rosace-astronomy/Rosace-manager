@@ -188,6 +188,7 @@ class TestFocusPlugin:
 
         assert result is obs
         assert any("[FOCUS] Mean FWHM" in r.message for r in caplog.records)
+        assert obs.measurements["focus_fwhm_px"] > 0
 
     async def test_logs_warning_when_no_star_found(self, tmp_path, caplog, monkeypatch, rng):
         monkeypatch.setattr(focus_mod, "SUBPLUGIN_PARAMS", {"guiding": {"exposure_seconds": 10.0}})
@@ -207,6 +208,7 @@ class TestFocusPlugin:
 
         assert result is obs
         assert any("No usable star" in r.message for r in caplog.records)
+        assert "focus_fwhm_px" not in obs.measurements
 
     async def test_captures_with_image_to_gui_and_focus_source(self, tmp_path, monkeypatch, rng):
         monkeypatch.setattr(focus_mod, "SUBPLUGIN_PARAMS", {"guiding": {"exposure_seconds": 10.0}})

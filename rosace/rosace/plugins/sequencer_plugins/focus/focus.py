@@ -234,6 +234,7 @@ class FocusPlugin(SubPlugin):
             return obs
 
         mean_fwhm, n_stars, min_snr = result
+        obs.measurements["focus_fwhm_px"] = round(mean_fwhm, 3)
         log.info(
             f"[FOCUS] Mean FWHM = {mean_fwhm:.2f}px over {n_stars} "
             f"star(s), weakest SNR = {min_snr:.0f}"

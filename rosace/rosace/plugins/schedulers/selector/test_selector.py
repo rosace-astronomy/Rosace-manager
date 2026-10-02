@@ -18,8 +18,8 @@ import pytest
 import pytest_asyncio
 
 from rosace.conftest import assert_scheduler_contract
-from rosace.database import db_init, db_insert_observation, db_insert_session
-from rosace.models import Observation, SessionContext, Target
+from rosace.database import db_init, db_insert_observation, db_insert_session, db_set_stage_status, db_stamp_stage
+from rosace.models import Observation, OrchestratorStage, SessionContext, Target
 from rosace.plugins import pipeline_loader
 from rosace.plugins.program_schedulers import Candidate, TimeWindow
 from rosace.plugins.program_schedulers import checks
@@ -106,9 +106,14 @@ def _obs(session_id: str) -> Observation:
     return Observation(id=_uid(), created_at=datetime.now(timezone.utc), session_id=session_id)
 
 
-async def _record(obs: Observation, session_id: str):
-    """Stores a selected observation in rosace.db, as main.py does."""
+async def _record(obs: Observation, session_id: str, success: bool = True):
+    """Stores a selected observation in rosace.db, as main.py does, with the
+    result of its SEQUENCER."""
     await db_insert_observation(obs, session_id)
+    if success:
+        await db_stamp_stage(obs.id, OrchestratorStage.SEQUENCER)
+    else:
+        await db_set_stage_status(obs.id, OrchestratorStage.SEQUENCER, "error")
 
 
 class FixedPlanner:
@@ -290,7 +295,7 @@ class TestPlannerFailures:
 
 class TestVerification:
 
-    @pytest.mark.parametrize("problem", ["unknown star", "unknown program", "window", "too low"])
+    @pytest.mark.parametrize("problem", ["unknown star", "unknown program", "window", "too low", "failed recently"])
     async def test_bad_candidate_rejected(self, programs_dir, monkeypatch, caplog, problem):
         star = f"A_{_uid()}"
         program = await _program_with_stars(programs_dir, star)
@@ -300,12 +305,18 @@ class TestVerification:
             "window": Candidate(queried_name=star, program=program, priority=2, reason="t",
                                 window=TimeWindow(end_before=datetime.now(timezone.utc))),
             "too low": Candidate(queried_name=star, program=program, priority=2, reason="t"),
+            "failed recently": Candidate(queried_name=star, program=program, priority=2, reason="t"),
         }[problem]
         if problem == "too low":
             monkeypatch.setattr(checks, "altitude_deg", lambda ra, dec, lat, lon, at: 5.0)
         selector = SelectorPlugin()
         _add_planner(selector, programs_dir, "faulty", FixedPlanner(candidate))
         session = await _session()
+        if problem == "failed recently":
+            failed = _obs(session.session_id)
+            failed.scheduler_data = {"target": Target(name=star, ra=10.0, dec=20.0), "queried_name": star,
+                                     "program": program, "priority": 2}
+            await _record(failed, session.session_id, success=False)
 
         with caplog.at_level(logging.WARNING, logger="spectro.plugin.scheduler"):
             obs = await selector.run(_obs(session.session_id))
@@ -354,3 +365,25 @@ class TestSameChoicesAsScheduler2026:
             await _record(new_obs, session.session_id)
 
         assert chosen == [a, b, c, a]
+
+
+class TestRecordedColumns:
+
+    async def test_proposed_by_and_estimated_duration_stored(self, programs_dir):
+        import aiosqlite
+        from rosace.database import DB_PATH
+
+        star = f"A_{_uid()}"
+        program = await _program_with_stars(programs_dir, star)
+        _observation_list(programs_dir, f"3, {program}, {star}, none, none, none, x\n")
+        session = await _session()
+        obs = await SelectorPlugin().run(_obs(session.session_id))
+        await _record(obs, session.session_id)
+
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT proposed_by, estimated_duration_s, outcome, ended_at "
+                                  "FROM observations WHERE id = ?", (obs.id,)) as cursor:
+                proposed_by, duration, outcome, ended_at = await cursor.fetchone()
+        assert proposed_by == "manual_list"
+        assert duration == pytest.approx(600)
+        assert outcome == "success" and ended_at is not None

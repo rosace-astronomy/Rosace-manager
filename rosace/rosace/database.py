@@ -74,7 +74,16 @@ async def db_init() -> None:
                 sequencer_status TEXT NOT NULL DEFAULT 'pending',
                 reduction_status TEXT NOT NULL DEFAULT 'pending',
                 sharing_status   TEXT NOT NULL DEFAULT 'pending',
-                archive_status   TEXT NOT NULL DEFAULT 'pending'
+                archive_status   TEXT NOT NULL DEFAULT 'pending',
+                ended_at             TEXT,
+                outcome              TEXT,
+                proposed_by          TEXT,
+                estimated_duration_s REAL,
+                ambient_temp_c       REAL,
+                camera_temp_c        REAL,
+                focus_fwhm_px        REAL,
+                slit_y_px            REAL,
+                pier_side            TEXT
             )
         """)
         await db.execute("""
@@ -154,12 +163,14 @@ async def db_close_session(ctx: SessionContext, status: str = "closed") -> None:
 # ─────────────────────────────────────────────────────────────
 
 async def db_insert_observation(obs: Observation, session_id: str) -> None:
-    """Inserts a new observation after SCHEDULER completes."""
+    """Inserts a new observation after SCHEDULER completes. proposed_by and
+    estimated_duration_s are only set by the multi-program selector (None otherwise)."""
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         await db.execute(
             """INSERT INTO observations
-               (id, session_id, target_name, queried_name, program_name, priority, created_at, scheduler_done, scheduler_status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'done')""",
+               (id, session_id, target_name, queried_name, program_name, priority,
+                proposed_by, estimated_duration_s, created_at, scheduler_done, scheduler_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'done')""",
             (
                 obs.id,
                 session_id,
@@ -167,6 +178,8 @@ async def db_insert_observation(obs: Observation, session_id: str) -> None:
                 obs.scheduler_data.get("queried_name"),
                 obs.scheduler_data.get("program"),
                 obs.scheduler_data.get("priority"),
+                obs.scheduler_data.get("proposed_by"),
+                obs.scheduler_data.get("estimated_duration_s"),
                 obs.created_at.isoformat(),
                 datetime.now(timezone.utc).isoformat(),
             )
@@ -212,6 +225,55 @@ async def db_get_successes_for_target(
             return count, (datetime.fromisoformat(last) if last else None)
 
 
+async def db_get_last_failure(
+    program_name: str, target_name: str, now: datetime | None = None
+) -> datetime | None:
+    """Time of the most recent failed observation (SEQUENCER error) of a target
+    for a program during the current astronomical day, or None — used by the
+    program schedulers' failure backoff. ended_at when known, else created_at
+    (rows recorded before ended_at existed)."""
+    since = astronomical_day_start_utc(now)
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        async with db.execute(
+            """SELECT MAX(COALESCE(ended_at, created_at)) FROM observations
+               WHERE created_at >= ? AND program_name = ? AND target_name = ?
+                 AND sequencer_status = 'error'""",
+            (since, program_name, target_name)
+        ) as cursor:
+            (last,) = await cursor.fetchone()
+            return datetime.fromisoformat(last) if last else None
+
+
+# Measurement name (Observation.measurements) -> column of the observations
+# table. The names describe the measurement, never the sub-plugin that made it.
+MEASUREMENT_COLUMNS = {
+    "ambient_temp_c": "ambient_temp_c",
+    "camera_temp_c": "camera_temp_c",
+    "focus_fwhm_px": "focus_fwhm_px",
+    "slit_y_px": "slit_y_px",
+    "pier_side": "pier_side",
+}
+
+
+async def db_record_measurements(obs_id: str, measurements: dict) -> None:
+    """Copies the declared measurements of an observation into its row; names
+    not declared in MEASUREMENT_COLUMNS stay in the YAML dossier only."""
+    known = {MEASUREMENT_COLUMNS[name]: value for name, value in measurements.items()
+             if name in MEASUREMENT_COLUMNS}
+    unknown = sorted(set(measurements) - set(MEASUREMENT_COLUMNS))
+    if unknown:
+        log.debug(f"[DB] Measurements not stored in the observations table: {unknown}")
+    if not known:
+        return
+    assignments = ", ".join(f"{column} = ?" for column in known)
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        await db.execute(
+            f"UPDATE observations SET {assignments} WHERE id = ?",
+            (*known.values(), obs_id)
+        )
+        await db.commit()
+
+
 async def db_set_yaml_file(obs_id: str, yaml_file: str) -> None:
     """Records the YAML file path for an observation."""
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
@@ -236,6 +298,11 @@ async def db_set_stage_status(obs_id: str, stage: OrchestratorStage, status: str
             f"UPDATE observations SET {col} = ? WHERE id = ?",
             (status, obs_id)
         )
+        if stage == OrchestratorStage.SEQUENCER and status == "error":
+            await db.execute(
+                "UPDATE observations SET ended_at = ?, outcome = 'failed' WHERE id = ?",
+                (datetime.now(timezone.utc).isoformat(), obs_id)
+            )
         await db.commit()
     log.debug(f"[DB] {col} = '{status}' for {obs_id}")
 
@@ -246,11 +313,18 @@ async def db_stamp_stage(obs_id: str, stage: OrchestratorStage) -> None:
     status_col = _STATUS_COL.get(stage)
     if not done_col:
         return
+    now = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         await db.execute(
             f"UPDATE observations SET {done_col} = ?, {status_col} = 'done' WHERE id = ?",
-            (datetime.now(timezone.utc).isoformat(), obs_id)
+            (now, obs_id)
         )
+        if stage == OrchestratorStage.SEQUENCER:
+            # End of the telescope time used by this observation (also set on failure).
+            await db.execute(
+                "UPDATE observations SET ended_at = ?, outcome = 'success' WHERE id = ?",
+                (now, obs_id)
+            )
         await db.commit()
     log.info(f"[DB] {done_col} stamped for {obs_id}")
 

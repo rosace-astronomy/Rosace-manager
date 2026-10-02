@@ -9,6 +9,8 @@ Run: pytest plugins/sequencer_plugins/star_spectra_acquisition/test_star_spectra
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
+import logging
+
 import pytest
 
 from rosace.hardware.spectroscope import LightSource
@@ -253,6 +255,34 @@ class TestStarSpectraAcquisitionPlugin:
 
         assert camera.expose.await_count == 4
         assert len(result.sequencer_data["star_spectra_images"]) == 4
+
+
+class TestTemperatures:
+
+    async def test_records_ambient_and_camera_temperatures(self, tmp_path):
+        camera = AsyncMock()
+        camera.expose.return_value = MagicMock()
+        camera.get_temperature.return_value = -10.04
+        obs = _make_obs(obs_dir=tmp_path, exposure=ExposureConfig(exposure_time=1.0), camera=camera)
+        obs.hardware["focuser"] = AsyncMock()
+        obs.hardware["focuser"].get_temperature.return_value = 12.345
+
+        await StarSpectraAcquisitionPlugin().execute(obs)
+
+        assert obs.measurements == {"ambient_temp_c": 12.35, "camera_temp_c": -10.04}
+
+    async def test_unreadable_temperature_never_blocks(self, tmp_path, caplog):
+        camera = AsyncMock()
+        camera.expose.return_value = MagicMock()
+        camera.get_temperature.side_effect = RuntimeError("no reading")
+        obs = _make_obs(obs_dir=tmp_path, exposure=ExposureConfig(exposure_time=1.0), camera=camera)
+
+        with caplog.at_level(logging.WARNING):
+            await StarSpectraAcquisitionPlugin().execute(obs)
+
+        assert "camera_temp_c" not in obs.measurements and "ambient_temp_c" not in obs.measurements
+        assert obs.sequencer_data["star_spectra_images"]          # the exposures were still taken
+        assert any("Could not read camera_temp_c" in r.getMessage() for r in caplog.records)
 
 
 class TestMinExposureCount:

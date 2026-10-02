@@ -16,6 +16,7 @@ from typing import Optional
 
 from ...astro_math import altitude_deg, azimuth_deg, hour_angle_deg
 from ...config import HORIZON_FILE, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, SUBPLUGIN_PARAMS
+from ...database import db_get_last_failure
 from ...models import ExposureConfig
 from ...targets import Star
 from ..schedulers.scheduler_rosace_2026.horizon import horizon_altitude_deg, load_horizon
@@ -26,6 +27,7 @@ MIN_ALTITUDE_DEG = _params.get("min_altitude_deg", 10)            # installation
 MIN_MERIDIAN_DISTANCE_DEG = _params.get("min_meridian_distance_deg", 0)   # 0 = off
 OVERHEAD_SECONDS = 60 * _params.get("overhead_minutes", 5)       # pointing, guiding, calibrations
 PLANNER_TIMEOUT_SECONDS = _params.get("planner_timeout_seconds", 10)
+FAILURE_BACKOFF_HOURS = _params.get("failure_backoff_hours", 1)   # no retry before this delay
 
 # Same root keys and defaults as star_spectra_acquisition, which does the
 # actual split into sub-exposures at acquisition time.
@@ -95,4 +97,18 @@ def check_feasible(
             if altitude < horizon_altitude:
                 return (f"below local horizon ({altitude:.1f}° < {horizon_altitude:.1f}° "
                         f"at az {azimuth:.1f}°, +{offset_s / 60:.0f} min)")
+    return None
+
+
+async def check_not_recently_failed(program: str, target_name: str, now: datetime) -> Optional[str]:
+    """Returns None if the target may be tried again for this program, otherwise
+    the reason: its last observation tonight failed less than
+    FAILURE_BACKOFF_HOURS ago. target_name is the canonical name (targets.db)."""
+    last_failure = await db_get_last_failure(program, target_name, now)
+    if last_failure is None:
+        return None
+    elapsed_h = (now - last_failure).total_seconds() / 3600
+    if elapsed_h < FAILURE_BACKOFF_HOURS:
+        return (f"failed {elapsed_h * 60:.0f} min ago, not retried before "
+                f"{FAILURE_BACKOFF_HOURS:g} h")
     return None

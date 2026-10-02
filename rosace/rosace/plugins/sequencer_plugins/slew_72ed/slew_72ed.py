@@ -110,6 +110,8 @@ class Slew72edPlugin(SubPlugin):
         except Exception as e:
             log.warning(f"[SLEW_72ED] Could not read the pier side, recorded as unknown: {e}")
             pier_side = None
+        if pier_side is not None:
+            obs.measurements["pier_side"] = pier_side
         await solve_wcs(
             str(guide_image), sampling_arcsec=sampling_arcsec,
             record_error=True, observation_id=obs.id, pier_side=pier_side,

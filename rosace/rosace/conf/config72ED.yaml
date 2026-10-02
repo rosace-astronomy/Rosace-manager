@@ -187,6 +187,9 @@ subplugin_params:
     overhead_minutes: 5
     # A planner that does not answer within this delay loses its turn.
     planner_timeout_seconds: 10
+    # A target whose observation failed is not proposed again before this
+    # delay (hours); a failed observation never consumes its request.
+    failure_backoff_hours: 1
 
   dark_acquisition:
     # Number of DARK frames per series, fixed for the whole session.
