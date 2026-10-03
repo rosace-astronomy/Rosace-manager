@@ -1,0 +1,32 @@
+# ── Program: Cataclysmic variables ────────────────────────────────────────────
+# Same pipeline as Be_stars for now.
+# Not active yet (no scheduler block): its observations come from the manual list.
+# Planned time share: 10 % (share_percent in the scheduler block, once its planner exists).
+
+program: Cataclysmic
+description: "Spectroscopy of cataclysmic variables (novae, recurrent novae such as T CrB)"
+
+sequencer:
+  # The active hardware profile may prepend its own steps here (equipment-specific,
+  # e.g. guiding_dark_acquisition and a mount's own homing/sync) -- see its
+  # sequencer_prefix, if it declares one.
+  - slew_72ed                    # Slew + plate-solve correction (mount in its final position)
+  - slit_xy                      # Slit position in the guiding field (lamp-lit image), never blocking
+  - pointing_72ed                # PHD2 guiding, star put on the slit in force
+  - focus                        # Guiding-camera focus sharpness measurement (diagnostic only)
+  - star_spectra_acquisition     # Science exposure acquisition (switches spectro to SKY)
+  - stop_phd2_guiding            # Stops guiding (PHD2) -- unnecessary/lost during darks/bias
+  - dark_acquisition             # Darks (session/library/camera) -- before the SKY reset below
+  - bias_acquisition             # Bias (session/camera) -- before the SKY reset below
+  - calib_acquisition            # Calibration lamp (session/camera) -- before the SKY reset below
+  - flat_acquisition             # Flats (session/camera) -- before the SKY reset below
+  - spectro_light_source_to_sky  # Resets the spectroscope to SKY (safety at end of observation)
+reduction:
+  - calculate_flux  # Flux of every raw science sub-exposure (casier + spectrum_flux table), never blocking
+  - bias        # Bias subtraction
+  - dark        # Dark subtraction
+  - flat        # Flat-field correction
+  - extract     # 1D spectrum extraction
+  - export_demetra  # Demetra .obs.srl + ZIP export, in parallel with the chain above
+
+sharing: blank_share
