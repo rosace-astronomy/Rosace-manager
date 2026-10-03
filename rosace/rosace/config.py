@@ -162,6 +162,24 @@ except ValueError as e:
     _log_fatal_startup_error(str(e))
     raise
 
+
+def _hardware_is_simulated(path: Path) -> bool:
+    """True when the hardware profile declares `simulated: true` (top-level
+    key); a missing or unreadable file counts as real hardware."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            return bool((yaml.safe_load(f) or {}).get("simulated", False))
+    except (OSError, yaml.YAMLError):
+        return False
+
+
+# ── Simulated equipment ────────────────────────────────────────
+# True for the internal (simulation) backend or a hardware profile declaring
+# `simulated: true` (INDI simulators). Recorded with every session
+# (database.py), so that simulated sessions can be told apart from real
+# nights and purged (simulated_data.py, --purge-simulated).
+SIMULATED_EQUIPMENT: bool = SEQUENCER_BACKEND == "internal" or _hardware_is_simulated(HARDWARE_CONFIG_PATH)
+
 # ── Active SCHEDULER plugin ────────────────────────────────────────
 # Name (registry in plugins/schedulers/__init__.py) of the SCHEDULER plugin
 # to use — each is an interchangeable target-selection algorithm, see

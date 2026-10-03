@@ -26,7 +26,7 @@ import os
 import sys
 
 _HELP_TEXT = """\
-Usage: python -m rosace.main [config_path] [--demo-mode] [--check-config [config_path]] [--create-admin username] [--list-subplugins [family]]
+Usage: python -m rosace.main [config_path] [--demo-mode] [--check-config [config_path]] [--create-admin username] [--list-subplugins [family]] [--purge-simulated [--apply]]
 
   (no arguments)            Start the server using the active config, resolved in
                             priority order: ROSACE_CONFIG env var > <base_data_dir>/
@@ -69,6 +69,13 @@ Usage: python -m rosace.main [config_path] [--demo-mode] [--check-config [config
                             writing a new sub-plugin or duplicating a close one.
                             Optionally restrict to one family: sequencer, reduction,
                             or sharing. Never starts the server.
+
+  --purge-simulated [--apply]
+                            Remove the data of the sessions run with simulated
+                            equipment (sessions.simulated = 1 in rosace.db: INDI
+                            simulators, internal backend) — their database rows and
+                            the files they wrote in their session directory. Without
+                            --apply, only lists what would go. Never starts the server.
 
   --help, -h                Show this message and exit.
 """
@@ -130,6 +137,16 @@ if __name__ == "__main__":
         _rows = list_subplugins([_family] if _family else None)
         for _row_family, _name, _summary in _rows:
             print(f"{_row_family:10s} {_name:20s} {_summary}")
+        sys.exit(0)
+    elif "--purge-simulated" in _argv:
+        _apply = "--apply" in _argv
+        from rosace.simulated_data import purge_simulated, report
+        _purges = purge_simulated(apply=_apply)
+        if not _purges:
+            print("[OK] no simulated session to purge")
+            sys.exit(0)
+        print(report(_purges))
+        print("[OK] purged" if _apply else "Dry run: nothing deleted (add --apply to delete)")
         sys.exit(0)
     elif "--demo-mode" in _argv:
         # Pure sugar for ROSACE_CONFIG: resolves the packaged demo config's

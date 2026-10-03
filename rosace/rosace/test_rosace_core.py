@@ -678,6 +678,18 @@ class TestDatabase:
 
         assert await self._row(obs.id, "ended_at, outcome") == (None, None)
 
+    async def test_insert_session_records_hardware_profile_and_simulated_flag(self, monkeypatch):
+        import aiosqlite
+        import rosace.database as database
+        ctx = self._make_ctx()
+        monkeypatch.setattr(database, "ACTIVE_HARDWARE", "hardware_indi_simu")
+        monkeypatch.setattr(database, "SIMULATED_EQUIPMENT", True)
+        await db_insert_session(ctx)
+        async with aiosqlite.connect(database.DB_PATH) as db:
+            async with db.execute("SELECT hardware_profile, simulated FROM sessions WHERE id = ?",
+                                  (ctx.session_id,)) as cursor:
+                assert await cursor.fetchone() == ("hardware_indi_simu", 1)
+
     async def test_insert_stores_selector_fields_when_present(self):
         ctx = self._make_ctx()
         await db_insert_session(ctx)

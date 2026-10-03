@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 import aiosqlite
 
-from .config import DATABASES_DIR, DB_PATH
+from .config import ACTIVE_HARDWARE, DATABASES_DIR, DB_PATH, SIMULATED_EQUIPMENT
 from .models import OrchestratorStage, SessionContext, Observation
 from .time_helpers import astronomical_day_start_utc
 
@@ -51,7 +51,9 @@ async def db_init() -> None:
                 started_at  TEXT NOT NULL,
                 closed_at   TEXT,
                 status      TEXT NOT NULL DEFAULT 'running',
-                session_dir TEXT
+                session_dir TEXT,
+                hardware_profile TEXT,
+                simulated   INTEGER
             )
         """)
         await db.execute("""
@@ -137,11 +139,15 @@ async def db_init() -> None:
 # ─────────────────────────────────────────────────────────────
 
 async def db_insert_session(ctx: SessionContext) -> None:
-    """Inserts a new session."""
+    """Inserts a new session, with the hardware profile in use and whether it
+    is simulated (config.SIMULATED_EQUIPMENT) — NULL on rows recorded before
+    these columns existed."""
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         await db.execute(
-            "INSERT INTO sessions (id, started_at, status, session_dir) VALUES (?, ?, 'running', ?)",
-            (ctx.session_id, ctx.started_at.isoformat(), ctx.session_dir)
+            """INSERT INTO sessions (id, started_at, status, session_dir, hardware_profile, simulated)
+               VALUES (?, ?, 'running', ?, ?, ?)""",
+            (ctx.session_id, ctx.started_at.isoformat(), ctx.session_dir,
+             ACTIVE_HARDWARE, int(SIMULATED_EQUIPMENT))
         )
         await db.commit()
     log.info(f"[DB] Session inserted: {ctx.session_id}")

@@ -1,3 +1,8 @@
+# INDI simulators, not a telescope: every session run with this profile is
+# recorded as simulated (sessions.simulated in rosace.db), so that its data can
+# be purged with `python -m rosace.main --purge-simulated`.
+simulated: true
+
 # Configuration for all the INDI devices
 INDI_drivers:
     guiding_camera:
