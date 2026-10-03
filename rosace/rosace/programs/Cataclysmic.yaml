@@ -1,10 +1,15 @@
 # ── Program: Cataclysmic variables ────────────────────────────────────────────
 # Same pipeline as Be_stars for now.
-# Not active yet (no scheduler block): its observations come from the manual list.
-# Planned time share: 10 % (share_percent in the scheduler block, once its planner exists).
 
 program: Cataclysmic
 description: "Spectroscopy of cataclysmic variables (novae, recurrent novae such as T CrB)"
+
+# Active as soon as active_scheduler is `selector` (config.yaml): a target of
+# this program picked at random, see
+# plugins/program_schedulers/random_pick/random_pick.py.
+scheduler:
+  name: random_pick
+  share_percent: 10
 
 sequencer:
   # The active hardware profile may prepend its own steps here (equipment-specific,

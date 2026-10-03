@@ -193,6 +193,10 @@ subplugin_params:
     # A booked observation (time window not open yet) is announced at most
     # this many minutes before its launch.
     lookahead_minutes: 60
+    # How far (degrees of hour angle) past the meridian the mount keeps
+    # tracking a target that started east of it: an observation that would end
+    # further past is not proposed. Provisional value, to be checked on the AM3.
+    meridian_tolerance_deg: 15
 
   dark_acquisition:
     # Number of DARK frames per series, fixed for the whole session.
@@ -228,3 +232,9 @@ subplugin_params:
     # focus). Instrument-specific, like backlash_offset_deg: how far
     # off-axis the optics stay clean varies with the actual guiding optics.
     window_fraction: 0.9
+
+  calculate_flux:
+    # Exposure suggestion: the peak raw pixel aimed at, as a fraction of the
+    # saturation level (spectrum_flux_helpers.SATURATION_ADU) -- the margin
+    # left for seeing and centring variations.
+    target_peak_fraction: 0.7

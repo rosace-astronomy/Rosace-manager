@@ -5,6 +5,17 @@
 program: Be_stars
 description: "Spectral monitoring of Be stars — Hα emission and profile variations"
 
+# Active as soon as active_scheduler is `selector` (config.yaml): its planner
+# picks the next Be star to observe — see
+# plugins/program_schedulers/be_scheduler/be_scheduler.py.
+scheduler:
+  name: be_scheduler
+  share_percent: 80
+  params:
+    limit_magnitude: 7         # only Be stars at most this bright (magnitude_v in targets.db)
+    period_days: 30            # wanted period between two observations (BeSS may ask for less)
+    max_duration_minutes: 90   # guard: a star with a longer estimated observation is skipped (WARNING)
+
 sequencer:
   # The active hardware profile may prepend its own steps here (equipment-specific,
   # e.g. guiding_dark_acquisition and a mount's own homing/sync) -- see its

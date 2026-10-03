@@ -56,6 +56,7 @@ from rosace.database import (
     db_insert_spectrum_flux,
     db_record_measurements,
     db_get_last_failure,
+    db_get_last_success_per_target,
     SPECTRUM_FLUX_MEASUREMENT_COLUMNS,
 )
 from rosace.targets import (
@@ -64,7 +65,7 @@ from rosace.targets import (
     ProgramCreate, Program,
     star_insert, star_get, star_get_by_name, star_list,
     star_update, star_delete,
-    star_add_alias, star_remove_alias, star_list_aliases,
+    star_add_alias, star_remove_alias, star_list_aliases, star_aliases_map,
     program_insert, program_get, program_get_by_name, program_list, program_delete,
     program_add_star, program_remove_star,
     program_get_stars, star_get_programs,
@@ -641,6 +642,31 @@ class TestDatabase:
         ended_at, outcome = await self._row(failure.id, "ended_at, outcome")
         assert outcome == "failed" and ended_at is not None
 
+    async def test_last_success_per_target_spans_nights_and_ignores_failures(self):
+        import uuid
+        program = f"cadence_{uuid.uuid4().hex[:8]}"
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        now = datetime.now(timezone.utc)
+        old_success = self._make_obs(ctx.session_id, created_at=now - timedelta(days=40))
+        recent_success = self._make_obs(ctx.session_id, created_at=now - timedelta(days=12))
+        later_failure = self._make_obs(ctx.session_id, created_at=now - timedelta(days=2))
+        other_star = self._make_obs(ctx.session_id, created_at=now - timedelta(days=5))
+        other_star.scheduler_data["target"] = Target(name="Deneb", ra=310.36, dec=45.28)
+        for obs in (old_success, recent_success, later_failure, other_star):
+            obs.scheduler_data["program"] = program
+            await db_insert_observation(obs, ctx.session_id)
+        for obs in (old_success, recent_success, other_star):
+            await db_stamp_stage(obs.id, OrchestratorStage.SEQUENCER)
+        await db_set_stage_status(later_failure.id, OrchestratorStage.SEQUENCER, "error")
+
+        last = await db_get_last_success_per_target(program)
+
+        assert set(last) == {"Vega", "Deneb"}
+        assert last["Vega"] == recent_success.created_at
+        assert last["Deneb"] == other_star.created_at
+        assert await db_get_last_success_per_target(f"{program}_other") == {}
+
     async def test_other_stages_leave_ended_at_alone(self):
         ctx = self._make_ctx()
         await db_insert_session(ctx)
@@ -1092,6 +1118,17 @@ class TestTargetsDB:
         aliases = await star_list_aliases(sid)
         assert set(aliases) == {"VegaAliasTest3", "HD172167Test3"}
 
+    async def test_star_aliases_map(self):
+        sid1 = await star_insert(self._star("AliasMapTestStar1"))
+        sid2 = await star_insert(self._star("AliasMapTestStar2"))
+        sid3 = await star_insert(self._star("AliasMapTestStar3"))
+        await star_add_alias(sid1, "AliasMapTest1-b")
+        await star_add_alias(sid1, "AliasMapTest1-a")
+        await star_add_alias(sid2, "AliasMapTest2-a")
+        aliases = await star_aliases_map([sid1, sid2, sid3])
+        assert aliases == {sid1: ["AliasMapTest1-a", "AliasMapTest1-b"], sid2: ["AliasMapTest2-a"]}
+        assert await star_aliases_map([]) == {}
+
     async def test_star_remove_alias(self):
         sid = await star_insert(self._star("AlphaLyrTest4"))
         alias_id = await star_add_alias(sid, "VegaAliasTest4")
@@ -1318,6 +1355,23 @@ class TestSimbad:
             result = await simbad_search("Sirius")
 
         assert result.magnitude_v is None
+
+    async def test_simbad_spectral_type_none(self):
+        """spectral_type is None when sp_type is NULL in Simbad (many nebulae)."""
+        response = {"metadata": SIMBAD_RESPONSE_VEGA["metadata"],
+                    "data": [["NGC  7662", 351.47, 42.54, None, 12.5]]}
+        mock_resp = _mock_httpx_response(response)
+
+        with patch("rosace.simbad.httpx.AsyncClient") as MockClient:
+            instance = AsyncMock()
+            instance.get = AsyncMock(return_value=mock_resp)
+            instance.__aenter__ = AsyncMock(return_value=instance)
+            instance.__aexit__  = AsyncMock(return_value=False)
+            MockClient.return_value = instance
+
+            result = await simbad_search("NGC 7662")
+
+        assert result.name == "NGC  7662" and result.spectral_type is None
 
     async def test_simbad_network_error(self):
         """Raises SimbadQueryError on a network error."""

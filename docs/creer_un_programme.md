@@ -1,7 +1,7 @@
 # Créer un nouveau programme d'observation dans Rosace
 
 *Guide pour les observateurs et développeurs qui veulent ajouter leur propre programme
-scientifique. Version du 3 octobre 2026 (branche `multi-program`, phases A, B1 et B2).*
+scientifique. Version du 3 octobre 2026 (branche `multi-program`, phases A, B1, B2 et C).*
 
 La spécification complète du mécanisme est dans
 [scheduler_multi_program_spec.md](scheduler_multi_program_spec.md) (en anglais) ; ce guide
@@ -205,9 +205,15 @@ un `Candidate` :
 - **Ne garder aucun état** entre deux appels : tout ce dont il a besoin est dans
   `rosace.db`. Un redémarrage du serveur ne fait alors rien perdre.
   `database.db_get_successes_for_target(program, star, ctx.now)` donne le nombre
-  d'observations réussies cette nuit et l'heure de la dernière.
+  d'observations réussies cette nuit et l'heure de la dernière ;
+  `database.db_get_last_success_per_target(program)` la date de la dernière observation
+  réussie de chaque cible, toutes nuits confondues (pour une cadence).
 - **Lecture seule** : ne jamais écrire dans `targets.db`, `rosace.db` ni aucun fichier de
-  l'installation, ne jamais toucher au matériel.
+  l'installation, ne jamais toucher au matériel. Une exception : un planificateur peut
+  tenir à jour sa propre copie d'un fichier de données externe, sous
+  `~/.rosace/<programme>/`, avec un accès réseau borné (bien en dessous des 10 s) et sans
+  jamais en dépendre pour répondre — c'est ce que fait `be_scheduler` avec le fichier
+  Robot de BeSS.
 - **Vos critères scientifiques sont les vôtres** (hauteur minimale, Lune, angle horaire
   préféré, cadence…) : les appliquer avant de choisir.
 - Une seule proposition : parmi vos cibles possibles, c'est à vous de choisir la meilleure.
@@ -216,14 +222,9 @@ un `Candidate` :
 
 | Fonction | Rend |
 |---|---|
-| `check_feasible(star, exposure, ctx.now, min_altitude_deg)` | `None` si faisable, sinon la raison : hauteur au-dessus du plancher de l'installation (et de votre propre minimum) et de l'horizon local, vérifiée toutes les 5 minutes sur toute la durée de l'observation, plus la règle du méridien au départ. |
+| `check_feasible(star, exposure, ctx.now, min_altitude_deg)` | `None` si faisable, sinon la raison : hauteur au-dessus du plancher de l'installation (et de votre propre minimum) et de l'horizon local, vérifiée toutes les 5 minutes sur toute la durée de l'observation, plus les règles de la monture : pas de départ trop près du méridien (`min_meridian_distance_deg`), pas de suivi plus loin au-delà du méridien que la monture ne le permet (`meridian_tolerance_deg`). |
 | `await check_not_recently_failed(program, star.name, ctx.now)` | `None`, ou un refus si la cible a échoué il y a moins de `failure_backoff_hours` (1 h) pour ce programme. |
 | `estimate_duration_s(star, exposure)` | La durée estimée en secondes (poses + temps fixe `overhead_minutes`). |
-
-> **Limite actuelle.** L'historique offert aux planificateurs ne couvre que la nuit en
-> cours. Un planificateur de cadence (« dernière observation il y a plus de N jours »)
-> aura besoin d'une fonction d'historique sur plusieurs jours, à ajouter dans
-> `database.py` avec le premier planificateur qui en a besoin.
 
 **Erreurs.** Une cible inutilisable : la journaliser et passer à la suivante. Une
 exception : le programme est ignoré pour ce tour seulement. `SchedulerFatalError`
@@ -306,11 +307,23 @@ pytest rosace/plugins/program_schedulers -v
 
 ---
 
-## 4. Exemple : un planificateur de cadence simple
+## 4. Exemples
 
-Ce squelette propose, au niveau 3, l'étoile la plus haute de son programme qui n'a pas
-encore été observée avec succès cette nuit. C'est le point de départ à compléter avec vos
-propres critères.
+**L'exemple réel le plus simple** : `plugins/program_schedulers/random_pick/`, partagé par
+les programmes `PN` et `Cataclysmic`. Il tire au hasard une cible du programme pas encore
+observée cette nuit et faisable, et la propose au niveau 3. Une trentaine de lignes.
+
+**Un exemple réel complet** : `plugins/program_schedulers/be_scheduler/` (programme `Be_stars`).
+Il observe le plus régulièrement possible les étoiles Be plus brillantes qu'une magnitude
+limite : dernière observation = la plus récente entre la base BeSS (fichier Robot,
+téléchargé chaque nuit) et Rosace ; niveau 2 si l'étoile est en retard et que BeSS demande
+une période plus courte que celle du programme, 3 si elle est en retard, 4 sinon ; tri par
+retard, puis hauteur dans le ciel, puis éclat. Sa docstring décrit tout le fonctionnement.
+
+**Un squelette** à compléter avec vos propres critères :
+
+Il propose, au niveau 3, l'étoile la plus haute de son programme qui n'a pas
+encore été observée avec succès cette nuit.
 
 ```python
 """

@@ -26,6 +26,8 @@ from ..sequencer_plugins.acquisition_helpers import compute_exposure_time_and_co
 _params = SUBPLUGIN_PARAMS.get("selector", {})
 MIN_ALTITUDE_DEG = _params.get("min_altitude_deg", 10)            # installation floor
 MIN_MERIDIAN_DISTANCE_DEG = _params.get("min_meridian_distance_deg", 0)   # 0 = off
+# How far past the meridian the mount keeps tracking without a flip; None = not checked.
+MERIDIAN_TOLERANCE_DEG = _params.get("meridian_tolerance_deg")
 OVERHEAD_SECONDS = 60 * _params.get("overhead_minutes", 5)       # pointing, guiding, calibrations
 PLANNER_TIMEOUT_SECONDS = _params.get("planner_timeout_seconds", 10)
 FAILURE_BACKOFF_HOURS = _params.get("failure_backoff_hours", 1)   # no retry before this delay
@@ -88,6 +90,11 @@ def check_feasible(
             return (f"too close to the meridian "
                     f"(HA {hour_angle:+.1f}° within ±{MIN_MERIDIAN_DISTANCE_DEG:.1f}°)")
 
+    if MERIDIAN_TOLERANCE_DEG is not None:
+        reason = _check_meridian_tolerance(star, now, duration_s)
+        if reason is not None:
+            return reason
+
     floor = MIN_ALTITUDE_DEG if min_altitude_deg is None else max(MIN_ALTITUDE_DEG, min_altitude_deg)
     horizon = load_horizon(HORIZON_FILE) if HORIZON_FILE else None
     steps = max(1, math.ceil(duration_s / SAMPLING_STEP_SECONDS))
@@ -103,6 +110,24 @@ def check_feasible(
             if altitude < horizon_altitude:
                 return (f"below local horizon ({altitude:.1f}° < {horizon_altitude:.1f}° "
                         f"at az {azimuth:.1f}°, +{offset_s / 60:.0f} min)")
+    return None
+
+
+def _check_meridian_tolerance(star: Star, start: datetime, duration_s: float) -> Optional[str]:
+    """A target east of the meridian at the start (hour angle < 0) must not be
+    tracked further than MERIDIAN_TOLERANCE_DEG past the meridian by the end
+    of the observation: beyond that, the mount stops or flips. A target
+    already west at the start is tracked away from the meridian, so it is
+    always accepted."""
+    ha_start = hour_angle_deg(star.ra, SITE_LONGITUDE_DEG, start)
+    if ha_start >= 0:
+        return None
+    ha_end = hour_angle_deg(star.ra, SITE_LONGITUDE_DEG, start + timedelta(seconds=duration_s))
+    if ha_end < ha_start:   # wrapped through +-180 deg (the antimeridian), not the meridian
+        return None
+    if ha_end > MERIDIAN_TOLERANCE_DEG:
+        return (f"would track {ha_end:.1f}° past the meridian, mount tolerance "
+                f"{MERIDIAN_TOLERANCE_DEG:g}° (HA {ha_start:+.1f}° → {ha_end:+.1f}°)")
     return None
 
 

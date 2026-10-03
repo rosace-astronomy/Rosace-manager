@@ -90,5 +90,5 @@ async def simbad_search(name: str) -> StarCreate:
         ra=float(record["ra"]),
         dec=float(record["dec"]),
         magnitude_v=float(record["vmag"]) if record.get("vmag") is not None else None,
-        spectral_type=record.get("sp_type", "").strip() or None,
+        spectral_type=(record.get("sp_type") or "").strip() or None,   # null for many nebulae
     )

@@ -127,3 +127,80 @@ class TestCalculateFluxPlugin:
 
         assert result is obs
         assert "Flux measurement abandoned: unexpected" in caplog.text
+
+
+def _measurement(peak, background=300.0, exposure=30.0, column_max=1000.0, saturated=False):
+    return {"exposure_s": exposure, "peak_pixel_adu": peak, "background_adu": background,
+            "column_max_adu": column_max, "saturated": saturated}
+
+
+class TestExposureSuggestion:
+
+    def test_scales_the_brightest_frame_to_the_target(self):
+        images = {"a-1.fits": _measurement(10300.0, column_max=900.0),
+                  "a-2.fits": _measurement(6300.0, column_max=1200.0)}
+        suggestion = calculate_flux.exposure_suggestion(images, target_fraction=0.7)
+        # target 42000 ADU: 30 s x (42000 - 300) / (10300 - 300) = 125.1 s
+        assert suggestion["suggested_exposure_s"] == 125.1
+        assert suggestion["peak_pixel_max"] == 10300.0
+        assert suggestion["column_max_max"] == 1200.0
+        assert suggestion["frames"] == 2
+        assert suggestion["saturated"] == 0 and suggestion["upper_bound"] is False
+
+    def test_saturated_series_gives_an_upper_bound(self):
+        images = {"a-1.fits": _measurement(60000.0, saturated=True), "a-2.fits": _measurement(50000.0)}
+        suggestion = calculate_flux.exposure_suggestion(images, target_fraction=0.7)
+        assert suggestion["upper_bound"] is True and suggestion["saturated"] == 1
+        assert suggestion["suggested_exposure_s"] < 30.0
+
+    def test_no_suggestion_without_duration_or_signal(self):
+        assert calculate_flux.exposure_suggestion({"a": _measurement(1000.0, exposure=None)})["suggested_exposure_s"] is None
+        assert calculate_flux.exposure_suggestion({"a": _measurement(250.0)})["suggested_exposure_s"] is None
+
+
+class TestSuggestionFile:
+
+    async def test_one_line_per_observation_with_its_id(self, tmp_path):
+        await db_init()
+        _write_frame(tmp_path / "a-1.fits", seed=1)
+        _write_frame(tmp_path / "b-1.fits", seed=2)
+        first = _make_obs(tmp_path, ["a-1.fits"], obs_id="obs-sugg-1")
+        second = _make_obs(tmp_path, ["b-1.fits"], obs_id="obs-sugg-2")
+
+        await CalculateFluxPlugin().execute(first)
+        await CalculateFluxPlugin().execute(second)
+
+        lines = (tmp_path / calculate_flux.SUGGESTIONS_FILENAME).read_text().splitlines()
+        assert lines[0].split("\t") == list(calculate_flux.SUGGESTION_COLUMNS)
+        assert len(lines) == 3
+        fields = dict(zip(calculate_flux.SUGGESTION_COLUMNS, lines[1].split("\t")))
+        assert fields["obs_id"] == "obs-sugg-1"
+        assert fields["star"] == "16 Peg" and fields["mag"] == "5.08"
+        assert fields["frames"] == "1" and fields["exposure_s"] == "30"
+        suggestion = first.reduction_data["calculate_flux"]["exposure_suggestion"]
+        assert float(fields["suggested_exposure_s"]) == suggestion["suggested_exposure_s"]
+        assert lines[2].startswith("obs-sugg-2\t")
+
+    async def test_nothing_written_when_no_frame_is_measured(self, tmp_path):
+        await db_init()
+        _write_frame(tmp_path / "empty.fits", with_trace=False)
+        obs = _make_obs(tmp_path, ["empty.fits"], obs_id="obs-sugg-empty")
+
+        await CalculateFluxPlugin().execute(obs)
+
+        assert not (tmp_path / calculate_flux.SUGGESTIONS_FILENAME).exists()
+
+    async def test_file_error_keeps_the_casier(self, tmp_path, monkeypatch, caplog):
+        def failing_append(*args, **kwargs):
+            raise OSError("disk full")
+
+        await db_init()
+        monkeypatch.setattr(calculate_flux, "_append_suggestion_line", failing_append)
+        _write_frame(tmp_path / "a-1.fits")
+        obs = _make_obs(tmp_path, ["a-1.fits"], obs_id="obs-sugg-fail")
+
+        with caplog.at_level(logging.WARNING, logger="spectro.subplugin.calculate_flux"):
+            await CalculateFluxPlugin().execute(obs)
+
+        assert "exposure_suggestion" in obs.reduction_data["calculate_flux"]
+        assert "not written" in caplog.text

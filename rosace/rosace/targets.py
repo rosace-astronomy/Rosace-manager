@@ -243,6 +243,25 @@ async def star_list_aliases(star_id: int) -> list[str]:
             return [row["alias_name"] for row in rows]
 
 
+async def star_aliases_map(star_ids: list[int]) -> dict[int, list[str]]:
+    """Returns the alternate names of several stars in a single query, keyed
+    by star id (a star without alias is absent)."""
+    if not star_ids:
+        return {}
+    placeholders = ",".join("?" * len(star_ids))
+    async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
+        async with db.execute(
+            f"SELECT star_id, alias_name FROM star_aliases WHERE star_id IN ({placeholders}) "
+            f"ORDER BY alias_name",
+            list(star_ids)
+        ) as cursor:
+            rows = await cursor.fetchall()
+    aliases: dict[int, list[str]] = {}
+    for star_id, alias_name in rows:
+        aliases.setdefault(star_id, []).append(alias_name)
+    return aliases
+
+
 # ─────────────────────────────────────────────────────────────
 # Programs — CRUD
 # ─────────────────────────────────────────────────────────────

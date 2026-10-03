@@ -90,9 +90,18 @@ RULES FOR A PLANNER
 - Keep no state between calls: everything you need (what was observed, when,
   with which result) is in rosace.db. A server restart then loses nothing.
   database.db_get_successes_for_target(program, target, ctx.now) gives the
-  number of successful observations tonight and the time of the last one.
+  number of successful observations tonight and the time of the last one;
+  database.db_get_last_success_per_target(program) the date of the last
+  successful observation of every target, over all nights (cadence).
 - Read-only: never write to targets.db, rosace.db or any file of the
-  installation, never touch the hardware.
+  installation, never touch the hardware. One exception: a planner may keep
+  its own copy of an external data file up to date, under
+  ~/.rosace/<program>/, with a bounded network access (well under
+  planner_timeout_seconds) and without ever depending on it to answer —
+  be_scheduler's BeSS robot file is the example.
+- The shared checks also apply the mount's rules: no start too close to the
+  meridian (min_meridian_distance_deg) and no tracking further past it than
+  the mount allows (meridian_tolerance_deg).
 - Your own scientific criteria (minimum altitude, Moon, preferred hour angle,
   cadence...) are yours: apply them before choosing.
 

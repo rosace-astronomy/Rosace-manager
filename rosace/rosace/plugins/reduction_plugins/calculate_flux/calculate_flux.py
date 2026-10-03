@@ -12,6 +12,14 @@ raises -- a diagnostic measurement must not stop the reduction that follows.
 Reads only sequencer_data, so its position in a program's reduction: list
 does not matter.
 
+Exposure suggestion: from the brightest raw pixel of the series, the
+sub-exposure duration that would put it at target_peak_fraction
+(subplugin_params.calculate_flux, 0.7 by default) of the saturation level --
+an aid for setting program_stars.exposure_time by hand. Recorded in the casier
+and as one line per observation (with its ID) in exposure_suggestions.txt, in
+the session directory. When a frame is saturated, the true peak is unknown and
+the suggestion is only an upper bound (written "<=").
+
 Sequential on purpose (about 0.5 s of computation per frame, no await
 inside): REDUCTION currently shares the sequencer's event loop, so this
 sub-plugin is kept out of real-hardware programs until post-observation
@@ -28,12 +36,18 @@ from pathlib import Path
 
 from astropy.io import fits
 
+from ....config import SUBPLUGIN_PARAMS
 from ....database import db_insert_spectrum_flux
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
-from ..spectrum_flux_helpers import METHOD_VERSION, measure_spectrum_flux
+from ..spectrum_flux_helpers import METHOD_VERSION, SATURATION_ADU, measure_spectrum_flux
 
 log = logging.getLogger("spectro.subplugin.calculate_flux")
+
+TARGET_PEAK_FRACTION = SUBPLUGIN_PARAMS.get("calculate_flux", {}).get("target_peak_fraction", 0.7)
+SUGGESTIONS_FILENAME = "exposure_suggestions.txt"
+SUGGESTION_COLUMNS = ("obs_id", "utc", "star", "mag", "frames", "exposure_s", "peak_pixel_max",
+                      "column_max_max", "background_adu", "saturated", "suggested_exposure_s")
 
 
 def _measure_file(path: Path):
@@ -44,6 +58,51 @@ def _measure_file(path: Path):
     if data is None:
         raise ValueError("no image data in the primary HDU")
     return measure_spectrum_flux(data), (float(exposure) if exposure is not None else None)
+
+
+def exposure_suggestion(images: dict[str, dict], target_fraction: float = TARGET_PEAK_FRACTION) -> dict:
+    """Suggested sub-exposure duration from the series' brightest raw pixel:
+    exposure x (target - background) / (peak - background), target =
+    target_fraction x SATURATION_ADU, rounded to 0.1 s. None when the duration
+    is unknown or the peak does not rise above the background. A saturated
+    frame makes the suggestion an upper bound (the true peak is higher)."""
+    brightest = max(images.values(), key=lambda m: m["peak_pixel_adu"])
+    exposure_s = brightest["exposure_s"]
+    peak, background = brightest["peak_pixel_adu"], brightest["background_adu"]
+    target = target_fraction * SATURATION_ADU
+    suggested = None
+    if exposure_s and peak > background:
+        suggested = round(exposure_s * (target - background) / (peak - background), 1)
+    saturated = sum(1 for m in images.values() if m["saturated"])
+    return {
+        "frames": len(images),
+        "exposure_s": exposure_s,
+        "peak_pixel_max": peak,
+        "column_max_max": max(m["column_max_adu"] for m in images.values()),
+        "background_adu": background,
+        "saturated": saturated,
+        "target_peak_adu": target,
+        "suggested_exposure_s": suggested,
+        "upper_bound": saturated > 0,
+    }
+
+
+def _append_suggestion_line(path: Path, obs: Observation, star: str, magnitude_v, suggestion: dict) -> None:
+    """One tab-separated line per observation; the header is written with the file."""
+    suggested = suggestion["suggested_exposure_s"]
+    suggested_text = "-" if suggested is None else f"{'<=' if suggestion['upper_bound'] else ''}{suggested:g}"
+    values = (
+        obs.id, f"{obs.created_at:%Y-%m-%dT%H:%MZ}", star,
+        "-" if magnitude_v is None else f"{magnitude_v:g}",
+        suggestion["frames"], "-" if suggestion["exposure_s"] is None else f"{suggestion['exposure_s']:g}",
+        f"{suggestion['peak_pixel_max']:.0f}", f"{suggestion['column_max_max']:.0f}",
+        f"{suggestion['background_adu']:.0f}", suggestion["saturated"], suggested_text,
+    )
+    new_file = not path.exists()
+    with open(path, "a", encoding="utf-8") as f:
+        if new_file:
+            f.write("\t".join(SUGGESTION_COLUMNS) + "\n")
+        f.write("\t".join(str(v) for v in values) + "\n")
 
 
 class CalculateFluxPlugin(SubPlugin):
@@ -95,5 +154,21 @@ class CalculateFluxPlugin(SubPlugin):
             measurement.pop("method_version")
             images[name] = {"exposure_s": exposure_s, **measurement}
 
-        if images:
-            obs.reduction_data["calculate_flux"] = {"method_version": METHOD_VERSION, "images": images}
+        if not images:
+            return
+        suggestion = exposure_suggestion(images)
+        obs.reduction_data["calculate_flux"] = {
+            "method_version": METHOD_VERSION, "images": images, "exposure_suggestion": suggestion,
+        }
+        suggested = suggestion["suggested_exposure_s"]
+        log.info(
+            f"[CALCULATE_FLUX] Exposure suggestion: "
+            f"{'none' if suggested is None else ('<=' if suggestion['upper_bound'] else '') + f'{suggested:g} s'} "
+            f"per sub-exposure (peak {suggestion['peak_pixel_max']:.0f} ADU in "
+            f"{'?' if suggestion['exposure_s'] is None else format(suggestion['exposure_s'], '.1f')} s, "
+            f"target {suggestion['target_peak_adu']:.0f} ADU, {suggestion['saturated']} saturated frame(s))"
+        )
+        try:
+            _append_suggestion_line(Path(obs.obs_dir) / SUGGESTIONS_FILENAME, obs, target_name, magnitude_v, suggestion)
+        except Exception as e:
+            log.warning(f"[CALCULATE_FLUX] Exposure suggestion not written to {SUGGESTIONS_FILENAME} ({e})")

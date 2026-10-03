@@ -42,6 +42,7 @@ def _installation(monkeypatch):
     monkeypatch.setattr(checks, "altitude_deg", lambda ra, dec, lat, lon, at: 45.0)
     monkeypatch.setattr(checks, "MIN_ALTITUDE_DEG", 10)
     monkeypatch.setattr(checks, "MIN_MERIDIAN_DISTANCE_DEG", 0)
+    monkeypatch.setattr(checks, "MERIDIAN_TOLERANCE_DEG", None)
     monkeypatch.setattr(checks, "HORIZON_FILE", None)
     monkeypatch.setattr(manual_list_mod, "_previously_reported", set())
 

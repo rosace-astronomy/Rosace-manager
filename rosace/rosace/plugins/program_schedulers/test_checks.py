@@ -33,6 +33,7 @@ def _installation(monkeypatch):
     """Fixed installation settings, independent of the active config."""
     monkeypatch.setattr(checks, "MIN_ALTITUDE_DEG", 10)
     monkeypatch.setattr(checks, "MIN_MERIDIAN_DISTANCE_DEG", 0)
+    monkeypatch.setattr(checks, "MERIDIAN_TOLERANCE_DEG", None)
     monkeypatch.setattr(checks, "OVERHEAD_SECONDS", 300)
     monkeypatch.setattr(checks, "EXPOSURE_TIME_MAG0_SECONDS", 1.0)
     monkeypatch.setattr(checks, "MAX_EXPOSURE_TIME_SECONDS", 300)
@@ -145,6 +146,39 @@ class TestCheckFeasible:
         assert checks.check_feasible(_star(), exposure, NOW) is None   # rule off by default
         monkeypatch.setattr(checks, "MIN_MERIDIAN_DISTANCE_DEG", 3)
         assert "too close to the meridian" in checks.check_feasible(_star(), exposure, NOW)
+
+    def _hour_angle_over_time(self, monkeypatch, ha_at_start):
+        """Hour angle advancing 15 deg per hour from ha_at_start at NOW, folded into [-180, 180)."""
+        monkeypatch.setattr(
+            checks, "hour_angle_deg",
+            lambda ra, lon, at: (ha_at_start + 15 * (at - NOW).total_seconds() / 3600 + 180) % 360 - 180,
+        )
+
+    def test_meridian_tolerance(self, monkeypatch):
+        _altitude_over_time(monkeypatch, lambda minutes: 45.0)
+        exposure = ExposureConfig(exposure_time=60)   # 5 x 60 s + 300 s overhead = 10 min = 2.5 deg of HA
+        self._hour_angle_over_time(monkeypatch, -1.0)  # east, ends 1.5 deg past the meridian
+        assert checks.check_feasible(_star(), exposure, NOW) is None   # rule off by default
+        monkeypatch.setattr(checks, "MERIDIAN_TOLERANCE_DEG", 15)
+        assert checks.check_feasible(_star(), exposure, NOW) is None   # within the tolerance
+
+        # A 2-hour observation starting 1 deg east ends 29 deg past the meridian.
+        reason = checks.check_feasible(_star(), exposure, NOW, duration_s=2 * 3600)
+        assert reason is not None and "past the meridian" in reason and "tolerance 15" in reason
+
+    def test_meridian_tolerance_target_already_west(self, monkeypatch):
+        _altitude_over_time(monkeypatch, lambda minutes: 45.0)
+        monkeypatch.setattr(checks, "MERIDIAN_TOLERANCE_DEG", 15)
+        self._hour_angle_over_time(monkeypatch, 5.0)   # west: tracked away from the meridian
+        assert checks.check_feasible(_star(), ExposureConfig(exposure_time=60), NOW, duration_s=2 * 3600) is None
+
+    def test_meridian_tolerance_ignores_antimeridian(self, monkeypatch):
+        _altitude_over_time(monkeypatch, lambda minutes: 45.0)
+        monkeypatch.setattr(checks, "MERIDIAN_TOLERANCE_DEG", 15)
+        self._hour_angle_over_time(monkeypatch, 175.0 - 360)   # -185 folds to +175: west
+        assert checks.check_feasible(_star(), ExposureConfig(exposure_time=60), NOW, duration_s=3600) is None
+        self._hour_angle_over_time(monkeypatch, -178.0)   # crosses -180 -> +180: not the meridian
+        assert checks.check_feasible(_star(), ExposureConfig(exposure_time=60), NOW, duration_s=3600) is None
 
     def test_imposed_duration_checks_whole_series(self, monkeypatch):
         # Fine for one 10-minute observation, too low before the end of a 2-hour series.

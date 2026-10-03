@@ -276,6 +276,23 @@ async def db_count_trailing_failures(
     return count
 
 
+async def db_get_last_success_per_target(program_name: str) -> dict[str, datetime]:
+    """Start time of the most recent successful observation (SEQUENCER
+    completed) of every target observed for a program, over the whole history
+    (not only the current astronomical day) — for cadence planners, which need
+    "when was this star last observed" across nights. Keyed by target_name
+    (the canonical name); a target never observed successfully is absent."""
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        async with db.execute(
+            """SELECT target_name, MAX(created_at) FROM observations
+               WHERE program_name = ? AND sequencer_status = 'done'
+               GROUP BY target_name""",
+            (program_name,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {name: datetime.fromisoformat(last) for name, last in rows}
+
+
 async def db_get_program_time_s(since: datetime) -> dict[str, float]:
     """Telescope time used per program since `since` (seconds): the sum of
     ended_at - created_at (end of SEQUENCER, success or failure) of its

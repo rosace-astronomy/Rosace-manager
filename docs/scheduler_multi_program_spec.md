@@ -1,9 +1,10 @@
-# Multi-program scheduling — specification v0.8
+# Multi-program scheduling — specification v0.9
 
-**Version 0.8 — 2 October 2026.** Implemented on branch `multi-program`: phase A (selector,
+**Version 0.9 — 3 October 2026.** Implemented on branch `multi-program`: phase A (selector,
 shared checks, `manual_list` and `blank_program` planners), phase B1 (failures, observation
-columns, measurements) and phase B2 (windows and booked observations, series in the manual
-list, time shares).
+columns, measurements), phase B2 (windows and booked observations, series in the manual
+list, time shares) and phase C (the Be stars planner, `be_scheduler`; mount meridian
+tolerance).
 Earlier versions (0.1–0.55, in French) were working drafts.
 
 ## 1. Principles
@@ -90,8 +91,10 @@ Installation settings in `subplugin_params.selector` (`min_altitude_deg` 10,
 - `check_feasible(star, exposure, now, min_altitude_deg=None, duration_s=None)` → `None` if
   feasible, else the reason. Altitude above the installation floor (and the planner's own
   minimum) and above the local horizon, sampled every 5 minutes over the whole duration; the
-  pointing must not straddle the meridian (current rule, at start). A series planner passes the
-  whole series' duration.
+  pointing must not straddle the meridian (`min_meridian_distance_deg`, at start); a target
+  east of the meridian at the start must not be tracked further than
+  `meridian_tolerance_deg` past it by the end (absent = not checked; 15 on the 72ED,
+  provisional). A series planner passes the whole series' duration.
 - `check_window(window, now, duration)` → `open`, `booked` or `refused` (closed, too short,
   launch beyond `lookahead_minutes`); `check_feasible(..., start=launch)` for a booked one.
 - `check_not_recently_failed(program, target, now)` → refuses a target whose last observation
@@ -99,7 +102,14 @@ Installation settings in `subplugin_params.selector` (`min_altitude_deg` 10,
   a series retries at once, its planner bounds the retries
   (`db_count_trailing_failures()`).
 - `database.db_get_successes_for_target(program, target, now)` → number of successful
-  observations (SEQUENCER completed) tonight and the time of the last one.
+  observations (SEQUENCER completed) tonight and the time of the last one;
+  `database.db_get_last_success_per_target(program)` → date of the last successful
+  observation of every target, over all nights (cadence planners).
+
+Planners are read-only (no write to the databases or the installation's files, no
+hardware), with one exception: a planner may keep its own copy of an external data file up
+to date under `~/.rosace/<program>/`, with a bounded network access and without ever
+depending on it to answer (`be_scheduler`'s BeSS robot file).
 
 ## 5. Priority levels — "what do we lose if we wait?"
 
@@ -208,7 +218,7 @@ guiding, a lamp on, a half-written file).
   knowing who produced them (same pattern as `scheduler_data` → `program_name`, `priority`).
 
 **Meridian, to study on the AM3**: how far it tracks past the meridian
-(`meridian_tolerance_deg`), what it does at that limit, which pier side it takes for a target
+(`meridian_tolerance_deg`, set to a provisional 15° in phase C), what it does at that limit, which pier side it takes for a target
 just past the meridian, how it reports it (`TELESCOPE_PIER_SIDE`). Until then only the current
 pointing rule applies.
 
@@ -222,5 +232,14 @@ pointing rule applies.
   `obs.measurements` (temperatures, pier side, slit, focus). Next: one simulator run.
 - **Phase B2 (done)**: time shares, windows and booked observations, series in the manual
   list. Next: one simulator run, then the first program planner (Be).
-- **Later**: interruption, meridian tolerance, Moon, moving objects, filling before a booked
+- **Phase C (done)**: `be_scheduler`, the Be stars planner (`Be_stars`, share 80 %): Be
+  stars brighter than `limit_magnitude` (7), last observation = the most recent of BeSS
+  (Arasbeam robot file, downloaded by the planner each night, previous copy kept on failure)
+  and Rosace; period = `period_days` (30) or BeSS's when shorter; overdue with a shorter BeSS
+  period → level 2, overdue → 3, not due → 4; within a level: lateness by half-period steps,
+  then altitude at mid-observation, then brightness; `max_duration_minutes` (90) guard;
+  mount meridian tolerance in the shared checks. `random_pick` (a target at random, once
+  per night, level 3) activates `PN` and `Cataclysmic` at 10 % each, to see the time shares
+  at work. Next: a real night with the selector.
+- **Later**: interruption, Moon, moving objects, filling before a booked
   observation with the candidates of every planner.
