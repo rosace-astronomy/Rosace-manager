@@ -13,17 +13,15 @@ Each panel has one fixed-name preview file (config.py's GUI_PREVIEW_DIR, e.g.
 needs to say *which panel* changed, never a filename: the GUI already knows the fixed
 URL for each panel (GET /images/{panel}) and just re-fetches it.
 
-An optional `source` identifies which sub-plugin produced this particular capture (e.g.
-"focus") -- omitted from the message entirely when not given, so an existing caller
-that never passes it keeps sending exactly the same message as before. Used today so
-the GUI can tell a focus.py guide image apart from every other Guidage-panel capture
-(slew_72ed, pointing_72ed, stop_phd2_guiding, home_sync_am3, none of which pass it) and only then
-draw focus's own reference search-window rectangle -- see fits_viewer.ts.
+An optional `source` names the sub-plugin that produced this capture -- informative
+only, the GUI never reads it. Omitted from the message entirely when not given.
 
 An optional `overlay` (a small JSON-serialisable dict) carries per-image geometry the GUI
-draws on top of the image -- used today by slit_xy.py (search zone, measured slit line,
-retained slit point, in Rosace's pixel convention). Omitted from the message when not
-given, same as `source`.
+draws on top of the image, in Rosace's pixel convention, from a fixed set of drawing
+elements -- `window` (solid rectangle), `zone` (dashed rectangle), `line`, `point` -- see
+fits_viewer.ts's ImageOverlay. The GUI draws whatever elements are present, whichever
+sub-plugin sent them, and an image without an overlay clears the previous one. Omitted
+from the message when not given, same as `source`.
 """
 
 from __future__ import annotations

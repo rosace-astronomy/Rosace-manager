@@ -216,20 +216,7 @@ class TestCaptureGuideImage:
 
         assert fake_image.writeto.call_count == 3  # raw + corrected + gui preview
         fake_image.writeto.assert_any_call(gui_dir / "guidage.fits", overwrite=True)
-        broadcast_mock.assert_awaited_once_with("guidage", source=None)
-
-    async def test_image_to_gui_true_forwards_image_source_to_broadcast(self, tmp_path, monkeypatch):
-        gui_dir = tmp_path / "gui_preview"
-        monkeypatch.setattr(acquisition_helpers, "GUI_PREVIEW_DIR", gui_dir)
-        broadcast_mock = AsyncMock()
-        monkeypatch.setattr(acquisition_helpers.ws_image_broadcaster, "broadcast", broadcast_mock)
-        fake_image = _fake_image()
-        obs = _make_obs(tmp_path)
-        obs.hardware["guiding_camera"].expose.return_value = fake_image
-
-        await capture_guide_image(obs, 0.3, image_to_gui=True, image_source="focus")
-
-        broadcast_mock.assert_awaited_once_with("guidage", source="focus")
+        broadcast_mock.assert_awaited_once_with("guidage")
 
     async def test_switches_spectroscope_to_requested_light_source(self, tmp_path):
         obs = _make_obs(tmp_path)

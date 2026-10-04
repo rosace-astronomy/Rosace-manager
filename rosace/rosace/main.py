@@ -179,7 +179,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .config     import GUI_PREVIEW_DIR, SITE_NAME, SCHEDULER_RETRY_SECONDS, SESSION_COOKIE_SECURE, SESSION_TTL_HOURS, IS_DEMO_MODE, SUBPLUGIN_PARAMS
+from .config     import GUI_PREVIEW_DIR, SITE_NAME, SCHEDULER_RETRY_SECONDS, SESSION_COOKIE_SECURE, SESSION_TTL_HOURS, IS_DEMO_MODE
 from .log_config import configure_logging
 
 configure_logging()
@@ -514,13 +514,6 @@ async def get_subplugin_display_names():
     """Static, server-lifetime name -> short label mapping for SEQUENCER/REDUCTION
     sub-plugins, used to label step-progress chips in the GUI (see /observations/steps)."""
     return get_display_names(["sequencer", "reduction"])
-
-@protected.get("/config/focus")
-async def get_focus_config():
-    """Static, server-lifetime subplugin_params.focus.window_fraction (None if not
-    configured) -- lets the GUI draw the focus sub-plugin's reference search-window
-    rectangle on the Guidage panel at the same size focus.py actually uses."""
-    return {"window_fraction": SUBPLUGIN_PARAMS.get("focus", {}).get("window_fraction")}
 
 @protected.get("/observations/{obs_id}")
 async def get_observation(obs_id: str):

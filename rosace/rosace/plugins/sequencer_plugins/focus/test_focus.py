@@ -145,6 +145,12 @@ class TestCentralWindow:
         window = focus_mod._central_window(data, 0.5)
         assert window.shape == (300, 300)
 
+    def test_bounds_match_the_window_slice(self):
+        # (x0, y0, x1, y1), inclusive-exclusive -- the same pixels the
+        # measurement uses, which is what the GUI overlay is built from.
+        assert focus_mod._central_window_bounds((800, 600), 0.5) == (150, 250, 450, 550)
+        assert focus_mod._central_window_bounds((960, 1280), 0.9) == (208, 48, 1072, 912)
+
 
 def _make_obs(obs_dir, *, camera=None, spectroscope=None):
     obs = Observation(
@@ -157,7 +163,22 @@ def _make_obs(obs_dir, *, camera=None, spectroscope=None):
     return obs
 
 
+def _star_field(rng):
+    """Two clean stars off-center -- see test_logs_info_with_measurement."""
+    star_field = _blank_frame(rng)
+    cx, cy = FRAME_SIZE[1] // 2, FRAME_SIZE[0] // 2
+    _add_gaussian_star(star_field, cx + 40, cy + 20, amplitude=2000, sigma=2.0)
+    _add_gaussian_star(star_field, cx - 30, cy - 50, amplitude=2000, sigma=2.0)
+    return star_field
+
+
 class TestFocusPlugin:
+
+    @pytest.fixture(autouse=True)
+    def publish_mock(self, monkeypatch):
+        mock = AsyncMock()
+        monkeypatch.setattr(focus_mod, "publish_guide_preview", mock)
+        return mock
 
     async def test_logs_info_with_measurement(self, tmp_path, caplog, monkeypatch, rng):
         monkeypatch.setattr(focus_mod, "SUBPLUGIN_PARAMS", {"guiding": {"exposure_seconds": 10.0}})
@@ -210,7 +231,7 @@ class TestFocusPlugin:
         assert any("No usable star" in r.message for r in caplog.records)
         assert "focus_fwhm_px" not in obs.measurements
 
-    async def test_captures_with_image_to_gui_and_focus_source(self, tmp_path, monkeypatch, rng):
+    async def test_captures_without_gui_then_publishes_with_its_window(self, tmp_path, monkeypatch, rng, publish_mock):
         monkeypatch.setattr(focus_mod, "SUBPLUGIN_PARAMS", {"guiding": {"exposure_seconds": 10.0}})
 
         data = _blank_frame(rng)
@@ -222,7 +243,56 @@ class TestFocusPlugin:
         obs = _make_obs(tmp_path)
         await FocusPlugin().execute(obs)
 
-        capture_mock.assert_awaited_once_with(obs, 10.0, image_to_gui=True, image_source="focus")
+        capture_mock.assert_awaited_once_with(obs, 10.0, image_to_gui=False)
+        # Default fraction 0.9 on 960x1280: columns 208..1071, rows 48..911,
+        # sent as outer pixel edges.
+        publish_mock.assert_awaited_once_with(
+            guide_path, source="focus", overlay={"window": [207.5, 47.5, 1071.5, 911.5]},
+        )
+
+    async def test_published_window_follows_configured_fraction(self, tmp_path, monkeypatch, rng, publish_mock):
+        monkeypatch.setattr(
+            focus_mod, "SUBPLUGIN_PARAMS",
+            {"guiding": {"exposure_seconds": 10.0}, "focus": {"window_fraction": 0.5}},
+        )
+
+        data = _blank_frame(rng)
+        guide_path = tmp_path / "GUIDING_test.fits"
+        fits.PrimaryHDU(data.astype(np.uint16)).writeto(guide_path, overwrite=True)
+        monkeypatch.setattr(focus_mod, "capture_guide_image", AsyncMock(return_value=guide_path))
+
+        await FocusPlugin().execute(_make_obs(tmp_path))
+
+        assert publish_mock.call_args.kwargs["overlay"] == {"window": [399.5, 239.5, 879.5, 719.5]}
+
+    async def test_publishes_even_when_no_star_found(self, tmp_path, monkeypatch, rng, publish_mock):
+        monkeypatch.setattr(focus_mod, "SUBPLUGIN_PARAMS", {"guiding": {"exposure_seconds": 10.0}})
+
+        data = _blank_frame(rng)
+        guide_path = tmp_path / "GUIDING_test.fits"
+        fits.PrimaryHDU(data.astype(np.uint16)).writeto(guide_path, overwrite=True)
+        monkeypatch.setattr(focus_mod, "capture_guide_image", AsyncMock(return_value=guide_path))
+
+        obs = _make_obs(tmp_path)
+        await FocusPlugin().execute(obs)
+
+        publish_mock.assert_awaited_once()
+        assert "focus_fwhm_px" not in obs.measurements
+
+    async def test_gui_failure_does_not_block_measurement(self, tmp_path, caplog, monkeypatch, rng, publish_mock):
+        monkeypatch.setattr(focus_mod, "SUBPLUGIN_PARAMS", {"guiding": {"exposure_seconds": 10.0}})
+        publish_mock.side_effect = OSError("disk full")
+
+        guide_path = tmp_path / "GUIDING_test.fits"
+        fits.PrimaryHDU(_star_field(rng)).writeto(guide_path, overwrite=True)
+        monkeypatch.setattr(focus_mod, "capture_guide_image", AsyncMock(return_value=guide_path))
+
+        obs = _make_obs(tmp_path)
+        with caplog.at_level(logging.INFO, logger="spectro.subplugin.focus"):
+            await FocusPlugin().execute(obs)
+
+        assert any("Could not show the guide image" in r.message for r in caplog.records)
+        assert obs.measurements["focus_fwhm_px"] > 0
 
     async def test_reads_window_fraction_from_subplugin_params(self, tmp_path, monkeypatch, rng):
         monkeypatch.setattr(

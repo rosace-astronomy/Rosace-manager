@@ -35,15 +35,17 @@ interface SelectionRect {
 }
 
 /**
- * Overlay sent by the slit_xy sub-plugin with its guide image, in Rosace's
- * pixel convention: zone = [x0, y0, x1, y1] outer pixel edges, line =
- * [xa, ya, xb, yb] measured slit line, point = [x, y] retained slit position
- * (line/point null when the measurement failed).
+ * Overlay sent by a sub-plugin with its image (see image_broadcast.py), in
+ * Rosace's pixel convention: window and zone = [x0, y0, x1, y1] outer pixel
+ * edges (solid / dashed rectangle), line = [xa, ya, xb, yb], point = [x, y].
+ * Every element is optional; the viewer draws whatever is present, without
+ * knowing which sub-plugin sent it.
  */
-export interface SlitOverlay {
-	zone: [ number, number, number, number ] | null;
-	line: [ number, number, number, number ] | null;
-	point: [ number, number ] | null;
+export interface ImageOverlay {
+	window?: [ number, number, number, number ] | null;
+	zone?: [ number, number, number, number ] | null;
+	line?: [ number, number, number, number ] | null;
+	point?: [ number, number ] | null;
 }
 
 export interface FitsViewerProps extends BoxProps {
@@ -88,17 +90,9 @@ export class FitsViewer extends VBox {
 	private stretchMin = 0;
 	private stretchMax = 0;
 
-	// Static reference rectangle (e.g. the focus sub-plugin's search window),
-	// set from outside via setReferenceWindowFraction() -- null means "don't
-	// draw one". Unlike `selection` above, this is never drawn by the user
-	// and always a square centered on the image, so only a single fraction
-	// (of the image's own smaller dimension) is needed, not four coordinates.
-	private referenceWindowFraction: number | null = null;
-
-	// Per-image overlay of the slit_xy sub-plugin (search zone, measured slit
-	// line, retained slit point), set from outside via setSlitOverlay() --
-	// null means "don't draw one".
-	private slitOverlay: SlitOverlay | null = null;
+	// Per-image overlay sent with the image by the sub-plugin that produced it,
+	// set from outside via setOverlay() -- null means "don't draw one".
+	private overlay: ImageOverlay | null = null;
 
 	constructor( props: FitsViewerProps = {} ) {
 		super( props );
@@ -166,28 +160,13 @@ export class FitsViewer extends VBox {
 	}
 
 	/**
-	 * Sets (or clears, with null) a static square reference rectangle, centered
-	 * on the image, whose side is `fraction` times the image's own smaller
-	 * dimension -- e.g. the focus sub-plugin's own search window. Unlike the
-	 * "Zone" selection above, this is never drawn by the user and has nothing
-	 * to do with the visualization stretch; it's purely an informational
-	 * overlay, recomputed from the currently-loaded image's own dimensions on
-	 * every paint(), never stored in image-space coordinates.
-	 */
-
-	setReferenceWindowFraction( fraction: number | null ) {
-		this.referenceWindowFraction = fraction;
-		this.canvas.redraw();
-	}
-
-	/**
-	 * Sets (or clears, with null) the slit_xy overlay. Its coordinates are in
+	 * Sets (or clears, with null) the image's overlay. Its coordinates are in
 	 * Rosace's pixel convention (0-indexed, pixel centres on integers, Y
 	 * upwards -- see toCanvas()), sent by the backend with the image itself.
 	 */
 
-	setSlitOverlay( overlay: SlitOverlay | null ) {
-		this.slitOverlay = overlay;
+	setOverlay( overlay: ImageOverlay | null ) {
+		this.overlay = overlay;
 		this.canvas.redraw();
 	}
 
@@ -500,35 +479,29 @@ export class FitsViewer extends VBox {
 			ctx.restore();
 		}
 
-		if( this.referenceWindowFraction ) {
-			// Centered square, same computation as focus.py::_central_window() --
-			// symmetric, so image-space top-down vs. bottom-up doesn't matter here.
-			const side = Math.min( this.image.width, this.image.height ) * this.referenceWindowFraction;
-			const x0 = this.offsetX + ( this.image.width  - side ) / 2 * this.scale;
-			const y0 = this.offsetY + ( this.image.height - side ) / 2 * this.scale;
-			const s = side * this.scale;
-
-			ctx.save();
-			ctx.strokeStyle = "#00e5ff";
-			ctx.lineWidth = 1;
-			ctx.strokeRect( x0, y0, s, s );
-			ctx.restore();
-		}
-
-		if( this.slitOverlay ) {
-			this.paintSlitOverlay( ctx, this.slitOverlay );
+		if( this.overlay ) {
+			this.paintOverlay( ctx, this.overlay );
 		}
 	}
 
 	/**
-	 * slit_xy overlay: search zone (dashed), measured slit line (solid) and
-	 * retained slit point (cross) -- each colour distinct from the yellow
-	 * "Zone" selection and the cyan focus window.
+	 * Image overlay: window (solid cyan rectangle), zone (dashed magenta
+	 * rectangle), line (solid red) and point (green cross) -- each colour
+	 * distinct from the yellow "Zone" selection drawn by the user.
 	 */
 
-	private paintSlitOverlay( ctx: CanvasEx, overlay: SlitOverlay ) {
+	private paintOverlay( ctx: CanvasEx, overlay: ImageOverlay ) {
 		ctx.save();
 		ctx.lineWidth = 1;
+
+		if( overlay.window ) {
+			// Outer pixel edges, mapped like zone below; y1 is the top
+			const [ x0, y0, x1, y1 ] = overlay.window;
+			const a = this.toCanvas( x0, y1 );
+			const b = this.toCanvas( x1, y0 );
+			ctx.strokeStyle = "#00e5ff";
+			ctx.strokeRect( a.x, a.y, b.x - a.x, b.y - a.y );
+		}
 
 		if( overlay.zone ) {
 			const [ x0, y0, x1, y1 ] = overlay.zone;

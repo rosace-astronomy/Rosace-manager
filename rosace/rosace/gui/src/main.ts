@@ -6,7 +6,7 @@ import { VBox, HBox, Button, Label, Application, BoxProps, Image, Listbox, ListI
 import "./main.scss";
 
 import { LoginView, fetchCurrentUser, logout as authLogout, UserOut } from "./auth";
-import { FitsViewer, SlitOverlay } from "./widgets/fits_viewer";
+import { FitsViewer, ImageOverlay } from "./widgets/fits_viewer";
 
 import play_icon from "./assets/play.svg";
 import stop_icon from "./assets/stop.svg";
@@ -164,12 +164,6 @@ const AUTH_LOGOUT_MSG = "auth.logout";	// fired locally (Application.fireGlobal)
 // field is enough: nothing needs to re-render when it arrives, renderObs()
 // just reads it directly whenever a step-progress row is built.
 let subplugin_display_names: Record<string, Record<string, string>> = {};
-
-// focus sub-plugin's own search-window fraction (GET /config/focus), fetched once at
-// startup -- same "static for the server's lifetime" reasoning as subplugin_display_names
-// above. null when unconfigured (or not yet fetched): the Guidage panel then never draws
-// the reference rectangle at all -- see loadPanelImage/fetchFocusConfig below.
-let focus_window_fraction: number | null = null;
 
 const STAGE_LABEL: Record<StageType, { text: string, icon: string }> = {	//allow only a value of stages in stage_label
     scheduler: { text: "SCHEDULER", icon: null },
@@ -329,16 +323,8 @@ class MainView extends VBox {
 				this.logMany( lines.map( l => `[${l.level}] ${l.text}` ) );
 			}
 			else if( ev.msg === IMAGE_NEW_MSG ) {
-				const { panel, source, overlay } = ev.params as { panel: string, source?: string, overlay?: SlitOverlay };
-				this.loadPanelImage( panel );
-				if( panel === "guidage" ) {
-					// Only a focus.py capture gets the reference window rectangle, and only a
-					// slit_xy.py capture the slit overlay -- each explicitly cleared (not just
-					// left alone) on any other source, so it doesn't linger over the next
-					// image pushed to this same panel.
-					this.guidage_viewer.setReferenceWindowFraction( source === "focus" ? focus_window_fraction : null );
-					this.guidage_viewer.setSlitOverlay( source === "slit_xy" && overlay ? overlay : null );
-				}
+				const { panel, overlay } = ev.params as { panel: string, overlay?: ImageOverlay };
+				this.loadPanelImage( panel, overlay ?? null );
 			}
 		} );
 
@@ -358,7 +344,6 @@ class MainView extends VBox {
 			this.fetchObs();
 			this.loadDemoImages();
 			this.fetchDisplayNames();
-			this.fetchFocusConfig();
 		});
     }
 
@@ -378,23 +363,6 @@ class MainView extends VBox {
 	 * Fetched once, at startup -- see subplugin_display_names' own comment above.
 	 */
 
-	/**
-	 * Fetched once, at startup -- see focus_window_fraction's own comment above.
-	 */
-
-	private async fetchFocusConfig() {
-		try {
-			const res = await fetch( `${API}/config/focus`, { signal: AbortSignal.timeout(5000) } );
-			if( res.ok ) {
-				const body = await res.json() as { window_fraction: number | null };
-				focus_window_fraction = body.window_fraction;
-			}
-		}
-		catch( e ) {
-			this.showError( `focus config fetch error`, e.toString() );
-		}
-	}
-
 	private async fetchDisplayNames() {
 		try {
 			const res = await fetch( `${API}/subplugins/display-names`, { signal: AbortSignal.timeout(5000) } );
@@ -409,10 +377,12 @@ class MainView extends VBox {
 
 	/**
 	 * Fetches a panel's current preview image (pushed by the backend, see
-	 * image_broadcast.py) and displays it. panel is "guidage" or "spectre".
+	 * image_broadcast.py) and displays it with its overlay -- applied only once
+	 * the new image is loaded, and null clears the previous image's one. panel
+	 * is "guidage" or "spectre".
 	 */
 
-	private async loadPanelImage( panel: string ) {
+	private async loadPanelImage( panel: string, overlay: ImageOverlay | null ) {
 		const viewer = panel === "guidage" ? this.guidage_viewer
 		             : panel === "spectre" ? this.spectre_viewer
 		             : undefined;
@@ -426,6 +396,7 @@ class MainView extends VBox {
 		}
 
 		viewer.loadFits( await res.arrayBuffer() );
+		viewer.setOverlay( overlay );
 
 		// first real image on this panel: apply the automatic (whole-image)
 		// percentile stretch once, so it doesn't come up all-black by default --

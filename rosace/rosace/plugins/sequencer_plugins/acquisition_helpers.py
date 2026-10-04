@@ -59,7 +59,6 @@ async def capture_guide_image(
     dec_deg: float | None = None,
     target_name: str | None = None,
     image_to_gui: bool = False,
-    image_source: str | None = None,
     subtract_dark: bool = True,
     light_source: LightSource = LightSource.SKY,
     light_settle_seconds: float = 0.0,
@@ -148,14 +147,9 @@ async def capture_guide_image(
     lamp is really on before a short exposure starts. 0 by default: every
     other caller keeps behaving exactly as before.
 
-    image_source, when given alongside image_to_gui=True, is forwarded to
-    ws_image_broadcaster.broadcast() so the GUI can tell which sub-plugin
-    produced this particular capture -- used today by focus.py (passing
-    "focus") so the Guidage panel only draws its reference search-window
-    rectangle on a focus.py image, never on slew_72ed/pointing_72ed/stop_phd2_guiding/
-    home_sync_am3's own guide-image captures, which don't pass it. None by
-    default (omitted from the broadcast message entirely, see
-    image_broadcast.py) -- an existing caller keeps behaving as before."""
+    A caller that wants something drawn over the image on the GUI captures
+    with image_to_gui=False, then calls publish_guide_preview() below with
+    its overlay."""
     if (ra_deg is None) != (dec_deg is None):
         raise ValueError("capture_guide_image: ra_deg and dec_deg must be given together, or both omitted")
     if filename is None:
@@ -198,7 +192,7 @@ async def capture_guide_image(
     if image_to_gui:
         GUI_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
         image.writeto(GUI_PREVIEW_DIR / "guidage.fits", overwrite=True)
-        await ws_image_broadcaster.broadcast("guidage", source=image_source)
+        await ws_image_broadcaster.broadcast("guidage")
     return path
 
 
@@ -209,9 +203,9 @@ async def publish_guide_preview(
     copies it to GUI_PREVIEW_DIR/"guidage.fits" and notifies connected
     clients, forwarding source and overlay (see image_broadcast.py).
 
-    For a caller that can only describe what to draw on the image once it
-    has analysed it -- slit_xy.py, which captures with image_to_gui=False,
-    measures the slit, then publishes the image with its overlay."""
+    For a caller that wants something drawn over the image -- it captures
+    with image_to_gui=False, then publishes the image with its overlay:
+    slit_xy.py (the measured slit), focus.py (its search window)."""
     GUI_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(image_path, GUI_PREVIEW_DIR / "guidage.fits")
     await ws_image_broadcaster.broadcast("guidage", source=source, overlay=overlay)

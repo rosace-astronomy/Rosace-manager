@@ -62,7 +62,7 @@ from photutils.utils.exceptions import NoDetectionsWarning
 from ....config import SUBPLUGIN_PARAMS
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
-from ..acquisition_helpers import capture_guide_image
+from ..acquisition_helpers import capture_guide_image, publish_guide_preview
 
 log = logging.getLogger("spectro.subplugin.focus")
 
@@ -89,13 +89,20 @@ FWHM_KERNEL_PX = 4.0
 CUTOUT_HALF = 9
 
 
-def _central_window(data: np.ndarray, fraction: float) -> np.ndarray:
-    height, width = data.shape
+def _central_window_bounds(shape: tuple[int, int], fraction: float) -> tuple[int, int, int, int]:
+    """Inclusive-exclusive array index bounds (x0, y0, x1, y1) of the
+    central window: columns x0..x1-1, rows y0..y1-1."""
+    height, width = shape
     size = int(min(height, width) * fraction)
     half = size // 2
     cx, cy = width // 2, height // 2
     y0, y1 = max(0, cy - half), min(height, cy + half)
     x0, x1 = max(0, cx - half), min(width, cx + half)
+    return x0, y0, x1, y1
+
+
+def _central_window(data: np.ndarray, fraction: float) -> np.ndarray:
+    x0, y0, x1, y1 = _central_window_bounds(data.shape, fraction)
     return data[y0:y1, x0:x1]
 
 
@@ -217,6 +224,19 @@ def measure_fwhm(
     return float(np.mean(fwhms)), len(fwhms), float(min(snrs))
 
 
+async def _show_on_gui(image_path, shape: tuple[int, int], window_fraction: float) -> None:
+    """Shows the guide image on the GUI's Guidage panel with the search window
+    actually used for the measurement, as outer pixel edges in Rosace's pixel
+    convention (pixel centres on integers). Best effort -- a display problem
+    never affects the measurement."""
+    x0, y0, x1, y1 = _central_window_bounds(shape, window_fraction)
+    overlay = {"window": [x0 - 0.5, y0 - 0.5, x1 - 0.5, y1 - 0.5]}
+    try:
+        await publish_guide_preview(image_path, source="focus", overlay=overlay)
+    except Exception as e:
+        log.warning(f"[FOCUS] Could not show the guide image on the GUI: {e}")
+
+
 class FocusPlugin(SubPlugin):
     """Captures a guide image and logs its measured sharpness (mean FWHM
     over a handful of clean stars in a central window) -- diagnostic
@@ -224,10 +244,11 @@ class FocusPlugin(SubPlugin):
 
     async def execute(self, obs: Observation) -> Observation:
         exposure_seconds = SUBPLUGIN_PARAMS.get("guiding", {})["exposure_seconds"]
-        guide_image = await capture_guide_image(obs, exposure_seconds, image_to_gui=True, image_source="focus")
+        guide_image = await capture_guide_image(obs, exposure_seconds, image_to_gui=False)
         data = fits.getdata(guide_image)
 
         window_fraction = SUBPLUGIN_PARAMS.get("focus", {}).get("window_fraction", DEFAULT_WINDOW_FRACTION)
+        await _show_on_gui(guide_image, data.shape, window_fraction)
         result = measure_fwhm(data, window_fraction)
         if result is None:
             log.warning("[FOCUS] No usable star to measure focus sharpness")
