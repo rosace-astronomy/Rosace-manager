@@ -17,15 +17,22 @@ treated as circular: the
 altitude between the last and the first point interpolates across 360/0,
 so a profile that doesn't close on itself still works.
 
-Kept private to scheduler_rosace_2026 (not in astro_math.py, which stays pure
-sky maths): this is file parsing plus the scheduler's own configuration
-contract, including its SchedulerFatalError on a bad file.
+A core module, like astro_math.py (which stays pure sky maths -- this one is
+file parsing): horizon_file is a site fact of the Core configuration, and the
+module is shared by the schedulers (scheduler_rosace_2026, and the selector's
+planners through program_schedulers/checks.py) and by the command line
+(cli.py's --check-config). A bad file raises HorizonFileError; each scheduler
+turns it into its own SchedulerFatalError, so the core never imports a plugin.
 """
 
 import bisect
 from pathlib import Path
 
-from .. import SchedulerFatalError
+
+class HorizonFileError(ValueError):
+    """The horizon file is missing, unreadable or invalid -- a configuration
+    problem retrying can't fix. The message names the path and, where
+    relevant, the offending line."""
 
 # Sorted by azimuth: [(azimuth_deg, altitude_deg), ...], azimuths in [0, 360).
 HorizonPoints = list[tuple[float, float]]
@@ -42,17 +49,17 @@ def _parse_pair(parts: list[str]) -> tuple[float, float] | None:
 
 
 def load_horizon(path: Path) -> HorizonPoints:
-    """Parses and validates a horizon file. Raises SchedulerFatalError (a
+    """Parses and validates a horizon file. Raises HorizonFileError (a
     configuration problem retrying can't fix) naming the path and, where
     relevant, the offending line."""
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError as e:
-        raise SchedulerFatalError(
+        raise HorizonFileError(
             f"Horizon file not found: {path} (see horizon_file in conf/config.yaml)"
         ) from e
     except (OSError, UnicodeDecodeError) as e:
-        raise SchedulerFatalError(f"Cannot read horizon file {path}: {e}") from e
+        raise HorizonFileError(f"Cannot read horizon file {path}: {e}") from e
 
     points: dict[float, float] = {}
     name_line_seen = False
@@ -70,17 +77,17 @@ def load_horizon(path: Path) -> HorizonPoints:
             if not points and not name_line_seen:
                 name_line_seen = True
                 continue
-            raise SchedulerFatalError(
+            raise HorizonFileError(
                 f"Horizon file {path}, line {line_number}: expected 'azimuth altitude', got {raw!r}"
             )
 
         azimuth, altitude = pair
         if not 0.0 <= azimuth <= 360.0:
-            raise SchedulerFatalError(
+            raise HorizonFileError(
                 f"Horizon file {path}, line {line_number}: azimuth {azimuth} outside [0, 360]"
             )
         if not 0.0 <= altitude <= 90.0:
-            raise SchedulerFatalError(
+            raise HorizonFileError(
                 f"Horizon file {path}, line {line_number}: altitude {altitude} outside [0, 90]"
             )
 
@@ -100,7 +107,7 @@ def load_horizon(path: Path) -> HorizonPoints:
         if wrapped_through_north and azimuth > first_azimuth:
             out_of_order = True
         if out_of_order:
-            raise SchedulerFatalError(
+            raise HorizonFileError(
                 f"Horizon file {path}, line {line_number}: azimuth {azimuth} is out of order "
                 f"(after {previous_azimuth}) -- azimuths must increase, wrapping through 360/0 "
                 f"at most once and stopping before the first point ({first_azimuth})"
@@ -111,7 +118,7 @@ def load_horizon(path: Path) -> HorizonPoints:
 
         if azimuth in points:
             if points[azimuth] != altitude:
-                raise SchedulerFatalError(
+                raise HorizonFileError(
                     f"Horizon file {path}, line {line_number}: azimuth {azimuth} already given "
                     f"with altitude {points[azimuth]}, now {altitude}"
                 )
@@ -119,7 +126,7 @@ def load_horizon(path: Path) -> HorizonPoints:
         points[azimuth] = altitude
 
     if len(points) < 2:
-        raise SchedulerFatalError(
+        raise HorizonFileError(
             f"Horizon file {path}: at least 2 distinct points are needed, found {len(points)}"
         )
     return sorted(points.items())

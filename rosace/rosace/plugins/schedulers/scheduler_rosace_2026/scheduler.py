@@ -7,10 +7,10 @@ from pydantic import ValidationError
 from ....astro_math import altitude_deg, azimuth_deg, hour_angle_deg
 from ....config import HORIZON_FILE, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, SUBPLUGIN_PARAMS
 from ....database import db_count_observations_for_target
+from ....horizon import HorizonFileError, horizon_altitude_deg, load_horizon
 from ....models import Observation, Target, ExposureConfig
 from ....targets import program_get_by_name, star_get_by_name, program_get_stars
 from .. import SchedulerFatalError
-from .horizon import horizon_altitude_deg, load_horizon
 
 log = logging.getLogger("spectro.plugin.scheduler")
 
@@ -132,7 +132,10 @@ class SchedulerPlugin:
         log.info("[SCHEDULER] Selecting next target…")
 
         rows = _read_observation_list(OBSERVATION_LIST_PATH)
-        horizon = load_horizon(HORIZON_FILE) if HORIZON_FILE else None
+        try:
+            horizon = load_horizon(HORIZON_FILE) if HORIZON_FILE else None
+        except HorizonFileError as e:
+            raise SchedulerFatalError(str(e)) from e
 
         # Resolves each line, in priority order (stable sort: ties -> file order).
         resolved: list[dict] = []

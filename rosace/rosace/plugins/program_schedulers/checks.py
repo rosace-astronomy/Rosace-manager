@@ -17,10 +17,11 @@ from typing import Optional
 from ...astro_math import altitude_deg, azimuth_deg, hour_angle_deg
 from ...config import HORIZON_FILE, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, SUBPLUGIN_PARAMS
 from ...database import db_get_last_failure
+from ...horizon import HorizonFileError, horizon_altitude_deg, load_horizon
 from ...models import ExposureConfig
 from ...targets import Star
 from . import PRIORITY_SERIES, TimeWindow
-from ..schedulers.scheduler_rosace_2026.horizon import horizon_altitude_deg, load_horizon
+from ..schedulers import SchedulerFatalError
 from ..sequencer_plugins.acquisition_helpers import compute_exposure_time_and_count
 
 _params = SUBPLUGIN_PARAMS.get("selector", {})
@@ -96,8 +97,11 @@ def check_feasible(
             return reason
 
     floor = MIN_ALTITUDE_DEG if min_altitude_deg is None else max(MIN_ALTITUDE_DEG, min_altitude_deg)
-    horizon = load_horizon(HORIZON_FILE) if HORIZON_FILE else None
-    steps = max(1, math.ceil(duration_s / SAMPLING_STEP_SECONDS))
+    try:
+        horizon = load_horizon(HORIZON_FILE) if HORIZON_FILE else None
+    except HorizonFileError as e:
+        raise SchedulerFatalError(str(e)) from e
+    steps =max(1, math.ceil(duration_s / SAMPLING_STEP_SECONDS))
     for i in range(steps + 1):
         offset_s = min(i * SAMPLING_STEP_SECONDS, duration_s)
         at = now + timedelta(seconds=offset_s)

@@ -1,12 +1,12 @@
 """
 Tests for horizon.py (local horizon mask: KStars export parsing + lookup).
-Run: pytest plugins/schedulers/scheduler_rosace_2026/test_horizon.py -v
+Run: pytest test_horizon.py -v
 """
 
 import pytest
 
-from rosace.plugins.schedulers import SchedulerFatalError
-from rosace.plugins.schedulers.scheduler_rosace_2026.horizon import (
+from rosace.horizon import (
+    HorizonFileError,
     horizon_altitude_deg,
     load_horizon,
 )
@@ -91,12 +91,12 @@ class TestLoadHorizon:
 
     def test_out_of_order_point_is_an_error(self, tmp_path):
         # 90 after 100 without wrapping through north: a typo, not a profile.
-        with pytest.raises(SchedulerFatalError, match="line 3.*out of order"):
+        with pytest.raises(HorizonFileError, match="line 3.*out of order"):
             load_horizon(_write(tmp_path, "0 10\n100 5\n90 6\n180 4\n"))
 
     def test_second_wrap_through_north_is_an_error(self, tmp_path):
         # 300 -> 10 is the allowed wrap; 200 -> 5 wraps a second time.
-        with pytest.raises(SchedulerFatalError, match="line 4.*out of order"):
+        with pytest.raises(HorizonFileError, match="line 4.*out of order"):
             load_horizon(_write(tmp_path, "300 5\n10 6\n200 3\n5 4\n"))
 
     def test_wrap_through_360_written_as_360_then_0_is_accepted(self, tmp_path):
@@ -109,23 +109,23 @@ class TestLoadHorizon:
         assert points == [(0.0, 10.0), (180.0, 20.0)]
 
     def test_360_and_0_with_different_altitudes_is_an_error(self, tmp_path):
-        with pytest.raises(SchedulerFatalError, match="already given"):
+        with pytest.raises(HorizonFileError, match="already given"):
             load_horizon(_write(tmp_path, "0 10\n360 12\n180 20\n"))
 
     def test_same_azimuth_with_different_altitudes_is_an_error(self, tmp_path):
-        with pytest.raises(SchedulerFatalError, match="line 3.*already given"):
+        with pytest.raises(HorizonFileError, match="line 3.*already given"):
             load_horizon(_write(tmp_path, "0 10\n90 20\n90 25\n"))
 
     def test_garbage_line_after_the_points_names_the_line_number(self, tmp_path):
-        with pytest.raises(SchedulerFatalError, match="line 4.*expected 'azimuth altitude'"):
+        with pytest.raises(HorizonFileError, match="line 4.*expected 'azimuth altitude'"):
             load_horizon(_write(tmp_path, "Name\n0 10\n90 20\nnot numbers\n"))
 
     def test_a_second_non_numeric_line_before_the_points_is_an_error(self, tmp_path):
-        with pytest.raises(SchedulerFatalError, match="line 2"):
+        with pytest.raises(HorizonFileError, match="line 2"):
             load_horizon(_write(tmp_path, "Name\nSecond name\n0 10\n90 20\n"))
 
     def test_three_columns_is_an_error(self, tmp_path):
-        with pytest.raises(SchedulerFatalError, match="line 2"):
+        with pytest.raises(HorizonFileError, match="line 2"):
             load_horizon(_write(tmp_path, "0 10\n90 20 30\n180 5\n"))
 
     @pytest.mark.parametrize("content, match", [
@@ -136,20 +136,20 @@ class TestLoadHorizon:
         ("0 10\n90 nan\n", "altitude nan outside"),
     ])
     def test_out_of_range_values_are_errors(self, tmp_path, content, match):
-        with pytest.raises(SchedulerFatalError, match=match):
+        with pytest.raises(HorizonFileError, match=match):
             load_horizon(_write(tmp_path, content))
 
     def test_fewer_than_two_distinct_points_is_an_error(self, tmp_path):
-        with pytest.raises(SchedulerFatalError, match="at least 2 distinct points"):
+        with pytest.raises(HorizonFileError, match="at least 2 distinct points"):
             load_horizon(_write(tmp_path, "Name\n0 10\n360 10\n"))
 
     def test_empty_file_is_an_error(self, tmp_path):
-        with pytest.raises(SchedulerFatalError, match="at least 2 distinct points"):
+        with pytest.raises(HorizonFileError, match="at least 2 distinct points"):
             load_horizon(_write(tmp_path, "# nothing here\n"))
 
     def test_missing_file_names_the_path(self, tmp_path):
         missing = tmp_path / "nope.txt"
-        with pytest.raises(SchedulerFatalError, match="not found.*nope.txt"):
+        with pytest.raises(HorizonFileError, match="not found.*nope.txt"):
             load_horizon(missing)
 
 

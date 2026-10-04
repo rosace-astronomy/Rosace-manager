@@ -19,6 +19,7 @@ from rosace.models import ExposureConfig, Observation, OrchestratorStage, Sessio
 from rosace.plugins.program_schedulers import Candidate, TimeWindow, load_planner
 from rosace.plugins.program_schedulers import checks
 from rosace.plugins.program_schedulers.manual_list.manual_list import ManualListScheduler
+from rosace.plugins.schedulers import SchedulerFatalError
 from rosace.targets import Star
 
 NOW = datetime(2026, 10, 1, 21, 0, tzinfo=timezone.utc)
@@ -138,6 +139,14 @@ class TestCheckFeasible:
         _altitude_over_time(monkeypatch, lambda minutes: 30.0)
         monkeypatch.setattr(checks, "azimuth_deg", lambda ra, dec, lat, lon, at: 220.0)
         assert checks.check_feasible(_star(), ExposureConfig(exposure_time=60), NOW) is None
+
+    def test_missing_horizon_file_is_a_scheduler_fatal_error(self, monkeypatch, tmp_path):
+        # horizon.py raises its own HorizonFileError; checks.py turns it into the
+        # scheduler's fatal error, which disables the planner (or stops the session).
+        monkeypatch.setattr(checks, "HORIZON_FILE", tmp_path / "no_such_horizon.txt")
+        _altitude_over_time(monkeypatch, lambda minutes: 30.0)
+        with pytest.raises(SchedulerFatalError, match="Horizon file not found"):
+            checks.check_feasible(_star(), ExposureConfig(exposure_time=60), NOW)
 
     def test_meridian_rule(self, monkeypatch):
         _altitude_over_time(monkeypatch, lambda minutes: 45.0)
