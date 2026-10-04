@@ -20,8 +20,6 @@ from pathlib import Path
 
 from astropy.io import fits
 
-from ...config import DARK_LIBRARY_DIR
-
 _SERIES_INDEX_RE = re.compile(r"-\d+$")
 
 # Fixed range of temperature buckets pre-created by ensure_dark_library_structure()
@@ -229,17 +227,16 @@ def summarize_series_root_name(files: list[str]) -> str:
     return f"{_SERIES_INDEX_RE.sub('-xxx', stem)}.fits"
 
 
-def ensure_dark_library_structure() -> None:
-    """Creates DARK_LIBRARY_DIR and one subdirectory per temperature bucket
+def ensure_dark_library_structure(library_dir: Path) -> None:
+    """Creates library_dir and one empty subdirectory per temperature bucket
     from DARK_LIBRARY_MIN_TEMP_C to DARK_LIBRARY_MAX_TEMP_C (step
-    DARK_LIBRARY_TEMP_STEP_C), if they don't already exist. Called once at
-    server startup (main.py's lifespan()), not per-session -- the library is
-    a persistent, cross-session structure, not something INIT_SESSION owns.
-    Uses temperature_bucket_dirname() for every name, the exact same
-    function dark_acquisition.py itself calls to look a bucket up, so the
-    two can never name a bucket differently. Safe to call on every server
-    startup, not just the first: mkdir(..., exist_ok=True) never touches a
-    directory that already exists, so it never disturbs darks a previous
-    session or a manual transfer already put there."""
+    DARK_LIBRARY_TEMP_STEP_C), if they don't already exist -- so the observer
+    can see where to transfer darks by hand. Called by dark_acquisition.py at
+    every execution, the one sub-plugin that uses the library. Uses
+    temperature_bucket_dirname() for every name, the exact same function
+    dark_acquisition.py itself calls to look a bucket up, so the two can
+    never name a bucket differently. Safe to call every time:
+    mkdir(..., exist_ok=True) never touches a directory that already exists,
+    so it never disturbs darks a manual transfer already put there."""
     for temp in range(DARK_LIBRARY_MIN_TEMP_C, DARK_LIBRARY_MAX_TEMP_C + 1, DARK_LIBRARY_TEMP_STEP_C):
-        (DARK_LIBRARY_DIR / temperature_bucket_dirname(temp)).mkdir(parents=True, exist_ok=True)
+        (library_dir / temperature_bucket_dirname(temp)).mkdir(parents=True, exist_ok=True)

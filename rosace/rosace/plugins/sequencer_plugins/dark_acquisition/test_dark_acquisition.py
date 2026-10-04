@@ -103,6 +103,18 @@ class TestDarkAcquisitionPlugin:
         assert len(result.sequencer_data["dark_acquisition"]["dark_files"]) == 2
         camera.expose.assert_not_awaited()
 
+    async def test_creates_the_library_bucket_directories(self, tmp_path):
+        # library_under_tmp points DARK_LIBRARY_DIR at tmp_path / "dark_library".
+        _write_dark_fits(tmp_path, index=1)
+        _write_dark_fits(tmp_path, index=2)
+
+        await DarkAcquisitionPlugin().execute(_make_obs(tmp_path))
+
+        assert {p.name for p in (tmp_path / "dark_library").iterdir()} == {
+            "TempMinus20degrees", "TempMinus15degrees", "TempMinus10degrees",
+            "TempMinus5degrees", "Temp0degrees",
+        }
+
     async def test_library_origin_when_session_dir_empty_but_library_has_a_usable_series(self, tmp_path, monkeypatch):
         session_dir = tmp_path / "session"
         session_dir.mkdir()

@@ -207,7 +207,6 @@ from .errors import SessionFatalError
 from .observation_file import create_observation_file, write_observation_file
 from .plugins  import plugins
 from .plugins.pipeline_loader import get_display_names
-from .plugins.sequencer_plugins.dark_library_helpers import ensure_dark_library_structure
 from .plugins.schedulers import SchedulerFatalError
 from . import step_progress
 from .simbad   import simbad_search, SimbadNotFoundError, SimbadQueryError
@@ -233,7 +232,6 @@ async def lifespan(_app: FastAPI):
     await auth_db_init()
     if IS_DEMO_MODE:
         await seed_demo_data()
-    ensure_dark_library_structure()
     ws_log_handler.bind_loop(asyncio.get_running_loop())
     logging.getLogger("spectro").addHandler(ws_log_handler)
     yield

@@ -28,8 +28,10 @@ acquisition, since either way it's compared against whatever the camera is
   (DARK_LIBRARY_DIR, one subdirectory per temperature bucket -- see
   dark_library_helpers.py) -- copied into the session directory (every
   session image must live there) before being used. Never the other way
-  around: nothing here ever writes into the library itself, that stays a
-  manual transfer by the observer.
+  around: no dark is ever written into the library, that stays a manual
+  transfer by the observer -- this sub-plugin only creates its empty
+  temperature-bucket subdirectories, at every execution, so the observer
+  can see where to put them.
 - camera: neither is found -- switches the spectroscope to DARK and shoots
   a fresh series with the science camera.
 
@@ -59,6 +61,7 @@ from ...sub_plugin_base import SubPlugin
 from ..acquisition_helpers import build_fits_root_name, capture_science_image
 from ..dark_library_helpers import (
     copy_darks_from_library,
+    ensure_dark_library_structure,
     find_usable_frame_series,
     summarize_series_root_name,
     temperature_bucket_dirname,
@@ -86,6 +89,7 @@ class DarkAcquisitionPlugin(SubPlugin):
                 "DARK_ACQUISITION: camera_target_temperature_deg_c not set "
                 "-- INIT_SESSION's cooldown step did not run"
             )
+        ensure_dark_library_structure(DARK_LIBRARY_DIR)
 
         camera = obs.hardware["science_camera"]
         target_temp = obs.camera_target_temperature_deg_c

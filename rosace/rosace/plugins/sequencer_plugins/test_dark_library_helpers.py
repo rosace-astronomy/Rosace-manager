@@ -12,7 +12,6 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
-from rosace.plugins.sequencer_plugins import dark_library_helpers as dlh_mod
 from rosace.plugins.sequencer_plugins.dark_library_helpers import (
     compute_camera_target_temperature,
     copy_darks_from_library,
@@ -303,25 +302,23 @@ class TestSummarizeSeriesRootName:
 
 class TestEnsureDarkLibraryStructure:
 
-    def test_creates_one_subdirectory_per_temperature_bucket(self, tmp_path, monkeypatch):
+    def test_creates_one_subdirectory_per_temperature_bucket(self, tmp_path):
         library_dir = tmp_path / "dark_library"
-        monkeypatch.setattr(dlh_mod, "DARK_LIBRARY_DIR", library_dir)
 
-        ensure_dark_library_structure()
+        ensure_dark_library_structure(library_dir)
 
         assert {p.name for p in library_dir.iterdir()} == {
             "TempMinus20degrees", "TempMinus15degrees", "TempMinus10degrees",
             "TempMinus5degrees", "Temp0degrees",
         }
 
-    def test_idempotent_and_leaves_existing_content_untouched(self, tmp_path, monkeypatch):
+    def test_idempotent_and_leaves_existing_content_untouched(self, tmp_path):
         library_dir = tmp_path / "dark_library"
-        monkeypatch.setattr(dlh_mod, "DARK_LIBRARY_DIR", library_dir)
-        ensure_dark_library_structure()
+        ensure_dark_library_structure(library_dir)
         marker = library_dir / "TempMinus5degrees" / "DARK_-5deg_5x300s_20260815_120000-1.fits"
         marker.write_text("not a real fits file, just a marker")
 
-        ensure_dark_library_structure()  # second call, e.g. a second server startup
+        ensure_dark_library_structure(library_dir)  # second call, e.g. the next dark_acquisition run
 
         assert marker.exists()
         assert marker.read_text() == "not a real fits file, just a marker"
