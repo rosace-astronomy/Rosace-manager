@@ -45,6 +45,6 @@ class CloseSessionPlugin:
         except Exception as e:
             log.error(f"[CLOSE_SESSION] Failed to extract session log: {e}")
 
-        await asyncio.sleep(7.0)
+        await asyncio.sleep(2.0)
         log.info("[CLOSE_SESSION] Session closed")
         return ctx

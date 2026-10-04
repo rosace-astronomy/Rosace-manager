@@ -79,4 +79,4 @@ Claude peut le suggérer, jamais le faire lui-même.
 
 - [ ] GUI web : l'affichage d'une nouvelle image (au moins panneau Spectre)
       repart en taille pleine à chaque nouvelle capture au lieu de garder
-      le zoom courant (constaté 2026-09-19) 
+      le zoom courant (constaté 2026-09-19)

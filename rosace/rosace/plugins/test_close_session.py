@@ -14,7 +14,7 @@ from rosace.plugins.close_session import CloseSessionPlugin
 
 @pytest.fixture(autouse=True)
 def fast_sleep(monkeypatch):
-    """Avoids waiting out the simulated sleep(7.0) (telescope parking)."""
+    """Avoids waiting out the simulated sleep(2.0) at the end of CLOSE_SESSION."""
     mock = AsyncMock(return_value=None)
     monkeypatch.setattr("rosace.plugins.close_session.asyncio.sleep", mock)
     return mock
