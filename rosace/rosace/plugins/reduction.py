@@ -6,7 +6,7 @@ by SCHEDULER — so it's reloaded for every observation, not once and for
 all at startup.
 
 Structure:
-    programs/<program>.yaml  →  pipeline_loader  →  [Bias, Dark, Flat, Extract, …]
+    programs/<program>.yaml  →  pipeline_loader  →  [sub-plugin, sub-plugin, …]
 """
 
 import logging
@@ -52,8 +52,5 @@ class ReductionPlugin:
                 log.error(f"[REDUCTION] Step {step} failed: {e}")
                 raise
 
-        log.info(
-            f"[REDUCTION] Reduction complete — "
-            f"{len(obs.reduction_data.get('extract', {}).get('reduced_files', []))} spectrum(s) produced"
-        )
+        log.info("[REDUCTION] Reduction complete")
         return obs

@@ -3,47 +3,27 @@ Tests for the ARCHIVE plugin (ArchivePlugin).
 Run: pytest plugins/test_archive.py -v
 """
 
+import logging
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
-
-import pytest
 
 from rosace.models import Observation
 from rosace.plugins.archive import ArchivePlugin
 
 
-def _make_obs(reduced_files=None) -> Observation:
-    obs = Observation(id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234")
-    if reduced_files is not None:
-        obs.reduction_data["extract"] = {"reduced_files": reduced_files}
-    return obs
-
-
-@pytest.fixture(autouse=True)
-def fast_sleep(monkeypatch):
-    """Avoids waiting out the simulated sleep(0.3) per archived file."""
-    mock = AsyncMock(return_value=None)
-    monkeypatch.setattr("rosace.plugins.archive.asyncio.sleep", mock)
-    return mock
+def _make_obs() -> Observation:
+    return Observation(
+        id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234",
+        yaml_file="20261004T210000_Vega.yaml",
+    )
 
 
 class TestArchivePlugin:
 
-    async def test_raises_if_no_reduced_files(self):
-        obs = _make_obs(reduced_files=[])
-        with pytest.raises(RuntimeError, match="reduction_data"):
-            await ArchivePlugin().run(obs)
+    async def test_logs_the_dossier_without_reading_any_casier(self, caplog):
+        obs = _make_obs()  # reduction_data == {}: no sub-plugin output is needed
 
-    async def test_raises_if_reduction_data_empty(self):
-        obs = _make_obs()  # reduction_data == {}
-        with pytest.raises(RuntimeError, match="reduction_data"):
-            await ArchivePlugin().run(obs)
-
-    async def test_processes_every_reduced_file(self, fast_sleep):
-        files = ["/tmp/a_reduced.fits", "/tmp/b_reduced.fits"]
-        obs = _make_obs(reduced_files=files)
-
-        result = await ArchivePlugin().run(obs)
+        with caplog.at_level(logging.INFO, logger="spectro.plugin.archive"):
+            result = await ArchivePlugin().run(obs)
 
         assert result is obs
-        assert fast_sleep.await_count == len(files)
+        assert any("20261004T210000_Vega.yaml" in r.message for r in caplog.records)
