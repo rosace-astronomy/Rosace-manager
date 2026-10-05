@@ -181,26 +181,12 @@ def _hardware_is_simulated(path: Path) -> bool:
 SIMULATED_EQUIPMENT: bool = SEQUENCER_BACKEND == "internal" or _hardware_is_simulated(HARDWARE_CONFIG_PATH)
 
 # ── Active SCHEDULER plugin ────────────────────────────────────────
-# Name (registry in plugins/schedulers/__init__.py) of the SCHEDULER plugin
-# to use — each is an interchangeable target-selection algorithm, see
-# plugins/schedulers/blank/scheduler.py for the contract to honor.
-_VALID_SCHEDULERS = ("scheduler_rosace_2026", "blank", "selector")
-
-
-def _validate_active_scheduler(value: str) -> str:
-    if value not in _VALID_SCHEDULERS:
-        raise ValueError(
-            f"conf/config.yaml: active_scheduler={value!r} invalid "
-            f"(accepted values: {_VALID_SCHEDULERS})"
-        )
-    return value
-
-
-try:
-    ACTIVE_SCHEDULER = _validate_active_scheduler(_cfg["active_scheduler"])
-except ValueError as e:
-    _log_fatal_startup_error(str(e))
-    raise
+# Name of the SCHEDULER plugin to use — each is an interchangeable
+# target-selection algorithm, see plugins/schedulers/blank/scheduler.py for
+# the contract to honor. Validated against the registry in
+# plugins/schedulers/__init__.py (load_scheduler(), and --check-config), the
+# only list of schedulers.
+ACTIVE_SCHEDULER: str = _cfg["active_scheduler"]
 
 # ── Plugin parameters ──────────────────────────────────────────
 # A single generic passthrough for every sub-plugin-specific setting (e.g.

@@ -67,9 +67,9 @@ TO WRITE YOUR OWN SCHEDULER
    plugin's own test_scheduler.py for the pattern, and call
    conftest.py's assert_scheduler_contract() on any obs where you selected
    a target.
-4. Register your class in plugins/schedulers/__init__.py's _build_registry().
-5. Add "<your_name>" to config.py's _VALID_SCHEDULERS.
-6. Set active_scheduler: <your_name> in conf/config.yaml.
+4. Register your class in plugins/schedulers/__init__.py's _build_registry()
+   (the only list of schedulers).
+5. Set active_scheduler: <your_name> in conf/config.yaml.
 """
 
 import logging

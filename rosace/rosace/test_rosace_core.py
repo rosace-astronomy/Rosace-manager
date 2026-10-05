@@ -182,6 +182,22 @@ class TestCheckConfigCLI:
         )
         assert result.returncode == 0
         assert "[OK]" in result.stdout
+        assert "[OK] plugins valid" in result.stdout
+
+    def test_unknown_scheduler_exits_nonzero_naming_it(self, tmp_path):
+        """active_scheduler is validated against the plugin registry (the only
+        list of schedulers), not by config.py."""
+        demo_config_path = Path(__file__).parent / "conf" / "config_demo.yaml"
+        config = tmp_path / "unknown_scheduler.yaml"
+        config.write_text(demo_config_path.read_text().replace(
+            "active_scheduler: scheduler_rosace_2026", "active_scheduler: no_such_scheduler"))
+        result = subprocess.run(
+            [sys.executable, "-m", "rosace.main", "--check-config", str(config)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 1
+        assert "[FAIL] plugins invalid" in result.stdout
+        assert "no_such_scheduler" in result.stdout
 
     def test_missing_file_exits_nonzero_with_clear_message(self, tmp_path):
         missing = tmp_path / "does_not_exist.yaml"

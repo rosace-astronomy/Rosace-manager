@@ -102,6 +102,14 @@ def run_cli(argv: list[str]) -> None:
                 print(f"[FAIL] horizon file invalid: {e}")
                 sys.exit(1)
             print(f"[OK] horizon file valid: {checked_config.HORIZON_FILE} ({len(horizon_points)} points)")
+        try:
+            # Importing the plugin registry instantiates the active scheduler
+            # (load_scheduler()) and validates the sub-plugin catalogue.
+            import rosace.plugins  # noqa: F401
+        except Exception as e:
+            print(f"[FAIL] plugins invalid: {e}")
+            sys.exit(1)
+        print(f"[OK] plugins valid (active scheduler: {checked_config.ACTIVE_SCHEDULER})")
         sys.exit(0)
     elif "--create-admin" in argv:
         idx = argv.index("--create-admin")

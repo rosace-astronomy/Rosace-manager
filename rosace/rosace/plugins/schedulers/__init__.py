@@ -10,7 +10,9 @@ via active_scheduler (conf/config.yaml).
 Each scheduler lives in its own subdirectory, with its own class and its own
 tests. To write a new one, duplicate schedulers/blank/ (the minimal example,
 which documents the scheduler_data contract every SCHEDULER plugin must
-honor), adapt it, then register the class below.
+honor), adapt it, then register the class below — the registry is the only
+list of schedulers (load_scheduler() and --check-config validate
+active_scheduler against it).
 
 `selector` is the multi-program scheduler: it registers nothing per program.
 To add a scientific program to it, do not touch this registry: write a
@@ -18,8 +20,12 @@ planner (plugins/program_schedulers/, see blank_program/blank_program.py)
 and declare it in the program's YAML.
 """
 
+import logging
+
 from ...config import ACTIVE_SCHEDULER
 from ...errors import SessionFatalError
+
+log = logging.getLogger("spectro.plugin.scheduler")
 
 
 class SchedulerFatalError(SessionFatalError):
@@ -51,8 +57,12 @@ def load_scheduler():
     """Instantiates the active SCHEDULER plugin (active_scheduler, conf/config.yaml)."""
     registry = _build_registry()
     if ACTIVE_SCHEDULER not in registry:
-        raise ValueError(
+        message = (
             f"active_scheduler={ACTIVE_SCHEDULER!r} unknown "
             f"(expected one of: {sorted(registry.keys())})"
         )
+        # Logged here so it reaches rosace.log: main.py configures logging
+        # before importing the plugins.
+        log.error(message)
+        raise ValueError(message)
     return registry[ACTIVE_SCHEDULER]()
