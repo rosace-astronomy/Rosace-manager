@@ -13,9 +13,58 @@ import pytest
 from rosace.plugins import camera_cooldown as cooldown_mod
 from rosace.plugins.camera_cooldown import (
     activate_cooling_for_every_camera,
+    compute_camera_target_temperature,
     cool_science_camera_to_target,
     deactivate_cooling_for_every_camera,
+    round_to_5,
 )
+
+
+class TestRoundTo5:
+
+    def test_rounds_negative_up_to_next_multiple_of_5(self):
+        assert round_to_5(-9) == -5
+
+    def test_rounds_positive_up_to_next_multiple_of_5(self):
+        assert round_to_5(3) == 5
+
+    def test_value_already_a_multiple_of_5_is_unchanged(self):
+        assert round_to_5(-5) == -5
+        assert round_to_5(0) == 0
+        assert round_to_5(10) == 10
+
+
+class TestComputeCameraTargetTemperature:
+
+    def test_user_worked_example(self):
+        # Ambient 15C, cooling_capability -30C -> delta 24C -> raw -9C -> -5C
+        assert compute_camera_target_temperature(ambient_temp_c=15, cooling_capability_deg_c=-30) == -5
+
+    def test_accepts_positive_cooling_capability_too(self):
+        assert compute_camera_target_temperature(ambient_temp_c=15, cooling_capability_deg_c=30) == -5
+
+    def test_weak_cooling_capability_does_not_exceed_ambient(self):
+        """Found on a real first-light test: ambient 15C, a weak
+        cooling_capability_deg_c (-2C) gives delta=1.6C -> raw 13.4C ->
+        round_to_5 (ceiling) would naively give 15C -- equal to ambient, so
+        a cooling-only camera could never reach it (timed out). The safety
+        floor must instead pick the next colder bucket, at least
+        MIN_COOLING_MARGIN_DEG_C below ambient."""
+        target = compute_camera_target_temperature(ambient_temp_c=15, cooling_capability_deg_c=-2)
+        assert target <= 15 - 5
+        assert target == 10
+
+    def test_extremely_weak_cooling_capability_still_leaves_margin(self):
+        # Ambient 9.9C, cooling_capability -0.1C -> delta 0.08C -> raw 9.82C
+        # -> naive round_to_5 gives 10C (ABOVE ambient) without the floor.
+        target = compute_camera_target_temperature(ambient_temp_c=9.9, cooling_capability_deg_c=-0.1)
+        assert target <= 9.9 - 5
+        assert target == 0
+
+    def test_strong_cooling_capability_unaffected_by_safety_floor(self):
+        """A real cooling margin (as in the worked example above) must not
+        be clamped further than round_to_5 already gives."""
+        assert compute_camera_target_temperature(ambient_temp_c=15, cooling_capability_deg_c=-30) == -5
 
 
 @pytest.fixture(autouse=True)

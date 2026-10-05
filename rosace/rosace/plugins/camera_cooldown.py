@@ -13,8 +13,8 @@ only). Two distinct responsibilities:
 - cool_science_camera_to_target(): specific to the science camera only. Reads
   the observatory's ambient temperature from the focuser's own probe
   (hardware/focuser.py::Focuser.get_temperature()), computes the session's
-  fixed target sensor temperature (dark_library_helpers.py::
-  compute_camera_target_temperature()) and commands the science camera to
+  fixed target sensor temperature (compute_camera_target_temperature(),
+  below) and commands the science camera to
   it, then waits for it to actually be reached (within the camera's own
   temperature_tolerance_deg_c) before returning -- this is what lets every
   DARK/BIAS frame taken later in the session, and every dark-library
@@ -35,14 +35,57 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from typing import Any, Callable, Optional
 
 from ..config import CAMERA_COOLDOWN_TIMEOUT_SECONDS
-from .sequencer_plugins.dark_library_helpers import compute_camera_target_temperature
 
 log = logging.getLogger("spectro.plugin.camera_cooldown")
 
 POLL_INTERVAL_SECONDS = 5.0
+
+# The session target temperature is a multiple of this step, so that darks
+# can be reused from one night to the next: the dark library's temperature
+# buckets (sequencer_plugins/dark_library_helpers.py::DARK_LIBRARY_TEMP_STEP_C)
+# follow the same step -- a convention, keep both equal.
+TARGET_TEMPERATURE_STEP_C = 5
+
+# Safety floor for compute_camera_target_temperature() below -- see its own
+# docstring for why this is needed at all (round_to_5's ceiling behavior can
+# otherwise put the naive target above ambient with a weak cooling_capability_deg_c).
+MIN_COOLING_MARGIN_DEG_C = 5
+
+
+def round_to_5(value: float) -> int:
+    """Rounds up to the next multiple of TARGET_TEMPERATURE_STEP_C (e.g.
+    -9 -> -5, 3 -> 5, -5 -> -5, 0 -> 0) -- used for the session's camera
+    cooldown target."""
+    return TARGET_TEMPERATURE_STEP_C * math.ceil(value / TARGET_TEMPERATURE_STEP_C)
+
+
+def compute_camera_target_temperature(ambient_temp_c: float, cooling_capability_deg_c: float) -> int:
+    """Target sensor temperature for the whole session: 80% of the camera's
+    cooling capability (a delta, taken as abs() since cooling_capability_deg_c
+    is stored as a negative value in the hardware YAML) below ambient, rounded
+    up to the next multiple of 5 -- the margin keeps enough cooling headroom
+    for the whole night, and the rounding is what lets darks be reused across
+    sessions/observations at the same bucket instead of one-off temperatures.
+
+    Always guarantees at least MIN_COOLING_MARGIN_DEG_C below ambient, even
+    after rounding -- round_to_5's ceiling behavior can otherwise push the
+    naive target above, or right at, ambient itself when
+    cooling_capability_deg_c is small (found on a real first-light test: a
+    weak enough cooling capability produced a target hotter than ambient,
+    which a cooling-only camera can never reach, timing out INIT_SESSION's
+    cooldown wait). When the naive rounded-up target doesn't leave that
+    margin, the next colder multiple of 5 is used instead -- still a valid
+    dark-library bucket, just one step colder."""
+    delta = 0.8 * abs(cooling_capability_deg_c)
+    target = round_to_5(ambient_temp_c - delta)
+    max_safe_target = TARGET_TEMPERATURE_STEP_C * math.floor(
+        (ambient_temp_c - MIN_COOLING_MARGIN_DEG_C) / TARGET_TEMPERATURE_STEP_C
+    )
+    return min(target, max_safe_target)
 
 
 async def activate_cooling_for_every_camera(hardware: dict[str, Any], hardware_config: dict[str, dict]) -> None:

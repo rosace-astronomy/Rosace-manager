@@ -13,7 +13,6 @@ copy_darks_from_library() stay DARK-only.
 
 from __future__ import annotations
 
-import math
 import re
 import shutil
 from pathlib import Path
@@ -28,43 +27,10 @@ _SERIES_INDEX_RE = re.compile(r"-\d+$")
 # config knob entirely. User-confirmed bounds, 2026-08-15.
 DARK_LIBRARY_MIN_TEMP_C = -20
 DARK_LIBRARY_MAX_TEMP_C = 0
+# Follows the step of the session target temperature
+# (plugins/camera_cooldown.py::TARGET_TEMPERATURE_STEP_C), so a session's darks
+# land in one bucket -- a convention, keep both equal.
 DARK_LIBRARY_TEMP_STEP_C = 5
-
-# Safety floor for compute_camera_target_temperature() below -- see its own
-# docstring for why this is needed at all (round_to_5's ceiling behavior can
-# otherwise put the naive target above ambient with a weak cooling_capability_deg_c).
-MIN_COOLING_MARGIN_DEG_C = 5
-
-
-def round_to_5(value: float) -> int:
-    """Rounds up to the next multiple of 5 (e.g. -9 -> -5, 3 -> 5, -5 -> -5,
-    0 -> 0) -- used both for the camera cooldown target and for picking which
-    dark-library temperature bucket a given temperature falls into, so the
-    two always agree on the same buckets."""
-    return 5 * math.ceil(value / 5)
-
-
-def compute_camera_target_temperature(ambient_temp_c: float, cooling_capability_deg_c: float) -> int:
-    """Target sensor temperature for the whole session: 80% of the camera's
-    cooling capability (a delta, taken as abs() since cooling_capability_deg_c
-    is stored as a negative value in the hardware YAML) below ambient, rounded
-    up to the next multiple of 5 -- the margin keeps enough cooling headroom
-    for the whole night, and the rounding is what lets darks be reused across
-    sessions/observations at the same bucket instead of one-off temperatures.
-
-    Always guarantees at least MIN_COOLING_MARGIN_DEG_C below ambient, even
-    after rounding -- round_to_5's ceiling behavior can otherwise push the
-    naive target above, or right at, ambient itself when
-    cooling_capability_deg_c is small (found on a real first-light test: a
-    weak enough cooling capability produced a target hotter than ambient,
-    which a cooling-only camera can never reach, timing out INIT_SESSION's
-    cooldown wait). When the naive rounded-up target doesn't leave that
-    margin, the next colder multiple of 5 is used instead -- still a valid
-    dark-library bucket, just one step colder."""
-    delta = 0.8 * abs(cooling_capability_deg_c)
-    target = round_to_5(ambient_temp_c - delta)
-    max_safe_target = 5 * math.floor((ambient_temp_c - MIN_COOLING_MARGIN_DEG_C) / 5)
-    return min(target, max_safe_target)
 
 
 def temperature_bucket_dirname(temp_c: float) -> str:
@@ -85,7 +51,7 @@ _TEMP_TOKEN_RE = re.compile(r"_(-?\d+)deg_")
 
 # Real-world tolerances: a session restart can recompute a slightly different
 # target temperature (see compute_camera_target_temperature()'s own safety
-# floor above, added for the same underlying reason), and a real camera
+# floor in plugins/camera_cooldown.py, added for the same underlying reason), and a real camera
 # driver doesn't guarantee an EXPTIME of exactly the requested duration to
 # the millisecond. Without these, a perfectly usable series could be
 # rejected and reshot for no real reason -- found in practice on a first
