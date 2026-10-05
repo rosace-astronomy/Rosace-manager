@@ -43,7 +43,7 @@ class Target(BaseModel):
 
 
 class ExposureConfig(BaseModel):
-    exposure_time: Optional[float] = Field(default=None, gt=0, description="Exposure time in seconds — absent if it must be computed from magnitude (star_spectra_acquisition sub-plugin)")
+    exposure_time: Optional[float] = Field(default=None, gt=0, description="Exposure time in seconds — absent if it must be computed from magnitude (by the science acquisition sub-plugin)")
     num_exposures: int = Field(default=1, ge=1)
     binning: int = Field(default=1, ge=1, le=4)
     grating: str = Field(default="R1200")
@@ -142,8 +142,7 @@ class Observation(BaseModel):
     hardware_config: dict[str, dict[str, Any]] = Field(default_factory=dict, exclude=True)
 
     # Live callback that would let a sub-plugin whose own work spans several
-    # internal steps (e.g. star_spectra_acquisition.py's multi-sub-exposure
-    # loop) notice a stop request between two of its own steps, not just
+    # internal steps (e.g. a multi-sub-exposure acquisition loop) notice a stop request between two of its own steps, not just
     # between stages. session_runner() (main.py) deliberately leaves it None
     # today: a stop request lets the current observation finish every series
     # it has started (a cut-short calibration series is useless). The

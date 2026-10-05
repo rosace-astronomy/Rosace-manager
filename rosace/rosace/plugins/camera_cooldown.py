@@ -18,8 +18,8 @@ only). Two distinct responsibilities:
   it, then waits for it to actually be reached (within the camera's own
   temperature_tolerance_deg_c) before returning -- this is what lets every
   DARK/BIAS frame taken later in the session, and every dark-library
-  lookup, use a single temperature for the whole night (see
-  plugins/sequencer_plugins/dark_acquisition/, bias_acquisition/). Assumes
+  lookup, use a single temperature for the whole night (the sub-plugins
+  that need it read the target from session_data). Assumes
   the science camera's cooler is already on (activate_cooling_for_every_camera()
   runs first) -- it only ever sets/polls the temperature setpoint itself.
 

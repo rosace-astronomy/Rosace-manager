@@ -17,9 +17,9 @@ class CloseSessionPlugin:
         await deactivate_cooling_for_every_camera(ctx.hardware, ctx.hardware_config)
 
         # Generic, mount-agnostic: any mount benefits from being parked at
-        # the end of the session -- unlike home_sync_am3 (AM3-specific
-        # recovery procedure), park() alone is a standard Mount Protocol
-        # primitive. Needs a live connection, hence before the disconnect
+        # the end of the session -- unlike a mount-specific procedure declared
+        # by the hardware profile's sequencer_prefix, park() alone is a
+        # standard Mount Protocol primitive. Needs a live connection, hence before the disconnect
         # loop below, same reasoning as cooling deactivation above.
         if "mount" in ctx.hardware:
             try:
