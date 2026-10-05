@@ -8,7 +8,8 @@ A CALIB image is a science-camera exposure taken with the spectroscope
 switched to the CALIB light source (a calibration lamp). Unlike
 dark_acquisition, there is no reusable library, and no temperature
 constraint at all -- a calibration lamp's flux dominates any dark-current
-concern, so this step never reads (or requires) obs.camera_target_temperature_deg_c.
+concern, so this step never reads (or requires) the session's
+camera_target_temperature_deg_c (obs.session_data).
 Only two origins, same shape as bias_acquisition:
 
 - current_session: a usable series already sits in this session's own

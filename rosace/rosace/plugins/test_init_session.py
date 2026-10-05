@@ -245,8 +245,7 @@ class TestCameraCooldownDispatch:
         await InitSessionPlugin().run(ctx)
 
         mock_cooldown.assert_awaited_once()
-        assert ctx.ambient_temperature_deg_c == 15.0
-        assert ctx.camera_target_temperature_deg_c == -5
+        assert ctx.session_data.get("camera_target_temperature_deg_c") == -5
 
     async def test_skips_cooldown_when_cooling_disabled(self, monkeypatch):
         monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "indi")
@@ -261,7 +260,7 @@ class TestCameraCooldownDispatch:
         await InitSessionPlugin().run(ctx)
 
         mock_cooldown.assert_not_awaited()
-        assert ctx.camera_target_temperature_deg_c is None
+        assert ctx.session_data.get("camera_target_temperature_deg_c") is None
 
     async def test_skips_cooldown_when_no_science_camera_declared(self, monkeypatch, mock_hardware_check):
         monkeypatch.setattr("rosace.plugins.init_session.SEQUENCER_BACKEND", "indi")

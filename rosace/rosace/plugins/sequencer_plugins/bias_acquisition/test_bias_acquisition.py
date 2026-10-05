@@ -63,7 +63,8 @@ def _write_bias_fits(directory, *, temp_c=TARGET_TEMP, exptime=0.0, naxis=FRAME_
 def _make_obs(obs_dir, *, camera=None, spectroscope=None, stop_check=None, target_temp=TARGET_TEMP):
     obs = Observation(
         id="obs12345", created_at=datetime.now(timezone.utc), session_id="sess1234",
-        obs_dir=str(obs_dir), camera_target_temperature_deg_c=target_temp,
+        obs_dir=str(obs_dir),
+        session_data={} if target_temp is None else {"camera_target_temperature_deg_c": target_temp},
         stop_check=stop_check,
     )
     camera = camera if camera is not None else AsyncMock()

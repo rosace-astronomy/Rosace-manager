@@ -74,6 +74,11 @@ Claude peut le suggérer, jamais le faire lui-même.
       `state.pending_post_obs`, instances de plugins partagées, arrêt de
       session. `calculate_flux` est déjà dans `Be_stars.yaml` et bloque le
       séquenceur environ 0,5 s par pose en attendant (accepté) (2026-09-26)
+- [ ] INIT_SESSION / CLOSE_SESSION adaptables par observatoire : aujourd'hui
+      classes fixes (seul le SCHEDULER est choisi en config) ; rôles mount /
+      science_camera / focuser et ambiante lue sur le focuser en dur — pistes :
+      registre comme les schedulers, ou étapes de session déclarées dans le
+      YAML matériel (comme sequencer_prefix) (idée 2026-10-05)
 
 ## Petits items
 

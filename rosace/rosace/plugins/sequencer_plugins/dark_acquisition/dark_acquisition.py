@@ -8,7 +8,7 @@ Every DARK frame must come from the science camera actually used for this
 observation, at the same sensor temperature as the science images -- the
 camera is already cooled to a fixed session-wide target before any
 observation starts (see plugins/camera_cooldown.py, called once from
-INIT_SESSION), read here from obs.camera_target_temperature_deg_c. This
+INIT_SESSION), read here from obs.session_data["camera_target_temperature_deg_c"]. This
 sub-plugin never re-sets or re-checks the camera's temperature itself: it
 trusts INIT_SESSION already got it there.
 
@@ -84,7 +84,8 @@ class DarkAcquisitionPlugin(SubPlugin):
     async def execute(self, obs: Observation) -> Observation:
         if not obs.obs_dir:
             raise RuntimeError("DARK_ACQUISITION: observation directory (obs_dir) not set")
-        if obs.camera_target_temperature_deg_c is None:
+        target_temp = obs.session_data.get("camera_target_temperature_deg_c")
+        if target_temp is None:
             raise RuntimeError(
                 "DARK_ACQUISITION: camera_target_temperature_deg_c not set "
                 "-- INIT_SESSION's cooldown step did not run"
@@ -92,7 +93,6 @@ class DarkAcquisitionPlugin(SubPlugin):
         ensure_dark_library_structure(DARK_LIBRARY_DIR)
 
         camera = obs.hardware["science_camera"]
-        target_temp = obs.camera_target_temperature_deg_c
         frame_size = await camera.get_frame_size()
         # TEMPORARY (2026-09-18): investigating unexplained current_session
         # reuse failures -- confirm whether a live get_frame_size() read

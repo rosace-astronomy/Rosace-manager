@@ -21,7 +21,7 @@ once, for the session's first observation):
 
 Never re-sets or re-checks the camera's temperature itself, same as
 dark_acquisition -- trusts the once-per-session cooldown (see
-plugins/camera_cooldown.py) and reads obs.camera_target_temperature_deg_c.
+plugins/camera_cooldown.py) and reads obs.session_data["camera_target_temperature_deg_c"].
 
 Casier: {"origin": "current_session"|"camera", "bias_files": [...]}.
 """
@@ -55,14 +55,14 @@ class BiasAcquisitionPlugin(SubPlugin):
     async def execute(self, obs: Observation) -> Observation:
         if not obs.obs_dir:
             raise RuntimeError("BIAS_ACQUISITION: observation directory (obs_dir) not set")
-        if obs.camera_target_temperature_deg_c is None:
+        target_temp = obs.session_data.get("camera_target_temperature_deg_c")
+        if target_temp is None:
             raise RuntimeError(
                 "BIAS_ACQUISITION: camera_target_temperature_deg_c not set "
                 "-- INIT_SESSION's cooldown step did not run"
             )
 
         camera = obs.hardware["science_camera"]
-        target_temp = obs.camera_target_temperature_deg_c
         frame_size = await camera.get_frame_size()
 
         # current_session: reuse a usable series already sitting in this session's own directory.

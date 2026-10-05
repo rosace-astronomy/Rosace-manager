@@ -253,8 +253,7 @@ async def _session_runner_body():
                         obs_dir=str(session_dir),
                         hardware=session.hardware,
                         hardware_config=session.hardware_config,
-                        ambient_temperature_deg_c=session.ambient_temperature_deg_c,
-                        camera_target_temperature_deg_c=session.camera_target_temperature_deg_c,
+                        session_data=dict(session.session_data),
                         # No stop_check: a stop request lets the current observation
                         # finish every series it has started (see CLAUDE.md, State machine).
                     )

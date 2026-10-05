@@ -90,13 +90,13 @@ class Observation(BaseModel):
     # the scientific program the observer asked for.
     program_steps: dict[str, Any] = {}
 
-    # Session-wide temperature reference, copied from SessionContext by
-    # session_runner() onto every fresh Observation (see camera_target_temperature_deg_c
-    # below on SessionContext for how it's computed) -- not stage-owned, so kept
-    # top-level like program_file/program_steps above, and persisted (unlike
-    # hardware/hardware_config below, which are live connection handles).
-    ambient_temperature_deg_c: Optional[float] = None
-    camera_target_temperature_deg_c: Optional[float] = None
+    # Session-wide values, set once by the session stages (INIT_SESSION) and
+    # copied by session_runner() onto every fresh Observation without being
+    # read -- not stage-owned, so kept top-level like program_file/program_steps
+    # above, and persisted (unlike hardware/hardware_config below, which are
+    # live connection handles). Today: camera_target_temperature_deg_c, the
+    # science camera's cooldown target for the night (plugins/camera_cooldown.py).
+    session_data: dict[str, Any] = {}
 
     # One casier per known stage plugin -- free-form content, managed by the
     # plugin and its sub-plugins (e.g. reduction_data["bias"]["corrected_files"]).
@@ -213,14 +213,12 @@ class SessionContext(BaseModel):
     # poll loop) can notice a stop request without importing main.py itself.
     stop_check: Optional[Callable[[], bool]] = Field(default=None, exclude=True)
 
-    # Ambient temperature (read from the focuser's probe) and the science
-    # camera's resulting cooldown target, both computed once by INIT_SESSION
-    # (see plugins/camera_cooldown.py) and held fixed for the whole session —
-    # copied onto every freshly-created Observation by session_runner() (see
-    # Observation.camera_target_temperature_deg_c above), which is what
+    # Session-wide values filled by INIT_SESSION (e.g. the science camera's
+    # cooldown target, see plugins/camera_cooldown.py), held fixed for the
+    # whole session — copied onto every freshly-created Observation by
+    # session_runner() (see Observation.session_data above), which is what
     # actually persists them (SessionContext itself is never dumped to disk).
-    ambient_temperature_deg_c: Optional[float] = None
-    camera_target_temperature_deg_c: Optional[float] = None
+    session_data: dict[str, Any] = {}
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

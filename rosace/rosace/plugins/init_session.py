@@ -50,15 +50,14 @@ class InitSessionPlugin:
             science_camera_config = ctx.hardware_config.get("science_camera", {})
             if science_camera_config.get("cooling"):
                 log.info("[INIT_SESSION] Cooling science camera to session target temperature…")
-                ambient, target = await cool_science_camera_to_target(
+                _ambient, target = await cool_science_camera_to_target(
                     camera=ctx.hardware["science_camera"],
                     focuser=ctx.hardware["focuser"],
                     cooling_capability_deg_c=science_camera_config["cooling_capability"],
                     tolerance_deg_c=science_camera_config["temperature_tolerance_deg_c"],
                     stop_check=ctx.stop_check,
                 )
-                ctx.ambient_temperature_deg_c = ambient
-                ctx.camera_target_temperature_deg_c = target
+                ctx.session_data["camera_target_temperature_deg_c"] = target
         else:
             log.info("[INIT_SESSION] Running in DEMO mode (sequencer_backend=internal) — no hardware involved")
 
