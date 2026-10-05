@@ -2,12 +2,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """
-Seeds a minimal illustrative catalogue (2 stars, 1 program, an observation
-plan) into a fresh targets.db, plus a fixed demo admin account, the first
-time the demo config (conf/config_demo.yaml, IS_DEMO_MODE) starts against an
-empty database. Called from main.py's lifespan(). Skipped once anything
-already exists, so restarting the server never overwrites manual edits made
-through the GUI.
+Seeds a minimal illustrative catalogue (a few well-known bright stars, 1
+program, an observation plan) into a fresh targets.db, plus a fixed demo
+admin account, the first time the demo config (conf/config_demo.yaml,
+IS_DEMO_MODE) starts against an empty database. Called from main.py's
+lifespan(). Skipped once anything already exists, so restarting the server
+never overwrites manual edits made through the GUI.
+
+The observation plan is written where the demo config's
+observation_list_path key says (subplugin_params.scheduler_rosace_2026) —
+read from the configuration, never imported from the scheduler's code.
 
 The program is deliberately named "demo" — the one program YAML
 (programs/demo.yaml) that's backend-agnostic, so it needs no shadow-copy
@@ -20,9 +24,10 @@ rationale and same pair as the Docker demo's own (docker/seed_demo_data.py)
 """
 
 import logging
+from pathlib import Path
 
 from .auth import auth_db_init, ensure_first_admin
-from .plugins.schedulers.scheduler_rosace_2026.scheduler import OBSERVATION_LIST_PATH
+from .config import SUBPLUGIN_PARAMS
 from .targets import (
     program_add_star, program_insert, program_list, ProgramCreate,
     star_add_alias, star_insert, StarCreate,
@@ -72,7 +77,7 @@ async def seed_demo_data() -> None:
         log.info("targets.db already populated — skipping demo catalogue seed.")
         return
 
-    log.info("Seeding demo catalogue (2 stars, 1 program, observation plan)...")
+    log.info(f"Seeding demo catalogue ({len(_STARS)} stars, 1 program, observation plan)...")
 
     star_ids = {}
     for name, ra, dec, mag in _STARS:
@@ -89,7 +94,12 @@ async def seed_demo_data() -> None:
     for i, (name, *_rest) in enumerate(_STARS, start=1):
         lines.append(f"{i}, {_PROGRAM_NAME}, {name}, demo seed")
 
-    OBSERVATION_LIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OBSERVATION_LIST_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Same key the demo's scheduler (scheduler_rosace_2026) reads its plan
+    # from, declared by conf/config_demo.yaml.
+    list_path = Path(
+        SUBPLUGIN_PARAMS["scheduler_rosace_2026"]["observation_list_path"]
+    ).expanduser()
+    list_path.parent.mkdir(parents=True, exist_ok=True)
+    list_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    log.info(f"Seeded {len(_STARS)} stars, 1 program, wrote {OBSERVATION_LIST_PATH}")
+    log.info(f"Seeded {len(_STARS)} stars, 1 program, wrote {list_path}")

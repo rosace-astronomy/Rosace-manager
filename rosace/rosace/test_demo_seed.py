@@ -22,7 +22,7 @@ import asyncio
 from rosace.database import db_init
 from rosace.targets import targets_db_init, program_list, program_get_by_name, program_get_stars
 from rosace.auth import user_count
-from rosace.demo_seed import seed_demo_data, OBSERVATION_LIST_PATH
+from rosace.demo_seed import seed_demo_data
 
 async def main():
     await db_init()
@@ -34,7 +34,6 @@ async def main():
     print("programs=", len(programs))
     print("stars=", stars)
     print("users=", await user_count())
-    print("obs_list_exists=", OBSERVATION_LIST_PATH.exists())
 
 asyncio.run(main())
 """
@@ -82,7 +81,6 @@ subplugin_params:
         assert "programs= 1" in result.stdout
         assert "stars= ['Arcturus', 'Capella', 'Castor', 'Polaris', 'Rigel', 'Sirius', 'Vega']" in result.stdout
         assert "users= 1" in result.stdout
-        assert "obs_list_exists= True" in result.stdout
 
         obs_list = (tmp_path / "data" / "ObservationList.txt").read_text(encoding="utf-8")
         lines = obs_list.strip().splitlines()
