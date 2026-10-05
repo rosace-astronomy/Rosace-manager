@@ -37,8 +37,9 @@ backend): only the sub-plugins actually needed for the demo have a
 a gap.
 
 A program's own `sequencer:` list is never the *whole* story for SEQUENCER:
-the active hardware profile may declare its own `sequencer_prefix:` (e.g.
-`[home_sync_am3]` for an AM3 mount) — steps every program run against that
+the active hardware profile may declare its own `sequencer_prefix:` (a list
+of step names, e.g. a calibration or homing step its equipment needs) —
+steps every program run against that
 equipment needs, regardless of which science it's doing. See
 hardware_sequencer_prefix() below: this is what keeps equipment-specific
 sub-plugins out of program YAMLs entirely.
@@ -360,13 +361,13 @@ def hardware_sequencer_prefix() -> list[str]:
     """
     Returns the SEQUENCER step names the active hardware profile declares as
     mandatory for every program run against it (its own `sequencer_prefix:`
-    key, e.g. `[home_sync_am3]` for the 72ED/AM3 profiles) — [] if the key
+    key) — [] if the key
     is absent, or if SEQUENCER_BACKEND isn't "indi" (no hardware profile is
     meaningfully "active" for the internal/demo backend).
 
     This is what keeps equipment-specific steps out of scientific program
-    YAMLs: a program never needs to know it's running on an AM3 mount, or
-    declare anything about it — the hardware profile itself does, and every
+    YAMLs: a program never needs to know which mount or other equipment it
+    runs on, or declare anything about it — the hardware profile itself does, and every
     program run against it inherits the same prefix automatically. Both
     callers that need this (load_pipelines() below, for building the actual
     pipeline, and SequencerPlugin.run(), for obs.program_steps) read it from
