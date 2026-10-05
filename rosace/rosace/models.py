@@ -43,11 +43,14 @@ class Target(BaseModel):
 
 
 class ExposureConfig(BaseModel):
-    exposure_time: Optional[float] = Field(default=None, gt=0, description="Exposure time in seconds — absent if it must be computed from magnitude (by the science acquisition sub-plugin)")
-    num_exposures: int = Field(default=1, ge=1)
-    binning: int = Field(default=1, ge=1, le=4)
-    grating: str = Field(default="R1200")
-    central_wavelength: float = Field(default=6563.0, description="Central wavelength in Å")
+    """The SCHEDULER's exposure instruction to the science acquisition. The
+    number of frames is never set here: the acquisition sub-plugin decides it."""
+    exposure_time: Optional[float] = Field(
+        default=None, gt=0,
+        description="Duration of each sub-exposure in seconds, imposed for this target — "
+                    "absent if it must be computed from magnitude. The science acquisition "
+                    "sub-plugin splits it into frames (compute_exposure_time_and_count())",
+    )
 
 
 # ─────────────────────────────────────────────────────────────

@@ -64,9 +64,8 @@ class TestStarSpectraAcquisitionPlugin:
             await StarSpectraAcquisitionPlugin().execute(obs)
 
     async def test_produces_one_file_for_a_short_explicit_exposure_time(self, tmp_path):
-        # exposure.num_exposures is not honored (same deferred limitation as the indi
-        # backend) -- count comes from compute_exposure_time_and_count instead.
-        exposure = ExposureConfig(exposure_time=1.0, num_exposures=3)
+        # The frame count comes from compute_exposure_time_and_count().
+        exposure = ExposureConfig(exposure_time=1.0)
         obs = _make_obs(obs_dir=tmp_path, exposure=exposure, target=Target(name="Vega", ra=1.0, dec=1.0))
 
         result = await StarSpectraAcquisitionPlugin().execute(obs)

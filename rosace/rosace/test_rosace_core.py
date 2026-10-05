@@ -381,19 +381,6 @@ class TestTargetModel:
 class TestExposureConfig:
     """Exposure configuration."""
 
-    def test_defaults(self):
-        e = ExposureConfig(exposure_time=300.0)
-        assert e.num_exposures == 1
-        assert e.binning == 1
-        assert e.grating == "R1200"
-        assert e.central_wavelength == pytest.approx(6563.0)
-
-    def test_custom_values(self):
-        e = ExposureConfig(exposure_time=600.0, num_exposures=3, binning=2, grating="R600")
-        assert e.num_exposures == 3
-        assert e.binning == 2
-        assert e.grating == "R600"
-
     def test_exposure_time_must_be_positive(self):
         from pydantic import ValidationError
         with pytest.raises(ValidationError):
@@ -407,14 +394,6 @@ class TestExposureConfig:
         computed later from magnitude, not yet implemented)."""
         e = ExposureConfig()
         assert e.exposure_time is None
-
-    def test_binning_bounds(self):
-        from pydantic import ValidationError
-        ExposureConfig(exposure_time=1.0, binning=4)       # ok
-        with pytest.raises(ValidationError):
-            ExposureConfig(exposure_time=1.0, binning=5)   # > 4
-        with pytest.raises(ValidationError):
-            ExposureConfig(exposure_time=1.0, binning=0)   # < 1
 
 
 class TestObservation:

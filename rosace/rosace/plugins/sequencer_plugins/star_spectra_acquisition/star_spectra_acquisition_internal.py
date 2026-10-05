@@ -10,8 +10,6 @@ Exposure-time/sub-exposure-count policy shared with the indi backend
 (compute_exposure_time_and_count, acquisition_helpers.py) -- starts from
 either the target's magnitude or an explicit exposure time
 (program_stars.exposure_time in targets.db), same as star_spectra_acquisition.py.
-exposure.num_exposures is not honored here either (same deferred limitation
-as the indi backend, see its own docstring).
 
 No casier of its own: every produced filename is appended straight to the
 shared obs.sequencer_data["star_spectra_images"] list -- see
@@ -78,8 +76,6 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
                 max_exposure_time=MAX_EXPOSURE_TIME_SECONDS,
                 min_exposure_count=MIN_EXPOSURE_COUNT,
             )
-        binning = exposure.binning
-        grating = exposure.grating
 
         log.info("[STAR_SPECTRA_ACQUISITION] Spectroscope set to SKY mode (simulated)")
 
@@ -90,8 +86,7 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
         raw_files: list[str] = []
 
         log.info(
-            f"[STAR_SPECTRA_ACQUISITION] Target={queried_name or 'target'}, t={exposure_time}s x {num_exposures}, "
-            f"binning={binning}x, grating={grating}"
+            f"[STAR_SPECTRA_ACQUISITION] Target={queried_name or 'target'}, t={exposure_time}s x {num_exposures}"
         )
 
         for i in range(1, num_exposures + 1):
