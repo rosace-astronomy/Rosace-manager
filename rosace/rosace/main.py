@@ -73,7 +73,6 @@ from .errors import SessionFatalError
 from .observation_file import create_observation_file, write_observation_file
 from .plugins  import plugins
 from .plugins.pipeline_loader import get_display_names
-from .plugins.schedulers import SchedulerFatalError
 from . import step_progress
 from .simbad   import simbad_search, SimbadNotFoundError, SimbadQueryError
 from .targets  import (
@@ -279,7 +278,7 @@ async def _session_runner_body():
 
                 await _persist_observation(obs)
 
-            except (SchedulerFatalError, SessionFatalError) as e:
+            except SessionFatalError as e:
                 log.error(f"[{stage.value.upper()}] Fatal error, stopping session: {e}")
                 if obs:
                     await db_set_stage_status(obs.id, stage, "error")
