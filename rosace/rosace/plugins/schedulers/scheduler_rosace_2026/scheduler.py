@@ -126,6 +126,12 @@ class SchedulerPlugin:
     A missing/malformed plan file or horizon file, or invalid data in
     targets.db (e.g. a non-numeric exposure_time), raises SchedulerFatalError
     rather than silently failing every attempt in a loop.
+
+    SCHEDULER contract (full description in plugins/schedulers/blank/
+    scheduler.py, checked by this plugin's tests with conftest.py's
+    assert_scheduler_contract()): fills the mandatory keys target,
+    queried_name, program, priority and exposure — none of the optional
+    ones. Nothing observable -> target = None.
     """
 
     async def run(self, obs: Observation) -> Observation:

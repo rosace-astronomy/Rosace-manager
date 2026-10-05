@@ -21,7 +21,7 @@ Earlier versions (0.1–0.55, in French) were working drafts.
    verification, then chooses.
 5. **Priority and time constraint are separate.** Five priority levels (section 5).
 6. **The selector knows nothing about the programs' science, nor about series**; `main.py`
-   knows no plugin. The selector fills `scheduler_data` with the existing contract; switching
+   knows no plugin, it only reads the SCHEDULER contract keys of `scheduler_data`. The selector fills `scheduler_data` with the existing contract; switching
    back is one line: `active_scheduler: scheduler_rosace_2026`.
 7. **Fixed objects only** (J2000 RA/Dec from `targets.db`); moving objects (comets, asteroids)
    will later add optional coordinates to the candidate.

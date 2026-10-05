@@ -3,9 +3,14 @@ Selector — the SCHEDULER stage plugin of multi-program scheduling.
 
 At every SCHEDULER step, asks each active program's planner
 (plugins/program_schedulers/) for at most one candidate, checks the
-candidates, and writes the chosen one into obs.scheduler_data, with the same
-contract as every SCHEDULER plugin (target, queried_name, program, priority,
-exposure) plus proposed_by, estimated_duration_s and reason. Nothing
+candidates, and writes the chosen one into obs.scheduler_data.
+
+SCHEDULER contract (full description in plugins/schedulers/blank/scheduler.py,
+checked by this plugin's tests with conftest.py's assert_scheduler_contract()):
+fills the mandatory keys target, queried_name, program, priority and
+exposure, and both optional keys, proposed_by (the program whose planner
+proposed the candidate) and estimated_duration_s. Also writes reason (the
+planner's explanation), its own information, read by nobody else. Nothing
 selectable -> target = None, and main.py asks again later.
 
 Active programs: every programs/*.yaml with a `scheduler` key. manual_list is

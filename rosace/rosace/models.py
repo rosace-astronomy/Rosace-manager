@@ -58,9 +58,13 @@ class ExposureConfig(BaseModel):
 # and that gets serialized as-is to the YAML file on disk after each
 # stage — the file is the exhaustive record of the observation.
 #
-# The orchestrator only knows the fields below; the content of each
+# The orchestrator owns this object (creates it, writes it to disk, hands it
+# to each stage) and only knows the fields below; the content of each
 # <stage>_data casier is an internal matter for the plugin (and its
-# sub-plugins) that owns it — the orchestrator never reads it.
+# sub-plugins) that owns it — the orchestrator never reads it, except the
+# SCHEDULER contract keys of scheduler_data (target, queried_name, program,
+# priority, exposure, plus optional ones), the minimum every SCHEDULER plugin
+# must provide (see plugins/schedulers/blank/scheduler.py).
 # ─────────────────────────────────────────────────────────────
 
 class Observation(BaseModel):

@@ -169,8 +169,9 @@ async def db_close_session(ctx: SessionContext, status: str = "closed") -> None:
 # ─────────────────────────────────────────────────────────────
 
 async def db_insert_observation(obs: Observation, session_id: str) -> None:
-    """Inserts a new observation after SCHEDULER completes. proposed_by and
-    estimated_duration_s are only set by the multi-program selector (None otherwise)."""
+    """Inserts a new observation after SCHEDULER completes, from the SCHEDULER
+    contract keys of scheduler_data (see plugins/schedulers/blank/scheduler.py).
+    proposed_by and estimated_duration_s are optional contract keys (NULL when absent)."""
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         await db.execute(
             """INSERT INTO observations

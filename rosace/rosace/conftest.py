@@ -72,7 +72,8 @@ def assert_scheduler_contract(obs: Observation) -> None:
 
     Call this after a run() that selected a target (obs.scheduler_data["target"]
     is not None) — an empty night (target=None) is a valid outcome with nothing
-    else to check.
+    else to check. The optional keys (proposed_by, estimated_duration_s) are
+    checked only when present.
     """
     data = obs.scheduler_data
     assert isinstance(data.get("target"), Target), (
@@ -90,3 +91,12 @@ def assert_scheduler_contract(obs: Observation) -> None:
     assert isinstance(data.get("exposure"), ExposureConfig), (
         f"scheduler_data['exposure'] must be an ExposureConfig instance, got {data.get('exposure')!r}"
     )
+    if "proposed_by" in data:
+        assert isinstance(data["proposed_by"], str) and data["proposed_by"], (
+            f"scheduler_data['proposed_by'] must be a non-empty string, got {data['proposed_by']!r}"
+        )
+    if "estimated_duration_s" in data:
+        duration = data["estimated_duration_s"]
+        assert isinstance(duration, (int, float)) and not isinstance(duration, bool) and duration > 0, (
+            f"scheduler_data['estimated_duration_s'] must be a positive number, got {duration!r}"
+        )
