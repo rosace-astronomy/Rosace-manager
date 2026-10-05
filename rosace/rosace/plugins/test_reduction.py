@@ -42,10 +42,19 @@ class FakeSubPlugin:
 
 class TestReductionPlugin:
 
-    async def test_raises_if_no_raw_files(self):
-        obs = _make_obs(with_raw_files=False)
-        with pytest.raises(RuntimeError, match="star_spectra_images"):
-            await ReductionPlugin().run(obs)
+    async def test_runs_subplugins_without_raw_files(self, monkeypatch):
+        """REDUCTION does not gatekeep on science images: each sub-plugin
+        validates its own inputs (see CLAUDE.md)."""
+        calls: list[str] = []
+        monkeypatch.setattr(
+            "rosace.plugins.reduction.load_pipelines",
+            lambda program: ([], [FakeSubPlugin("step_a", calls)]),
+        )
+
+        obs = _make_obs(with_raw_files=False, reduction_steps=["step_a"])
+        await ReductionPlugin().run(obs)
+
+        assert calls == ["step_a"]
 
     async def test_raises_if_program_missing(self):
         obs = _make_obs(with_program=False)

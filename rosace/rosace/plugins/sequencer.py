@@ -64,8 +64,5 @@ class SequencerPlugin:
                 log.error(f"[SEQUENCER] Step {step} failed: {e}")
                 raise
 
-        log.info(
-            f"[SEQUENCER] Sequence complete — "
-            f"{len(obs.sequencer_data.get('star_spectra_images', []))} raw file(s)"
-        )
+        log.info("[SEQUENCER] Sequence complete")
         return obs

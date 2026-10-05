@@ -25,10 +25,6 @@ class ReductionPlugin:
     """
 
     async def run(self, obs: Observation) -> Observation:
-        raw_files = obs.sequencer_data.get("star_spectra_images")
-        if not raw_files:
-            raise RuntimeError("REDUCTION: no raw file (sequencer_data['star_spectra_images'] empty)")
-
         program = obs.scheduler_data.get("program")
         if not program:
             raise RuntimeError("REDUCTION: program missing from scheduler_data")
@@ -36,12 +32,12 @@ class ReductionPlugin:
         _, red_pipeline = load_pipelines(program)
         log.info(
             f"[REDUCTION] Starting reduction '{program}' — "
-            f"{len(raw_files)} raw file(s)"
+            f"{len(red_pipeline)} step(s)"
         )
 
-        # Each sub-plugin reads/writes obs.reduction_data directly
-        # (and reads obs.sequencer_data["star_spectra_images"] set by SEQUENCER as input --
-        # a shared key, not the name of the sub-plugin that produced it)
+        # Each sub-plugin reads what it needs from obs (e.g.
+        # sequencer_data["star_spectra_images"]) and validates it itself;
+        # this stage only reads the SCHEDULER contract's program.
         for step_name, sub in zip(obs.program_steps["reduction"], red_pipeline):
             step = sub.__class__.__name__
             log.info(f"[REDUCTION] → {step}")
