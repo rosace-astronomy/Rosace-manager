@@ -4,6 +4,9 @@ Each test builds its own WebSocketImageBroadcaster instance rather than importin
 module-level singleton, to stay isolated from other tests.
 """
 
+import asyncio
+import threading
+
 from rosace.image_broadcast import IMAGE_NEW_MSG, WebSocketImageBroadcaster
 
 
@@ -13,11 +16,13 @@ class FakeWebSocket:
     def __init__(self, fail: bool = False):
         self.fail = fail
         self.sent: list[dict] = []
+        self.sent_from_threads: list[str] = []
 
     async def send_json(self, data: dict) -> None:
         if self.fail:
             raise RuntimeError("connection closed")
         self.sent.append(data)
+        self.sent_from_threads.append(threading.current_thread().name)
 
 
 class TestBroadcast:
@@ -86,3 +91,34 @@ class TestBroadcast:
         await broadcaster.broadcast("guidage")
 
         assert ws.sent == []
+
+
+class TestBroadcastFromAnotherThread:
+    """The post-obs thread (main.py) runs its own event loop: a broadcast from there
+    must be sent from the bound main loop, the one the WebSockets belong to."""
+
+    async def test_call_from_another_loop_is_sent_from_the_bound_loop(self):
+        broadcaster = WebSocketImageBroadcaster()
+        broadcaster.bind_loop(asyncio.get_running_loop())
+        ws = FakeWebSocket()
+        broadcaster.add_client(ws)
+        main_thread = threading.current_thread().name
+
+        def worker():
+            asyncio.run(broadcaster.broadcast("spectre", source="reduction"))
+
+        # Run the worker without blocking this loop, which must stay free to send.
+        await asyncio.to_thread(worker)
+
+        assert ws.sent == [{"msg": IMAGE_NEW_MSG, "params": {"panel": "spectre", "source": "reduction"}}]
+        assert ws.sent_from_threads == [main_thread]
+
+    async def test_call_from_the_bound_loop_sends_directly(self):
+        broadcaster = WebSocketImageBroadcaster()
+        broadcaster.bind_loop(asyncio.get_running_loop())
+        ws = FakeWebSocket()
+        broadcaster.add_client(ws)
+
+        await broadcaster.broadcast("guidage")
+
+        assert ws.sent == [{"msg": IMAGE_NEW_MSG, "params": {"panel": "guidage"}}]

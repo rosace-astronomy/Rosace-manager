@@ -1958,6 +1958,107 @@ class TestSessionRunner:
         assert len(main_mod.state.completed) == 1
         assert reduction_calls == [main_mod.state.completed[0].id]
         assert close_called == [True]
+
+    async def _run_session_with_post_obs(self, monkeypatch, tmp_path, n_obs, reduction,
+                                         sequencer_wait=0.0):
+        """Runs a session of n_obs observations with fake plugins, `reduction` as the
+        REDUCTION plugin, pass-through SHARING/ARCHIVE. Every SEQUENCER awaits
+        asyncio.sleep(sequencer_wait); returns each SEQUENCER's end time (time.monotonic())."""
+        import rosace.main as main_mod
+
+        sequencer_end_times: list[float] = []
+
+        class FakeInit:
+            async def run(self, ctx):
+                ctx.session_dir = str(tmp_path)
+                return ctx
+
+        class FakeScheduler:
+            async def run(self, obs):
+                obs.scheduler_data["target"] = Target(name="TestStar", ra=0.0, dec=0.0)
+                return obs
+
+        class FakeSequencer:
+            async def run(self, obs):
+                await asyncio.sleep(sequencer_wait)
+                sequencer_end_times.append(time.monotonic())
+                if len(sequencer_end_times) == n_obs:
+                    main_mod.state.is_running = False
+                return obs
+
+        class PassThrough:
+            async def run(self, obs):
+                return obs
+
+        class FakeClose:
+            async def run(self, ctx):
+                return ctx
+
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.INIT_SESSION, FakeInit())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SCHEDULER, FakeScheduler())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SEQUENCER, FakeSequencer())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.REDUCTION, reduction)
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SHARING, PassThrough())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.ARCHIVE, PassThrough())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.CLOSE_SESSION, FakeClose())
+
+        main_mod.state.is_running = True
+        await main_mod.session_runner()
+        return sequencer_end_times
+
+    async def test_post_obs_runs_in_the_dedicated_thread(self, monkeypatch, tmp_path):
+        import threading
+
+        threads: list[str] = []
+
+        class FakeReduction:
+            async def run(self, obs):
+                threads.append(threading.current_thread().name)
+                return obs
+
+        await self._run_session_with_post_obs(monkeypatch, tmp_path, 1, FakeReduction())
+
+        assert len(threads) == 1
+        assert threads[0].startswith("post-obs")
+        assert threads[0] != threading.current_thread().name
+
+    async def test_blocking_reduction_does_not_delay_the_sequencer(self, monkeypatch, tmp_path):
+        """A REDUCTION that blocks (no await, like a long numpy computation) must not
+        delay the next observation: the post-obs thread has its own event loop. The 1st
+        observation's REDUCTION blocks for 1 s; the 2nd SEQUENCER awaits 0.5 s. On a
+        shared loop, that await hands control to the REDUCTION, so the 1 s block always
+        lands between the two SEQUENCER ends; on its own thread, it never does."""
+
+        class BlockingReduction:
+            async def run(self, obs):
+                time.sleep(1.0)
+                return obs
+
+        sequencer_end_times = await self._run_session_with_post_obs(
+            monkeypatch, tmp_path, 2, BlockingReduction(), sequencer_wait=0.5
+        )
+
+        assert len(sequencer_end_times) == 2
+        assert sequencer_end_times[1] - sequencer_end_times[0] < 0.9
+
+    async def test_post_obs_runs_one_observation_at_a_time_in_order(self, monkeypatch, tmp_path):
+        import rosace.main as main_mod
+
+        intervals: list[tuple[str, float, float]] = []
+
+        class SlowReduction:
+            async def run(self, obs):
+                start = time.monotonic()
+                time.sleep(0.2)
+                intervals.append((obs.id, start, time.monotonic()))
+                return obs
+
+        await self._run_session_with_post_obs(monkeypatch, tmp_path, 3, SlowReduction())
+
+        assert [obs_id for obs_id, _, _ in intervals] == [o.id for o in main_mod.state.completed[-3:]]
+        for (_, _, previous_end), (_, next_start, _) in zip(intervals, intervals[1:]):
+            assert next_start >= previous_end
+        assert main_mod.state.pending_post_obs == 0
         assert main_mod.state.is_running is False  # not stuck True
 
 

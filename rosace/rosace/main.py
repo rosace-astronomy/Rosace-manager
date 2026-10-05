@@ -30,6 +30,7 @@ import asyncio
 import logging
 import re
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -98,6 +99,7 @@ async def lifespan(_app: FastAPI):
     if IS_DEMO_MODE:
         await seed_demo_data()
     ws_log_handler.bind_loop(asyncio.get_running_loop())
+    ws_image_broadcaster.bind_loop(asyncio.get_running_loop())
     logging.getLogger("spectro").addHandler(ws_log_handler)
     yield
 
@@ -171,22 +173,41 @@ async def _persist_observation(obs: Observation) -> None:
     await db_record_measurements(obs.id, obs.measurements)
 
 
+# One worker thread, with its own event loop per observation, runs the post-obs
+# stages: a blocking computation in a REDUCTION sub-plugin never delays the
+# sequencer, whose loop stays free. A single worker on purpose: observations are
+# processed one at a time, in order, so steps that share files across a session
+# (export_demetra's session ZIP, appended to by every observation) never run
+# concurrently.
+_post_obs_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="post-obs")
+
+
 async def run_post_obs(obs: Observation) -> None:
-    """Runs REDUCTION → SHARING → ARCHIVE in the background for a completed observation."""
+    """Runs REDUCTION → SHARING → ARCHIVE for a completed observation. Runs in the
+    post-obs thread's own event loop (see _launch_post_obs()), never on the main one."""
+    for stage in POST_OBS_STAGES:
+        try:
+            await db_set_stage_status(obs.id, stage, "running")
+            obs = await plugins[stage].run(obs)
+            await db_stamp_stage(obs.id, stage)  # sets done timestamp + status='done'
+            await _persist_observation(obs)
+        except Exception as e:
+            log.error(f"[{stage.value.upper()}] Background error: {e}")
+            await db_set_stage_status(obs.id, stage, "error")
+            await db_set_error(obs.id, str(e))
+            await _persist_observation(obs)
+            break
+
+
+async def _launch_post_obs(obs: Observation) -> None:
+    """Hands an observation to the post-obs thread and waits for it there, on the
+    main loop — state.pending_post_obs is therefore only ever touched from the main
+    loop, never from the worker thread."""
     state.pending_post_obs += 1
     try:
-        for stage in POST_OBS_STAGES:
-            try:
-                await db_set_stage_status(obs.id, stage, "running")
-                obs = await plugins[stage].run(obs)
-                await db_stamp_stage(obs.id, stage)  # sets done timestamp + status='done'
-                await _persist_observation(obs)
-            except Exception as e:
-                log.error(f"[{stage.value.upper()}] Background error: {e}")
-                await db_set_stage_status(obs.id, stage, "error")
-                await db_set_error(obs.id, str(e))
-                await _persist_observation(obs)
-                break
+        await asyncio.wrap_future(_post_obs_executor.submit(asyncio.run, run_post_obs(obs)))
+    except Exception as e:
+        log.error(f"[ORCHESTRATOR] Post-obs failed for {obs.id}: {e}")
     finally:
         state.pending_post_obs -= 1
 
@@ -206,7 +227,8 @@ async def session_runner():
     """
     Main session loop.
     INIT_SESSION → [SCHEDULER → SEQUENCER] × N (foreground)
-                 → [REDUCTION → SHARING → ARCHIVE] × N (background, overlapped)
+                 → [REDUCTION → SHARING → ARCHIVE] × N (post-obs thread, one
+                   observation at a time, overlapping the next observations)
                  → CLOSE_SESSION
 
     state.session_active stays True for the whole call, on every exit path —
@@ -319,7 +341,7 @@ async def _session_runner_body():
                 log.error(f"[ORCHESTRATOR] Failed to prepare post-obs copy for {obs.id}: {e}")
                 obs = None
                 continue
-            task = asyncio.create_task(run_post_obs(post_obs_copy))
+            task = asyncio.create_task(_launch_post_obs(post_obs_copy))
             post_obs_tasks.append(task)
             obs = None
 

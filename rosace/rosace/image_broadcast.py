@@ -3,10 +3,11 @@
 
 """
 WebSocket broadcast of newly written images, for the Spectre/Guidage panels in the
-web GUI. Sibling to log_broadcast.py's WebSocketLogHandler, but simpler: unlike
-logging.Handler.emit() (which can be called from any thread, including one spawned by
-asyncio.to_thread() for a blocking INDI call), every caller here is an async acquisition
-helper already running on the event loop -- so there is no thread-safety bridge to build.
+web GUI. Sibling to log_broadcast.py's WebSocketLogHandler. The connected WebSockets
+belong to the server's main event loop (bound once at startup, bind_loop()): a call
+from the main loop sends directly, as before; a call from another thread's loop -- the
+post-obs thread running REDUCTION/SHARING/ARCHIVE (main.py) -- is handed over to the
+main loop and sent from there, so any stage may publish an image.
 
 Each panel has one fixed-name preview file (config.py's GUI_PREVIEW_DIR, e.g.
 "guidage.fits"), overwritten by each new capture -- so the broadcast message only ever
@@ -26,6 +27,8 @@ from the message when not given, same as `source`.
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import WebSocket
 
 IMAGE_NEW_MSG = "image.new"
@@ -36,6 +39,11 @@ class WebSocketImageBroadcaster:
 
     def __init__(self):
         self._clients: set[WebSocket] = set()
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Records the main event loop, the one the WebSockets belong to."""
+        self._loop = loop
 
     def add_client(self, websocket: WebSocket) -> None:
         self._clients.add(websocket)
@@ -52,6 +60,16 @@ class WebSocketImageBroadcaster:
         if overlay is not None:
             params["overlay"] = overlay
         message = {"msg": IMAGE_NEW_MSG, "params": params}
+        if self._loop is not None and asyncio.get_running_loop() is not self._loop:
+            # Called from another thread's loop: send from the main loop, and wait
+            # for it there without blocking the calling loop.
+            await asyncio.wrap_future(
+                asyncio.run_coroutine_threadsafe(self._send(message), self._loop)
+            )
+            return
+        await self._send(message)
+
+    async def _send(self, message: dict) -> None:
         for websocket in list(self._clients):
             try:
                 await websocket.send_json(message)

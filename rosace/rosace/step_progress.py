@@ -18,19 +18,28 @@ for a few seconds after the whole observation finishes (see main.ts): once
 SEQUENCER completes and REDUCTION starts, SEQUENCER's own last-known step
 list must still be there to render its line as "all done", not be
 overwritten by REDUCTION's entry.
+
+Written from two threads: SEQUENCER from the main event loop, REDUCTION from the
+post-obs thread (main.py) -- while get_all() iterates the dict for the API. A lock
+keeps a write from changing the dict's size in the middle of that iteration.
 """
 
 from __future__ import annotations
 
+import threading
+
 _current_steps: dict[str, dict[str, dict]] = {}  # {obs_id: {stage: {"step": ..., "steps": [...]}}}
+_lock = threading.Lock()
 
 
 def set_step(obs_id: str, stage: str, step: str, steps: list[str]) -> None:
-    _current_steps.setdefault(obs_id, {})[stage] = {"step": step, "steps": steps}
+    with _lock:
+        _current_steps.setdefault(obs_id, {})[stage] = {"step": step, "steps": steps}
 
 
 def get_all() -> dict[str, dict[str, dict]]:
-    return {
-        obs_id: {stage: dict(entry) for stage, entry in stages.items()}
-        for obs_id, stages in _current_steps.items()
-    }
+    with _lock:
+        return {
+            obs_id: {stage: dict(entry) for stage, entry in stages.items()}
+            for obs_id, stages in _current_steps.items()
+        }

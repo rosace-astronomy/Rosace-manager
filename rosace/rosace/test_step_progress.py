@@ -3,6 +3,8 @@ Tests for step_progress.py — in-memory SEQUENCER/REDUCTION step tracking.
 Run: pytest test_step_progress.py -v
 """
 
+import threading
+
 from rosace import step_progress
 
 
@@ -53,3 +55,27 @@ class TestGetAll:
         snapshot["obs1"]["sequencer"]["step"] = "tampered"
 
         assert step_progress.get_all()["obs1"]["sequencer"]["step"] == "slew"
+
+
+class TestConcurrentAccess:
+
+    def test_get_all_while_another_thread_writes(self):
+        """REDUCTION writes from the post-obs thread while the API reads: without
+        the lock, get_all() could raise 'dictionary changed size during iteration'."""
+        errors: list[Exception] = []
+
+        def writer():
+            for i in range(3000):  # each new obs_id changes the dict's size
+                step_progress.set_step(f"obs{i}", "reduction", "bias", ["bias"])
+
+        thread = threading.Thread(target=writer)
+        thread.start()
+        while thread.is_alive():
+            try:
+                step_progress.get_all()
+            except RuntimeError as e:
+                errors.append(e)
+        thread.join()
+
+        assert errors == []
+        assert len(step_progress.get_all()) == 3000
