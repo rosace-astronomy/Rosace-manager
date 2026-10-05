@@ -4,8 +4,8 @@ The pipeline (list of sub-plugins) is loaded dynamically from the
 observation's scientific program YAML (obs.scheduler_data["program"]), set
 by SCHEDULER — so it's reloaded for every observation, not once and for
 all at startup. The active hardware profile's own equipment-specific steps
-(pipeline_loader.py::hardware_sequencer_prefix(), e.g. an AM3 mount's
-home/sync step) are prepended before this list, so a program YAML never
+(its sequencer_prefix, see pipeline_loader.py::hardware_sequencer_prefix())
+are prepended before this list, so a program YAML never
 needs to know or declare anything about the equipment it happens to run on.
 
 Structure:

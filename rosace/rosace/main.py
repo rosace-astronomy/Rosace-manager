@@ -438,10 +438,9 @@ _SAFE_PANEL_NAME = re.compile(r"^[A-Za-z0-9_]+$")
 
 @protected.get("/images/{panel}")
 async def get_gui_image(panel: str):
-    """Serves a GUI panel's current preview image (e.g. "guidage" -> gui_preview/guidage.fits)
-    -- a fixed filename per panel, overwritten by each new capture, see
-    acquisition_helpers.py's image_to_gui parameter and image_broadcast.py. panel is
-    validated the same way ProgramCreate.name/pipeline_loader.py's _validate_name() are,
+    """Serves a GUI panel's current preview image (<panel>.fits in GUI_PREVIEW_DIR)
+    -- a fixed filename per panel, overwritten by each new capture and announced
+    over the WebSocket (see image_broadcast.py). panel is validated the same way ProgramCreate.name/pipeline_loader.py's _validate_name() are,
     since it's interpolated straight into a filesystem path."""
     if not _SAFE_PANEL_NAME.match(panel):
         raise HTTPException(status_code=404, detail="Image introuvable")

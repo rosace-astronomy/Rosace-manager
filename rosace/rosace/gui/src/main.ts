@@ -349,8 +349,7 @@ class MainView extends VBox {
 
 	/**
 	 * Temporary: loads a bundled demo FITS into both viewers as a startup placeholder,
-	 * replaced by a real image as soon as one is pushed (see loadPanelImage below) --
-	 * "Spectre" isn't wired to a real push yet, so it keeps showing the demo image.
+	 * replaced by a real image as soon as one is pushed (see loadPanelImage below).
 	 */
 
 	private async loadDemoImages() {
