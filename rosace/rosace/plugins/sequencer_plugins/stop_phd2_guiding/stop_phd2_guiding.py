@@ -1,8 +1,10 @@
 """
 SEQUENCER sub-plugin -- stops PHD2 guiding, "indi" backend only.
 
-Meant to always be the last SEQUENCER step in a program: nothing else in
-the sequencer stops PHD2 once guiding has started -- without this, guiding
+Must come after the science acquisition in a program's SEQUENCER steps,
+not necessarily last (calibration series that need no guiding may follow
+it): nothing else in the sequencer stops PHD2 once guiding has started --
+without this, guiding
 keeps running past the whole observation and into the next one, where it
 can fight that next observation's own mount slews.
 
