@@ -104,9 +104,9 @@ class TestBuildPipeline:
         assert pipeline[1].__class__.__name__ == "SlewPlugin"
 
     def test_builds_reduction_pipeline(self):
-        pipeline = build_pipeline(["bias", "dark", "flat", "extract"], "reduction")
+        pipeline = build_pipeline(["master_bias", "master_dark", "master_flat", "extract"], "reduction")
         names = [p.__class__.__name__ for p in pipeline]
-        assert names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
+        assert names == ["MasterBiasPlugin", "MasterDarkPlugin", "MasterFlatPlugin", "ExtractPlugin"]
 
     def test_raises_on_unknown_kind(self):
         with pytest.raises(ValueError, match="bogus_kind"):
@@ -194,32 +194,44 @@ class TestLoadPipelines:
         assert names[0] == "HomeSyncAm3Plugin"
         assert names == ["HomeSyncAm3Plugin", "SlewPlugin", "StarSpectraAcquisitionPlugin"]
 
-    def test_bright_stars_no_focus_full_reduction(self):
-        """No focus (bright star, manual adjustment) — but the reduction
-        chain stays complete: each REDUCTION sub-plugin explicitly depends
-        on the previous one, no step can be skipped."""
+    def test_bright_stars_no_focus(self):
+        """No focus (bright star, manual adjustment); minimal reduction — the
+        full chain lives in Be_stars.yaml."""
         seq, red = load_pipelines("bright_stars")
         seq_names = [p.__class__.__name__ for p in seq]
         red_names = [p.__class__.__name__ for p in red]
         assert "FocusPlugin" not in seq_names
-        assert red_names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
+        assert red_names == ["ExtractPlugin"]
 
-    def test_nova_monitoring_minimal_sequencer_full_reduction(self):
-        """Minimal sequencer (no focus, maximum responsiveness) — but the
-        reduction chain stays complete, same constraint as above."""
+    def test_nova_monitoring_minimal_sequencer(self):
+        """Minimal sequencer (no focus, maximum responsiveness); minimal reduction."""
         seq, red = load_pipelines("nova_monitoring")
         seq_names = [p.__class__.__name__ for p in seq]
         red_names = [p.__class__.__name__ for p in red]
         assert "FocusPlugin" not in seq_names
         assert len(seq) == 2
-        assert red_names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
+        assert red_names == ["ExtractPlugin"]
 
     def test_demo_full_pipeline(self):
         seq, red = load_pipelines("demo")
         seq_names = [p.__class__.__name__ for p in seq]
         red_names = [p.__class__.__name__ for p in red]
         assert seq_names == ["SlewPlugin", "StarSpectraAcquisitionPlugin"]
-        assert red_names == ["BiasPlugin", "DarkPlugin", "FlatPlugin", "ExtractPlugin"]
+        assert red_names == ["ExtractPlugin"]
+
+    def test_be_stars_reduction_chain_resolves(self):
+        """Every step of Be_stars.yaml's reduction chain resolves to a real
+        sub-plugin, in the declared order. Built from the reduction list alone:
+        the program's sequencer steps need the indi backend."""
+        import yaml as _yaml
+        from rosace.plugins import pipeline_loader
+
+        program = _yaml.safe_load((pipeline_loader.PROGRAMS_DIR / "Be_stars.yaml").read_text())
+        pipeline = build_pipeline(program["reduction"], "reduction")
+
+        assert len(pipeline) == len(program["reduction"])
+        assert program["reduction"][:2] == ["calculate_flux", "master_bias"]
+        assert program["reduction"][-3:] == ["write_spectrum", "plot_spectrum", "export_demetra"]
 
     def test_raises_on_unknown_program(self):
         with pytest.raises(FileNotFoundError):
@@ -234,7 +246,7 @@ class TestLoadPipelines:
         custom_yaml.write_text(_yaml.dump({
             "program": "test_custom",
             "sequencer": ["slew", "star_spectra_acquisition"],
-            "reduction": ["bias", "extract"],
+            "reduction": ["master_bias", "extract"],
         }))
 
         monkeypatch.setattr(pipeline_loader, "PROGRAMS_DIR", tmp_path)
@@ -247,7 +259,7 @@ class TestLoadPipelines:
         from rosace.plugins import pipeline_loader
 
         bad_yaml = tmp_path / "bad.yaml"
-        bad_yaml.write_text(_yaml.dump({"reduction": ["bias"]}))
+        bad_yaml.write_text(_yaml.dump({"reduction": ["extract"]}))
         monkeypatch.setattr(pipeline_loader, "PROGRAMS_DIR", tmp_path)
 
         with pytest.raises(KeyError, match="sequencer"):
@@ -291,9 +303,9 @@ class TestSequencerBackendDispatch:
         from rosace.plugins import pipeline_loader
         monkeypatch.setattr(pipeline_loader, "SEQUENCER_BACKEND", "internal")
 
-        module_path, class_name = pipeline_loader._resolve_module_and_class("reduction", "bias")
+        module_path, class_name = pipeline_loader._resolve_module_and_class("reduction", "extract")
 
-        assert module_path == "rosace.plugins.reduction_plugins.bias.bias"
+        assert module_path == "rosace.plugins.reduction_plugins.extract.extract"
 
     def test_unknown_backend_raises_value_error(self, monkeypatch):
         from rosace.plugins import pipeline_loader
@@ -332,7 +344,7 @@ class TestLoadSharingPlugin:
         from rosace.plugins import pipeline_loader
 
         bad_yaml = tmp_path / "bad3.yaml"
-        bad_yaml.write_text(_yaml.dump({"sequencer": ["slew"], "reduction": ["bias"]}))
+        bad_yaml.write_text(_yaml.dump({"sequencer": ["slew"], "reduction": ["extract"]}))
         monkeypatch.setattr(pipeline_loader, "PROGRAMS_DIR", tmp_path)
 
         with pytest.raises(KeyError, match="sharing"):
@@ -344,7 +356,7 @@ class TestLoadSharingPlugin:
 
         bad_yaml = tmp_path / "bad4.yaml"
         bad_yaml.write_text(_yaml.dump({
-            "sequencer": ["slew"], "reduction": ["bias"], "sharing": "inexistant",
+            "sequencer": ["slew"], "reduction": ["extract"], "sharing": "inexistant",
         }))
         monkeypatch.setattr(pipeline_loader, "PROGRAMS_DIR", tmp_path)
 
@@ -357,7 +369,7 @@ class TestLoadSharingPlugin:
 
         bad_yaml = tmp_path / "bad5.yaml"
         bad_yaml.write_text(_yaml.dump({
-            "sequencer": ["slew"], "reduction": ["bias"], "sharing": "../evil",
+            "sequencer": ["slew"], "reduction": ["extract"], "sharing": "../evil",
         }))
         monkeypatch.setattr(pipeline_loader, "PROGRAMS_DIR", tmp_path)
 

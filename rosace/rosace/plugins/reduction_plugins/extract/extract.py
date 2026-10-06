@@ -1,6 +1,10 @@
 """
 REDUCTION sub-plugin — Spectral extraction
-Extracts the 1D spectrum from the calibrated 2D image and produces the final file.
+Extracts a 1D spectrum from each corrected frame (plain sum over +/-4 sigma around the trace).
+
+Placeholder for now: waits 1 s and records a neutral casier, so the whole
+reduction chain runs and shows in the GUI before each step gets its real
+computation.
 """
 
 from __future__ import annotations
@@ -9,45 +13,20 @@ DISPLAY_NAME = "Extract"
 
 import asyncio
 import logging
-from pathlib import Path
 
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
 
 log = logging.getLogger("spectro.subplugin.extract")
 
+PLACEHOLDER_SECONDS = 1.0
+
 
 class ExtractPlugin(SubPlugin):
-    """Extracts the 1D spectrum from the calibrated 2D spectral image — internal simulation."""
+    """Extracts a 1D spectrum from each corrected frame (plain sum over +/-4 sigma around the trace). Placeholder: no computation yet."""
 
     async def execute(self, obs: Observation) -> Observation:
-        if "flat" not in obs.reduction_data:
-            raise RuntimeError("EXTRACT: reduction_data['flat'] missing — FLAT must run before EXTRACT")
-        input_files: list[str] = obs.reduction_data["flat"]["corrected_files"]
-        if not input_files:
-            raise RuntimeError("EXTRACT: no input file (reduction_data['flat']['corrected_files'] empty)")
-        if not obs.obs_dir:
-            raise RuntimeError("EXTRACT : observation directory (obs_dir) not set")
-
-        method = "sum"
-        aperture_px = 10
-        wavelength_calib = False
-
-        log.info(
-            f"[EXTRACT] Spectral extraction — method={method}, "
-            f"aperture={aperture_px}px, wavelength_calib={wavelength_calib}"
-        )
-
-        reduced_files: list[str] = []
-        for f in input_files:
-            out_name = f.replace("_bdf.fits", "_reduced.fits")
-            out_path = Path(obs.obs_dir) / out_name
-            await asyncio.sleep(0.1)
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.touch()
-            log.info(f"[EXTRACT] Simulation: {f} → {out_name}")
-            reduced_files.append(out_name)
-
-        obs.reduction_data["extract"] = {"reduced_files": reduced_files}
-        log.info(f"[EXTRACT] Extraction complete — {len(reduced_files)} spectrum(s) produced")
+        await asyncio.sleep(PLACEHOLDER_SECONDS)
+        obs.reduction_data["extract"] = {"status": "placeholder"}
+        log.info("[EXTRACT] Placeholder — no computation yet")
         return obs

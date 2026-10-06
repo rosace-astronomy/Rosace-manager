@@ -1,8 +1,7 @@
 # ── Program: Nova / transient monitoring ─────────────────────────────────────
 # Maximum responsiveness: minimal SEQUENCER pipeline to capture a transient
-# event. Full reduction chain: each REDUCTION sub-plugin explicitly depends
-# on the previous step (bias → dark → flat → extract), no step can be
-# skipped.
+# event. Minimal reduction (extract placeholder) — the full native chain
+# lives in Be_stars.yaml.
 
 program: nova_monitoring
 description: "Spectral monitoring of novae and transients — maximum responsiveness"
@@ -12,9 +11,6 @@ sequencer:
   - star_spectra_acquisition    # Direct exposure, no focusing (emergency)
 
 reduction:
-  - bias        # Bias subtraction
-  - dark        # Dark subtraction
-  - flat        # Flat-field correction
-  - extract     # 1D spectrum extraction
+  - extract     # 1D spectrum extraction (placeholder; the full chain lives in Be_stars.yaml)
 
 sharing: blank_share

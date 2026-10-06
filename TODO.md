@@ -59,6 +59,21 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Aller chercher toutes les Be dans BeSS. Et regarder le priorités d'observation BeSS. 
 - [ ] Indiquer la température extérieure dans le fichier d'observation.
 
+- [ ] Réduction : traitement de la lampe (prétraitement, tilt, smile,
+      extraction) avant le calcul de la loi de dispersion — détail à
+      définir à l'implémentation de `dispersion_law` (2026-10-06)
+- [ ] Réduction : option pour garder ou non le répertoire des fichiers
+      intermédiaires de chaque observation, et purge de ces répertoires
+      (ARCHIVE ou CLOSE, à voir) — reconstructibles, rien de perdu (2026-10-06)
+- [ ] Retraiter une observation ou toute une session (réduction relancée sur
+      les fichiers existants) : un point d'entrée API REST, appelé depuis
+      le GUI (2026-10-06)
+- [ ] GUI : panneaux Guidage et Spectre côte à côte, et un panneau spectre 1D
+      au-dessus, lu depuis le FITS (zoom, déplacement) (2026-10-06)
+- [ ] Mode démo : images réalistes (guidage avec fente et étoiles, vrai
+      spectre) et spectre résultant affiché, même factice (2026-10-06)
+- [ ] GUI : bouton de lancement différé d'une session — pas urgent (2026-10-06)
+
 ## Chantiers plus lointains
 
 - [ ] Backend ASCOM / passage sous Windows — bloqué sur l'accès à un

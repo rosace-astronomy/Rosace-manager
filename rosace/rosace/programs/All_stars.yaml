@@ -23,10 +23,7 @@ sequencer:
   - spectro_light_source_to_sky  # Resets the spectroscope to SKY (safety at end of observation)
 reduction:
   - calculate_flux  # Flux of every raw science sub-exposure (casier + spectrum_flux table), never blocking
-  - bias        # Bias subtraction
-  - dark        # Dark subtraction
-  - flat        # Flat-field correction
-  - extract     # 1D spectrum extraction
+  - extract     # 1D spectrum extraction (placeholder; the full chain lives in Be_stars.yaml)
   - export_demetra  # Demetra .obs.srl + ZIP export, in parallel with the chain above
 
 sharing: blank_share

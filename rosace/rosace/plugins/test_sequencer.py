@@ -98,7 +98,7 @@ class TestSequencerPlugin:
         assert result.program_file == "demo.yaml"
         assert result.program_steps == {
             "sequencer": ["slew", "star_spectra_acquisition"],
-            "reduction": ["bias", "dark", "flat", "extract"],
+            "reduction": ["extract"],
             "sharing": "blank_share",
         }
 

@@ -20,7 +20,7 @@ produced the raw files: this REDUCTION sub-plugin must never need to know
 that name, only the fixed key every acquisition sub-plugin writes to. A
 real REDUCTION sub-plugin further down a pipeline would typically read
 whatever an earlier REDUCTION step wrote instead (e.g.
-obs.reduction_data["bias"]) — same pattern, just a different key, entirely
+obs.reduction_data["master_bias"]) — same pattern, just a different key, entirely
 up to what that sub-plugin needs.
 
 You *may* write a result into obs.reduction_data under your own declared
@@ -47,7 +47,7 @@ never a "<name>_internal.py" variant.
 DISPLAY_NAME (GUI label)
 --------------------------
 Right after this docstring, every sub-plugin declares its own short
-DISPLAY_NAME constant — a human-readable label (e.g. "Bias", "Extract")
+DISPLAY_NAME constant — a human-readable label (e.g. "M. bias", "Extract")
 used to name this step's chip in the GUI's step-progress display. Kept
 separate from the module docstring, which documents the sub-plugin itself,
 not the UI. Read via ast.parse, exactly like the docstring — never

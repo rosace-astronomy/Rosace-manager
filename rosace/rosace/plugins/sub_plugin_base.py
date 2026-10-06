@@ -20,7 +20,7 @@ class SubPlugin:
 
     The sub-plugin reads/writes its parent stage plugin's casier
     (obs.sequencer_data or obs.reduction_data), and may read a previous
-    step's if needed (e.g. bias reads obs.sequencer_data["star_spectra_images"]
+    step's if needed (e.g. preproc_target reads obs.sequencer_data["star_spectra_images"]
     — a shared key, written under a fixed name independent of whichever
     SEQUENCER sub-plugin produced it, not obs.sequencer_data["<sub_plugin_name>"]:
     REDUCTION must never need to know that name).

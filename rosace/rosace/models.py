@@ -102,7 +102,7 @@ class Observation(BaseModel):
     session_data: dict[str, Any] = {}
 
     # One casier per known stage plugin -- free-form content, managed by the
-    # plugin and its sub-plugins (e.g. reduction_data["bias"]["corrected_files"]).
+    # plugin and its sub-plugins (e.g. reduction_data["calculate_flux"]["images"]).
     # A sub-plugin only writes its own key when it has something descriptive
     # to add to it -- tracking execution flow (what ran, in what order) stays
     # the log file's job, not this file's (see CLAUDE.md).

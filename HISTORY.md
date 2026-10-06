@@ -858,3 +858,15 @@ Three shared points were made safe: `state.pending_post_obs` is now changed only
 Test pitfall: the first version of the "blocking REDUCTION does not delay the sequencer" test passed on the old code too. On a shared loop, *when* the blocked task runs depends on which await yields first, so measuring the start of the next SCHEDULER (which ran before any yield) or a single SEQUENCER wait gave luck-dependent results. The final test measures from the end of the 1st SEQUENCER to the end of the 2nd, which awaits 0.5 s while the 1st REDUCTION blocks for 1 s: on a shared loop the block always falls in that window (3 failures out of 3), on its own thread never (3 passes out of 3).
 
 Still to do on the sky: compare the time between two observations with and without a reduction running alongside.
+
+## 2026-10-06 — Native reduction chain laid out as placeholders
+
+*Relates to: "Native reduction chain" in CLAUDE.md.*
+
+Start of the native reduction chantier, on the `reduction` branch (from the post-obs thread commit). The four old REDUCTION placeholders (`bias`, `dark`, `flat`, `extract`, which only `touch()`ed empty files) gave way to the full chain, every step a placeholder for now (1 s wait, casier `{"status": "placeholder"}`), so the chain runs end to end and shows in the GUI before each step gets its computation. `bias`, `dark` and `flat` were deleted; `extract` kept its name, its content rewritten.
+
+The user's principle: one simple operation per sub-plugin, easy to explain and to reuse elsewhere. So the masters are three steps (`master_bias`, `master_dark`, `master_flat`), the calibration two (`dispersion_law` computes or reuses the law, `lambda_calibration` applies it — its GUI label "Calib", at the user's request). A first proposal had a `master_calib` step; the user replaced it with `preproc_calib`, alongside `preproc_target`. He then hesitated between `tilt_target`/`tilt_calib` and `smile_target`/`smile_calib` pairs (the tilt is measured on the target and must be applied as is to the lamp, the smile the other way round) and single steps; single steps were kept, since a step that measures its correction and applies it to every image guarantees both get the same one, where a pair would make the second step read the first one's measurement for nothing.
+
+The full chain is declared by `Be_stars.yaml` only: what is built here is specific to that program. The other programs (and the Docker demo copies) only lost `bias`/`dark`/`flat` and keep a minimal `extract`.
+
+The rules for the real implementations were settled in the same discussion and written into CLAUDE.md: inputs found by shared purpose-named keys in any casier, file names (not dates) decide reuse of masters and dispersion laws, reduction parameters in the program's YAML, a failing step stops the reduction except a non-critical one, the dark keeps its bias (checked against Demetra by the user), never any telluric or heliocentric correction (BeSS rule), intermediate files in one rebuildable directory per observation.

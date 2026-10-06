@@ -14,9 +14,6 @@ sequencer:
   - star_spectra_acquisition
 
 reduction:
-  - bias
-  - dark
-  - flat
   - extract
 
 sharing: blank_share

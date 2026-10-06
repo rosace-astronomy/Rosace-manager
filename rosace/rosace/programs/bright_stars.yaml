@@ -1,8 +1,7 @@
 # ── Program: Bright stars ─────────────────────────────────────────────────────
 # Radial velocities of bright stars (V < 4).
-# Focusing skipped if recent. Full reduction chain: each REDUCTION
-# sub-plugin explicitly depends on the previous step (bias →
-# dark → flat → extract), no step can be skipped.
+# Focusing skipped if recent. Minimal reduction (extract placeholder) — the
+# full native chain lives in Be_stars.yaml.
 
 program: bright_stars
 description: "Radial velocity measurements on bright stars — short exposures"
@@ -12,9 +11,6 @@ sequencer:
   - star_spectra_acquisition    # CCD exposure
 
 reduction:
-  - bias        # Bias subtraction
-  - dark        # Dark subtraction
-  - flat        # Flat-field correction
-  - extract     # 1D spectrum extraction
+  - extract     # 1D spectrum extraction (placeholder; the full chain lives in Be_stars.yaml)
 
 sharing: blank_share
