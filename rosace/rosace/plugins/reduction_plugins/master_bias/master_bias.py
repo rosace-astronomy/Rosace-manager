@@ -1,32 +1,33 @@
 """
 REDUCTION sub-plugin — Master bias
-Combines the session's bias series into a master bias (sigma-clipped mean).
+Combines the session's bias series into a master bias (min/max-rejected mean).
 
-Placeholder for now: waits 1 s and records a neutral casier, so the whole
-reduction chain runs and shows in the GUI before each step gets its real
-computation.
+Input: the shared sequencer_data["bias_images"] key. Output: the master's
+file name under the shared reduction_data["master_bias_image"] key -- no
+casier of its own, nothing else descriptive to add. The master is written to
+the session directory as "<series root>_master.fits" and reused when that
+file already exists (see master_helpers.py), so it is computed once per
+session.
 """
 
 from __future__ import annotations
 
 DISPLAY_NAME = "M. bias"
 
-import asyncio
 import logging
 
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
+from ..master_helpers import resolve_master
 
 log = logging.getLogger("spectro.subplugin.master_bias")
 
-PLACEHOLDER_SECONDS = 1.0
-
 
 class MasterBiasPlugin(SubPlugin):
-    """Combines the session's bias series into a master bias (sigma-clipped mean). Placeholder: no computation yet."""
+    """Combines the session's bias series into a master bias (min/max-rejected mean)."""
 
     async def execute(self, obs: Observation) -> Observation:
-        await asyncio.sleep(PLACEHOLDER_SECONDS)
-        obs.reduction_data["master_bias"] = {"status": "placeholder"}
-        log.info("[MASTER_BIAS] Placeholder — no computation yet")
+        name, reused = resolve_master(obs, "bias_images", "Master bias")
+        obs.reduction_data["master_bias_image"] = name
+        log.info(f"[MASTER_BIAS] {'Reused' if reused else 'Computed'} '{name}'")
         return obs

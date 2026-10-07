@@ -60,6 +60,14 @@ class TestFindUsableFrameSeries:
             exposure_time_required=300, frame_size=(100, 80),
         ) is None
 
+    def test_ignores_a_master_built_from_a_series(self, tmp_path):
+        filename = _write_frame_fits(tmp_path, index=1)
+        (tmp_path / filename).rename(tmp_path / filename.replace("-1.fits", "_master.fits"))
+        assert find_usable_frame_series(
+            tmp_path, image_type="DARK", temp_c=-5, count_required=1,
+            exposure_time_required=300, frame_size=(100, 80),
+        ) is None
+
     def test_ignores_files_at_a_different_temperature(self, tmp_path):
         _write_frame_fits(tmp_path, temp_c=0, index=1)
         _write_frame_fits(tmp_path, temp_c=0, index=2)

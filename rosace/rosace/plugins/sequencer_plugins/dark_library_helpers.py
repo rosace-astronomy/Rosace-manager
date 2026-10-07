@@ -130,6 +130,11 @@ def pick_most_recent_usable_series(
     series."""
     series: dict[str, list[Path]] = {}
     for p in candidates:
+        # A master built from a series (reduction_plugins/master_helpers.py,
+        # "<series root>_master.fits") shares its series' prefix but is not a
+        # raw frame -- never count it as one.
+        if p.stem.endswith("_master"):
+            continue
         series.setdefault(_SERIES_INDEX_RE.sub("", p.stem), []).append(p)
 
     for root in sorted(series, key=_series_sort_key, reverse=True):
