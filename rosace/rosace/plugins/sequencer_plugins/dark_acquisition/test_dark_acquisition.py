@@ -101,7 +101,7 @@ class TestDarkAcquisitionPlugin:
         result = await DarkAcquisitionPlugin().execute(obs)
 
         assert result.sequencer_data["dark_acquisition"]["origin"] == "current_session"
-        assert len(result.sequencer_data["dark_acquisition"]["dark_files"]) == 2
+        assert len(result.sequencer_data["dark_images"]) == 2
         camera.expose.assert_not_awaited()
 
     async def test_creates_the_library_bucket_directories(self, tmp_path):
@@ -128,7 +128,7 @@ class TestDarkAcquisitionPlugin:
         result = await DarkAcquisitionPlugin().execute(obs)
 
         assert result.sequencer_data["dark_acquisition"]["origin"] == "library"
-        files = result.sequencer_data["dark_acquisition"]["dark_files"]
+        files = result.sequencer_data["dark_images"]
         assert len(files) == 2
         for name in files:
             assert (session_dir / name).exists()  # copied into the session dir
@@ -147,7 +147,7 @@ class TestDarkAcquisitionPlugin:
         result = await DarkAcquisitionPlugin().execute(obs)
 
         assert result.sequencer_data["dark_acquisition"]["origin"] == "camera"
-        assert len(result.sequencer_data["dark_acquisition"]["dark_files"]) == 2
+        assert len(result.sequencer_data["dark_images"]) == 2
         assert camera.expose.await_count == 2
         # 2 per capture: the real file plus the GUI preview copy (image_to_gui=True).
         assert fake_image.writeto.call_count == 4
@@ -190,5 +190,5 @@ class TestDarkAcquisitionPlugin:
         result = await DarkAcquisitionPlugin().execute(obs)
 
         assert result.sequencer_data["dark_acquisition"]["origin"] == "camera"
-        assert len(result.sequencer_data["dark_acquisition"]["dark_files"]) == 1
+        assert len(result.sequencer_data["dark_images"]) == 1
         assert camera.expose.await_count == 1

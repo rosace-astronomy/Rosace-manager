@@ -38,13 +38,13 @@ def _make_obs(
     if star_files is not None:
         obs.sequencer_data["star_spectra_images"] = star_files
     if bias_files is not None:
-        obs.sequencer_data["bias_acquisition"] = {"bias_files": bias_files}
+        obs.sequencer_data["bias_images"] = bias_files
     if dark_files is not None:
-        obs.sequencer_data["dark_acquisition"] = {"dark_files": dark_files}
+        obs.sequencer_data["dark_images"] = dark_files
     if flat_files is not None:
-        obs.sequencer_data["flat_acquisition"] = {"flat_files": flat_files}
+        obs.sequencer_data["flat_images"] = flat_files
     if calib_files is not None:
-        obs.sequencer_data["calib_acquisition"] = {"calib_files": calib_files}
+        obs.sequencer_data["calib_images"] = calib_files
     if target is not None:
         obs.scheduler_data["target"] = target
     if queried_name is not None:
@@ -86,35 +86,35 @@ class TestExportDemetraPlugin:
             await ExportDemetraPlugin().execute(_obs_empty("star_files"))
 
     async def test_raises_if_bias_files_missing(self):
-        with pytest.raises(RuntimeError, match="bias_files"):
+        with pytest.raises(RuntimeError, match="bias_images"):
             await ExportDemetraPlugin().execute(_obs_missing("bias_files"))
 
     async def test_raises_if_bias_files_empty(self):
-        with pytest.raises(RuntimeError, match="bias_files"):
+        with pytest.raises(RuntimeError, match="bias_images"):
             await ExportDemetraPlugin().execute(_obs_empty("bias_files"))
 
     async def test_raises_if_dark_files_missing(self):
-        with pytest.raises(RuntimeError, match="dark_files"):
+        with pytest.raises(RuntimeError, match="dark_images"):
             await ExportDemetraPlugin().execute(_obs_missing("dark_files"))
 
     async def test_raises_if_dark_files_empty(self):
-        with pytest.raises(RuntimeError, match="dark_files"):
+        with pytest.raises(RuntimeError, match="dark_images"):
             await ExportDemetraPlugin().execute(_obs_empty("dark_files"))
 
     async def test_raises_if_flat_files_missing(self):
-        with pytest.raises(RuntimeError, match="flat_files"):
+        with pytest.raises(RuntimeError, match="flat_images"):
             await ExportDemetraPlugin().execute(_obs_missing("flat_files"))
 
     async def test_raises_if_flat_files_empty(self):
-        with pytest.raises(RuntimeError, match="flat_files"):
+        with pytest.raises(RuntimeError, match="flat_images"):
             await ExportDemetraPlugin().execute(_obs_empty("flat_files"))
 
     async def test_raises_if_calib_files_missing(self):
-        with pytest.raises(RuntimeError, match="calib_files"):
+        with pytest.raises(RuntimeError, match="calib_images"):
             await ExportDemetraPlugin().execute(_obs_missing("calib_files"))
 
     async def test_raises_if_calib_files_empty(self):
-        with pytest.raises(RuntimeError, match="calib_files"):
+        with pytest.raises(RuntimeError, match="calib_images"):
             await ExportDemetraPlugin().execute(_obs_empty("calib_files"))
 
     async def test_raises_if_obs_dir_missing(self):

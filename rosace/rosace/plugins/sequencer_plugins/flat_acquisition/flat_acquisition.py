@@ -20,7 +20,9 @@ Only two origins:
 - camera: otherwise, switches the spectroscope to FLAT and shoots a fresh
   FLAT_COUNT-frame series at FLAT_EXPOSURE_TIME_SECONDS.
 
-Casier: {"origin": "current_session"|"camera", "flat_files": [...]}.
+Casier: {"origin": "current_session"|"camera"}. The series' filenames go to
+the shared sequencer_data["flat_images"] key, which REDUCTION reads -- never
+this casier (see CLAUDE.md, "Shared, purpose-named keys").
 """
 
 from __future__ import annotations
@@ -115,7 +117,8 @@ class FlatAcquisitionPlugin(SubPlugin):
             files = captured
             origin = "camera"
 
-        obs.sequencer_data["flat_acquisition"] = {"origin": origin, "flat_files": files}
+        obs.sequencer_data["flat_acquisition"] = {"origin": origin}
+        obs.sequencer_data["flat_images"] = files
         log.info(f"[FLAT_ACQUISITION] Origin={origin}, series of {len(files)}x{FLAT_EXPOSURE_TIME_SECONDS:g}s")
         log.info(f"[FLAT_ACQUISITION] Done, root name = '{summarize_series_root_name(files)}'")
         return obs

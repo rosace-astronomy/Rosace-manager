@@ -150,7 +150,7 @@ class TestFlatAcquisitionPlugin:
         result = await FlatAcquisitionPlugin().execute(obs)
 
         assert result.sequencer_data["flat_acquisition"]["origin"] == "current_session"
-        assert len(result.sequencer_data["flat_acquisition"]["flat_files"]) == 2
+        assert len(result.sequencer_data["flat_images"]) == 2
         camera.expose.assert_not_awaited()
 
     async def test_camera_origin_when_session_dir_has_no_usable_series(self, tmp_path):
@@ -165,7 +165,7 @@ class TestFlatAcquisitionPlugin:
         result = await FlatAcquisitionPlugin().execute(obs)
 
         assert result.sequencer_data["flat_acquisition"]["origin"] == "camera"
-        assert len(result.sequencer_data["flat_acquisition"]["flat_files"]) == 2
+        assert len(result.sequencer_data["flat_images"]) == 2
         assert camera.expose.await_count == 2
         # 2 per capture: the real file plus the GUI preview copy (image_to_gui=True).
         assert fake_image.writeto.call_count == 4
@@ -192,5 +192,5 @@ class TestFlatAcquisitionPlugin:
         result = await FlatAcquisitionPlugin().execute(obs)
 
         assert result.sequencer_data["flat_acquisition"]["origin"] == "camera"
-        assert len(result.sequencer_data["flat_acquisition"]["flat_files"]) == 1
+        assert len(result.sequencer_data["flat_images"]) == 1
         assert camera.expose.await_count == 1

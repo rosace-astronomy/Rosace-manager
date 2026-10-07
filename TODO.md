@@ -19,9 +19,6 @@ Claude peut le suggérer, jamais le faire lui-même.
       n'attend que le retour à IDLE/OK du *vecteur* de propriété, qui peut
       déjà être dans cet état avant l'envoi (rien ne le repasse à BUSY
       localement tant que le driver n'a pas confirmé)
-- [ ] 4 Aql : vérifier sur le ciel que `--downsample 2` suffit (solvé hors
-      ligne sur les images du 23 et du 25/09, pas sur celle du 24/09) ; si
-      ça échoue encore, pistes : pose de guidage plus longue, gain (2026-09-26)
 
 ## Chantiers proposés
 
@@ -47,9 +44,6 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Pour le calcul de foc, on peut pondérer la valeur moyenne de fWHM retenue en appliquant un coef de pondération proportionnel à la distance au centre du carré (100% au centre, 30% dans les coins). Pour durcir la valeur retenue.
 - [ ] Dans `focus`, logger la température du focuser en même temps que la
       date/heure de la mesure de FWHM.
-- [ ] Mettre en base de données la valeur de focus (FWHM), avec la date, la
-      température, etc. — à terme, y ajouter aussi l'intensité du spectre
-      une fois la bonne méthode de calcul disponible.
 - [ ] Une fois le focus en base : l'afficher (GUI ou export) en fonction de
       la température du focuser, pas seulement de l'heure/date — le focus
       dépend surtout de la température, un historique chronologique seul
@@ -57,8 +51,6 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Faire un plan d'observation Be plus sophstiqué, pour ne pas refaire toujours les mêmes obserations. Prendre en compte les obserations récentes et les demandes de BeSS.
 - [ ] Mettre en place un système qui permet de ne pas consommer les étoiles qui ont plantées. Peut-être calculer un facteur global de priorité
 - [ ] Aller chercher toutes les Be dans BeSS. Et regarder le priorités d'observation BeSS. 
-- [ ] Indiquer la température extérieure dans le fichier d'observation.
-
 - [ ] Réduction : traitement de la lampe (prétraitement, tilt, smile,
       extraction) avant le calcul de la loi de dispersion — détail à
       définir à l'implémentation de `dispersion_law` (2026-10-06)
@@ -80,15 +72,6 @@ Claude peut le suggérer, jamais le faire lui-même.
       environnement Windows
 - [ ] Deuxième instrument ("gros télescope", ex. UVEX) — driver
       IndiUsisSpectro existant, aucun profil matériel
-- [ ] Faire tourner REDUCTION → SHARING → ARCHIVE dans un thread dédié
-      (avec sa propre boucle asyncio), séparé du séquenceur : aujourd'hui
-      `run_post_obs()` est une tâche de la même boucle, donc tout calcul ou
-      toute écriture bloquante d'un sous-plugin de réduction fige le
-      séquenceur (probablement déjà le zip d'`export_demetra`, non mesuré).
-      Les sous-plugins restent séquentiels. À sécuriser :
-      `state.pending_post_obs`, instances de plugins partagées, arrêt de
-      session. `calculate_flux` est déjà dans `Be_stars.yaml` et bloque le
-      séquenceur environ 0,5 s par pose en attendant (accepté) (2026-09-26)
 - [ ] INIT_SESSION / CLOSE_SESSION adaptables par observatoire : aujourd'hui
       classes fixes (seul le SCHEDULER est choisi en config) ; rôles mount /
       science_camera / focuser et ambiante lue sur le focuser en dur — pistes :

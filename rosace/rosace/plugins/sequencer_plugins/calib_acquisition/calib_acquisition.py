@@ -21,7 +21,9 @@ Only two origins, same shape as bias_acquisition:
 - camera: otherwise, switches the spectroscope to CALIB and shoots a fresh
   CALIB_COUNT-frame series at CALIB_EXPOSURE_TIME_SECONDS.
 
-Casier: {"origin": "current_session"|"camera", "calib_files": [...]}.
+Casier: {"origin": "current_session"|"camera"}. The series' filenames go to
+the shared sequencer_data["calib_images"] key, which REDUCTION reads -- never
+this casier (see CLAUDE.md, "Shared, purpose-named keys").
 """
 
 from __future__ import annotations
@@ -156,7 +158,8 @@ class CalibAcquisitionPlugin(SubPlugin):
             files = captured
             origin = "camera"
 
-        obs.sequencer_data["calib_acquisition"] = {"origin": origin, "calib_files": files}
+        obs.sequencer_data["calib_acquisition"] = {"origin": origin}
+        obs.sequencer_data["calib_images"] = files
         log.info(f"[CALIB_ACQUISITION] Origin={origin}, series of {len(files)}x{CALIB_EXPOSURE_TIME_SECONDS:g}s")
         log.info(f"[CALIB_ACQUISITION] Done, root name = '{summarize_series_root_name(files)}'")
         return obs

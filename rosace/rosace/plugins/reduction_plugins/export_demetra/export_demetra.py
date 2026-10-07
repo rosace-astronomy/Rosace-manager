@@ -30,7 +30,7 @@ from ...sub_plugin_base import SubPlugin
 
 log = logging.getLogger("spectro.subplugin.export_demetra")
 
-# Runs in PARALLEL with bias/dark/flat/extract, not instead of them: reads
+# Runs in PARALLEL with the native reduction chain, not instead of it: reads
 # straight from sequencer_data, never reduction_data, so it never depends on
 # the native pipeline having run -- Rosace's own reduction and a Demetra
 # export are two independent, coexisting outputs of the same raw data.
@@ -121,57 +121,31 @@ def _export_base_name(obs: Observation) -> str:
     return f"{iso_str}_{safe_name}"
 
 
+def _required_files(obs: Observation, key: str, what: str) -> list[str]:
+    """The file list under the shared sequencer_data[key] (see CLAUDE.md,
+    "Shared, purpose-named keys"), or a RuntimeError naming the key when it is
+    missing or empty."""
+    files = obs.sequencer_data.get(key)
+    if files is None:
+        raise RuntimeError(
+            f"EXPORT_DEMETRA: sequencer_data['{key}'] missing — "
+            f"no {what} acquisition ran before EXPORT_DEMETRA"
+        )
+    if not files:
+        raise RuntimeError(f"EXPORT_DEMETRA: no {what} file (sequencer_data['{key}'] empty)")
+    return files
+
+
 class ExportDemetraPlugin(SubPlugin):
     """Exports the observation as a Demetra-compatible .obs.srl and adds it,
     with its FITS files, to the session's ZIP."""
 
     async def execute(self, obs: Observation) -> Observation:
-        if "star_spectra_images" not in obs.sequencer_data:
-            raise RuntimeError(
-                "EXPORT_DEMETRA: sequencer_data['star_spectra_images'] missing — "
-                "no acquisition sub-plugin ran before EXPORT_DEMETRA"
-            )
-        star_files: list[str] = obs.sequencer_data["star_spectra_images"]
-        if not star_files:
-            raise RuntimeError("EXPORT_DEMETRA: no raw file (sequencer_data['star_spectra_images'] empty)")
-
-        if "bias_acquisition" not in obs.sequencer_data or "bias_files" not in obs.sequencer_data["bias_acquisition"]:
-            raise RuntimeError(
-                "EXPORT_DEMETRA: sequencer_data['bias_acquisition']['bias_files'] missing — "
-                "bias_acquisition did not run before EXPORT_DEMETRA"
-            )
-        bias_files: list[str] = obs.sequencer_data["bias_acquisition"]["bias_files"]
-        if not bias_files:
-            raise RuntimeError("EXPORT_DEMETRA: no bias file (sequencer_data['bias_acquisition']['bias_files'] empty)")
-
-        if "dark_acquisition" not in obs.sequencer_data or "dark_files" not in obs.sequencer_data["dark_acquisition"]:
-            raise RuntimeError(
-                "EXPORT_DEMETRA: sequencer_data['dark_acquisition']['dark_files'] missing — "
-                "dark_acquisition did not run before EXPORT_DEMETRA"
-            )
-        dark_files: list[str] = obs.sequencer_data["dark_acquisition"]["dark_files"]
-        if not dark_files:
-            raise RuntimeError("EXPORT_DEMETRA: no dark file (sequencer_data['dark_acquisition']['dark_files'] empty)")
-
-        if "flat_acquisition" not in obs.sequencer_data or "flat_files" not in obs.sequencer_data["flat_acquisition"]:
-            raise RuntimeError(
-                "EXPORT_DEMETRA: sequencer_data['flat_acquisition']['flat_files'] missing — "
-                "flat_acquisition did not run before EXPORT_DEMETRA"
-            )
-        flat_files: list[str] = obs.sequencer_data["flat_acquisition"]["flat_files"]
-        if not flat_files:
-            raise RuntimeError("EXPORT_DEMETRA: no flat file (sequencer_data['flat_acquisition']['flat_files'] empty)")
-
-        if "calib_acquisition" not in obs.sequencer_data or "calib_files" not in obs.sequencer_data["calib_acquisition"]:
-            raise RuntimeError(
-                "EXPORT_DEMETRA: sequencer_data['calib_acquisition']['calib_files'] missing — "
-                "calib_acquisition did not run before EXPORT_DEMETRA"
-            )
-        calib_files: list[str] = obs.sequencer_data["calib_acquisition"]["calib_files"]
-        if not calib_files:
-            raise RuntimeError(
-                "EXPORT_DEMETRA: no calibration file (sequencer_data['calib_acquisition']['calib_files'] empty)"
-            )
+        star_files = _required_files(obs, "star_spectra_images", "science")
+        bias_files = _required_files(obs, "bias_images", "bias")
+        dark_files = _required_files(obs, "dark_images", "dark")
+        flat_files = _required_files(obs, "flat_images", "flat")
+        calib_files = _required_files(obs, "calib_images", "calibration")
 
         if not obs.obs_dir:
             raise RuntimeError("EXPORT_DEMETRA: observation directory (obs_dir) not set")

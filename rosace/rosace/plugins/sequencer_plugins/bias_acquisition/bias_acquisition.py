@@ -23,7 +23,9 @@ Never re-sets or re-checks the camera's temperature itself, same as
 dark_acquisition -- trusts the once-per-session cooldown (see
 plugins/camera_cooldown.py) and reads obs.session_data["camera_target_temperature_deg_c"].
 
-Casier: {"origin": "current_session"|"camera", "bias_files": [...]}.
+Casier: {"origin": "current_session"|"camera"}. The series' filenames go to
+the shared sequencer_data["bias_images"] key, which REDUCTION reads -- never
+this casier (see CLAUDE.md, "Shared, purpose-named keys").
 """
 
 from __future__ import annotations
@@ -96,7 +98,8 @@ class BiasAcquisitionPlugin(SubPlugin):
             files = captured
             origin = "camera"
 
-        obs.sequencer_data["bias_acquisition"] = {"origin": origin, "bias_files": files}
+        obs.sequencer_data["bias_acquisition"] = {"origin": origin}
+        obs.sequencer_data["bias_images"] = files
         log.info(f"[BIAS_ACQUISITION] Origin={origin}, series of {len(files)}x{BIAS_EXPOSURE_TIME_SECONDS:g}s at {round(target_temp)}deg")
         log.info(f"[BIAS_ACQUISITION] Done, root name = '{summarize_series_root_name(files)}'")
         return obs

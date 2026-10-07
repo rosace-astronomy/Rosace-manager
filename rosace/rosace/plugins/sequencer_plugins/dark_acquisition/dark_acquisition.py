@@ -41,10 +41,10 @@ the camera's own currently configured frame size and an exposure time
 >= MAX_EXPOSURE_TIME_SECONDS -- a longer library exposure is accepted, a
 shorter one is not.
 
-Casier: {"origin": "current_session"|"library"|"camera", "dark_files": [...]}
--- both are genuinely produced by this step (which files were retained, and
-how), so a casier is legitimate here (contrast with a sub-plugin that has
-nothing descriptive to add, see CLAUDE.md).
+Casier: {"origin": "current_session"|"library"|"camera"} -- how the series
+was obtained, genuinely produced by this step. The series' filenames go to
+the shared sequencer_data["dark_images"] key, which REDUCTION reads -- never
+this casier (see CLAUDE.md, "Shared, purpose-named keys").
 """
 
 from __future__ import annotations
@@ -142,7 +142,8 @@ class DarkAcquisitionPlugin(SubPlugin):
             files = captured
             origin = "camera"
 
-        obs.sequencer_data["dark_acquisition"] = {"origin": origin, "dark_files": files}
+        obs.sequencer_data["dark_acquisition"] = {"origin": origin}
+        obs.sequencer_data["dark_images"] = files
         log.info(f"[DARK_ACQUISITION] Origin={origin}, series of {len(files)}x{MAX_EXPOSURE_TIME_SECONDS:g}s at {round(target_temp)}deg")
         log.info(f"[DARK_ACQUISITION] Done, root name = '{summarize_series_root_name(files)}'")
         return obs

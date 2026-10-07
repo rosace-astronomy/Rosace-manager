@@ -96,7 +96,7 @@ class TestBiasAcquisitionPlugin:
         result = await BiasAcquisitionPlugin().execute(obs)
 
         assert result.sequencer_data["bias_acquisition"]["origin"] == "current_session"
-        assert len(result.sequencer_data["bias_acquisition"]["bias_files"]) == 2
+        assert len(result.sequencer_data["bias_images"]) == 2
         camera.expose.assert_not_awaited()
 
     async def test_camera_origin_when_session_dir_has_no_usable_series(self, tmp_path):
@@ -111,7 +111,7 @@ class TestBiasAcquisitionPlugin:
         result = await BiasAcquisitionPlugin().execute(obs)
 
         assert result.sequencer_data["bias_acquisition"]["origin"] == "camera"
-        assert len(result.sequencer_data["bias_acquisition"]["bias_files"]) == 2
+        assert len(result.sequencer_data["bias_images"]) == 2
         assert camera.expose.await_count == 2
         camera.expose.assert_awaited_with(0.0)
         # 2 per capture: the real file plus the GUI preview copy (image_to_gui=True).
@@ -128,5 +128,5 @@ class TestBiasAcquisitionPlugin:
         result = await BiasAcquisitionPlugin().execute(obs)
 
         assert result.sequencer_data["bias_acquisition"]["origin"] == "camera"
-        assert len(result.sequencer_data["bias_acquisition"]["bias_files"]) == 1
+        assert len(result.sequencer_data["bias_images"]) == 1
         assert camera.expose.await_count == 1
