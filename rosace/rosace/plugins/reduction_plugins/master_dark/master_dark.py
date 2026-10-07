@@ -1,32 +1,42 @@
 """
 REDUCTION sub-plugin — Master dark
-Combines the dark series into a master dark (sigma-clipped mean; the dark keeps its bias).
+Combines the dark series into a master dark (min/max-rejected mean; the dark keeps its bias).
 
-Placeholder for now: waits 1 s and records a neutral casier, so the whole
-reduction chain runs and shows in the GUI before each step gets its real
-computation.
+Input: the shared sequencer_data["dark_images"] key (a series shot tonight or
+copied from the dark library -- same file names either way). Output: the
+master's file name under the shared reduction_data["master_dark_image"] key
+-- no casier of its own. The bias is deliberately not subtracted: the dark is
+subtracted from an image that carries the same bias, which cancels out (see
+CLAUDE.md, "Native reduction chain"). Written to the session directory as
+"<series root>_master.fits" and reused when that file already exists (see
+master_helpers.py).
 """
 
 from __future__ import annotations
 
 DISPLAY_NAME = "M. dark"
 
-import asyncio
 import logging
+
+import numpy as np
 
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
+from ..master_helpers import resolve_master
 
 log = logging.getLogger("spectro.subplugin.master_dark")
 
-PLACEHOLDER_SECONDS = 1.0
+
+def _keep_bias(data: np.ndarray, comments: list[str]) -> np.ndarray:
+    comments.append("Bias not subtracted")
+    return data
 
 
 class MasterDarkPlugin(SubPlugin):
-    """Combines the dark series into a master dark (sigma-clipped mean; the dark keeps its bias). Placeholder: no computation yet."""
+    """Combines the dark series into a master dark (min/max-rejected mean; the dark keeps its bias)."""
 
     async def execute(self, obs: Observation) -> Observation:
-        await asyncio.sleep(PLACEHOLDER_SECONDS)
-        obs.reduction_data["master_dark"] = {"status": "placeholder"}
-        log.info("[MASTER_DARK] Placeholder — no computation yet")
+        name, reused = resolve_master(obs, "dark_images", "Master dark", _keep_bias)
+        obs.reduction_data["master_dark_image"] = name
+        log.info(f"[MASTER_DARK] {'Reused' if reused else 'Computed'} '{name}'")
         return obs
