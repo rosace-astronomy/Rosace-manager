@@ -208,6 +208,14 @@ def shift_columns(data: np.ndarray, shifts: np.ndarray) -> np.ndarray:
     return result
 
 
+
+def shift_rows(data: np.ndarray, shifts: np.ndarray) -> np.ndarray:
+    """Shifts each row y of data by shifts[y] pixels along X (to the right
+    when positive), by the same overlap redistribution as shift_columns():
+    each row's total is kept exactly, except what leaves through the left or
+    right edge."""
+    return shift_columns(data.T, shifts).T
+
 def transform_frames(
     obs: Observation,
     files: list[str],

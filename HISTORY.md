@@ -903,3 +903,15 @@ On the real 16 Peg frames of 2026-09-25 (sum of 5 preprocessed frames): the prin
 
 Later the same day, before the first commit of `tilt`, the user chose to keep the **principal axes alone** and drop the band method for the tilt, to be judged in use ("the flat moving the centre of gravity changes nothing"). The divergence logic and its WARNING went with it, and the tilt no longer adds `COMMENT` lines to the corrected frames' headers (useless: the angle is in the casier and the log). Measured on the same 16 Peg frames: the axes give −0.057°; after correction they re-measure −0.003°. For the record, the band method still sees −0.085° after this correction (trace at y = 537.78 at x = 182 and 535.86 at x = 1222, about ±1 px at the edges), against −0.143° before. `calculate_flux` keeps both methods.
 
+## 2026-10-08 — Smile: row cross-correlation and a parabola
+
+*Relates to: "Native reduction chain" (smile) in CLAUDE.md.*
+
+The user listed three ways to straighten the lamp lines: follow one bright line and align it row by row; fit its curvature as a circle arc and derive each row's shift; cross-correlate whole rows (CCF), thought to be the cleanest but expensive. Measured on the real lamp of 2026-09-25 (sum of 3 preprocessed, tilt-corrected frames, 1304×976), the CCF of all 976 rows through the Fourier transform takes ~0.3 s, so it is not expensive: it was combined with the second idea — the CCF gives each row's shift from every line at once, to a fraction of a pixel, and a parabola (a circle arc of large radius, here R ≈ 12 700 px, is a parabola, and fits more simply) is fitted on those shifts. Residual 0.023 px rms, so a parabola is enough. One CCF per row or every tenth row gave the same parabola; every row was kept (no extra parameter, negligible time).
+
+The lines are not only curved but tilted: the shift goes from −4.1 px at the top of the band to +1.0 px at the bottom, the parabola's vertex sits near y = 703, not on the trace (y = 537) — as if the slit were ~0.75° off the columns. The parabola corrects both.
+
+Selecting the rows: the user first proposed rows above 90 % of the trace row's level (30 % being already in the slit edge). Measured, the lamp's level along the slit is a flat plateau between 0.8 and 1.0 of the trace row's from y = 320 to 775, then drops within 2–3 rows (0.69, 0.40, 0.35): a 90 % threshold cut that plateau at random into some thirty pieces. The user also pointed out that dust on the slit would put a dark band in the spectrum and break any requirement of a contiguous block. Agreed rule: the band is delimited at 50 %, 5 % of its height is left out at each edge (rather than a fixed number of rows, to stay instrument-independent), rows below 50 % inside it are dropped individually, and the parabola fit rejects rows beyond 3σ until stable.
+
+On 16 Peg + lamp of 2026-09-25: rows 339–753 used (414, 1 rejected), shift −4.15 px at row 339 and +0.98 px at row 753, fit rms 0.023 px; after correction the per-row CCF shifts are between −0.03 and +0.06 px across the band; row totals kept to 2·10⁻¹⁰ (edge columns excluded); 2.1 s for 8 frames.
+

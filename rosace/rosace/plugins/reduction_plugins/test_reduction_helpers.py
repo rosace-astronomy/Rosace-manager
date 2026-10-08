@@ -23,6 +23,7 @@ from rosace.plugins.reduction_plugins.reduction_helpers import (
     preprocess_frames,
     resolve_master,
     shift_columns,
+    shift_rows,
     transform_frames,
     write_float_image,
 )
@@ -296,3 +297,21 @@ class TestTransformFrames:
         with fits.open(tmp_path / written[0]) as hdul:
             assert np.all(hdul[0].data == 6.0)
             assert list(hdul[0].header["COMMENT"]) == ["earlier step", "this step"]
+
+
+class TestShiftRows:
+
+    def test_shifts_each_row_and_keeps_its_total(self):
+        rng = np.random.default_rng(1)
+        data = np.zeros((30, 60))
+        data[:, 10:50] = rng.uniform(0, 1000, (30, 40))
+        shifts = rng.uniform(-5, 5, 30)
+        result = shift_rows(data, shifts)
+        assert result.sum(axis=1) == pytest.approx(data.sum(axis=1))
+
+    def test_positive_shift_moves_right(self):
+        data = np.zeros((1, 10))
+        data[0, 4] = 8.0
+        result = shift_rows(data, np.array([1.5]))
+        assert result[0, 5] == pytest.approx(4.0)
+        assert result[0, 6] == pytest.approx(4.0)
