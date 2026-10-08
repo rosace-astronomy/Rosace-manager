@@ -23,6 +23,7 @@ as is, otherwise it is computed -- so a master is computed once per session.
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from pathlib import Path
 from typing import Any, Callable
@@ -31,6 +32,7 @@ import numpy as np
 from astropy.io import fits
 
 from ...models import Observation
+from .axes_helpers import FeatureAxes, find_axes
 
 MIN_FRAMES = 3
 
@@ -38,6 +40,12 @@ MIN_FRAMES = 3
 # the 72ED), a pixel is a dead sensor edge: after the division by the flat it
 # can reach 1e10, so a measurement must ignore it.
 MIN_FLAT_FOR_MEASUREMENT = 0.05
+
+# The band lit through the slit: rows whose level reaches this fraction of the
+# reference row's (the brightest flat row, or the trace row), minus this
+# fraction of the band's height at each edge where slit-edge effects matter.
+LIT_BAND_LEVEL_FRACTION = 0.5
+LIT_BAND_MARGIN_FRACTION = 0.05
 
 _SERIES_INDEX_RE = re.compile(r"-\d+$")
 _UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]")
@@ -149,11 +157,37 @@ def intermediate_dir(obs: Observation) -> Path:
     return directory
 
 
+def flat_band(flat: np.ndarray) -> tuple[int, int]:
+    """First and last row of the band lit through the slit, from the master
+    flat: rows whose median reaches LIT_BAND_LEVEL_FRACTION of the brightest
+    row's median."""
+    level = np.median(flat, axis=1)
+    lit = np.nonzero(level >= LIT_BAND_LEVEL_FRACTION * level.max())[0]
+    return int(lit[0]), int(lit[-1])
+
+
+def find_trace(image: np.ndarray, flat: np.ndarray) -> FeatureAxes | None:
+    """Principal axes of the spectrum trace (find_axes()), measured on the
+    band lit through the slit only (flat_band()), dead pixels (flat below
+    MIN_FLAT_FOR_MEASUREMENT) set to 0; cx/cy in full-frame coordinates.
+    Outside the band the preprocessed frames are 0: left in, they would make
+    find_axes() see a zero background and take the whole lit band for the
+    trace. None when no trace is found."""
+    band_low, band_high = flat_band(flat)
+    band = slice(band_low, band_high + 1)
+    axes = find_axes(np.where(flat[band] < MIN_FLAT_FOR_MEASUREMENT, 0.0, image[band]))
+    if axes is None:
+        return None
+    return dataclasses.replace(axes, cy=axes.cy + band_low)
+
+
 def preprocess_frames(obs: Observation, input_key: str) -> tuple[list[str], Path]:
     """Corrects each raw frame under input_key (e.g. "star_spectra_images")
     with the session's masters: (frame - master bias) / master flat, frame by
-    frame (no stacking). The dark is not subtracted. Where the master flat is
-    <= 0 the result is 0, so no inf or NaN reaches the next steps. Each result
+    frame (no stacking). The dark is not subtracted. Only the useful area is
+    kept: outside the band lit through the slit (flat_band()), and where the
+    master flat is below MIN_FLAT_FOR_MEASUREMENT (dead sensor edges), the
+    result is 0 -- so no inf, NaN or huge value reaches the next steps. Each result
     is written to intermediate_dir(obs) as "<raw name>_preproc.fits", float32,
     with the raw frame's header plus COMMENT lines naming both masters.
     Returns the written paths, relative to the session directory, and the
@@ -168,7 +202,9 @@ def preprocess_frames(obs: Observation, input_key: str) -> tuple[list[str], Path
     flat = fits.getdata(session_dir / flat_name).astype(np.float64)
     if bias.shape != flat.shape:
         raise RuntimeError(f"Master bias '{bias_name}' is {bias.shape}, master flat '{flat_name}' is {flat.shape}")
-    flat_usable = flat > 0
+    band_low, band_high = flat_band(flat)
+    rows = np.arange(flat.shape[0])[:, None]
+    flat_usable = (flat >= MIN_FLAT_FOR_MEASUREMENT) & (rows >= band_low) & (rows <= band_high)
     comments = [
         f"Master bias subtracted: {bias_name}",
         f"Divided by master flat: {flat_name}",

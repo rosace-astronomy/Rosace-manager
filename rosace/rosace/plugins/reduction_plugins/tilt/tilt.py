@@ -3,11 +3,9 @@ REDUCTION sub-plugin — Tilt correction
 Measures the spectrum's tilt on the target and removes it from target and lamp frames by a vertical shift per column.
 
 Measured once, on the sum of the preprocessed target frames (shared key
-preproc_target_images), by the principal axes of inertia
-(axes_helpers.find_axes()). For the measurement only, the pixels where the
-master flat is below MIN_FLAT_FOR_MEASUREMENT (dead sensor edges, huge after
-the flat division) are set to 0. No trace found is an error that stops the
-reduction.
+preproc_target_images), by the principal axes of inertia, on the band lit
+through the slit only (reduction_helpers.find_trace()). No trace found is an
+error that stops the reduction.
 
 No rotation: every column of every preprocessed target and lamp frame
 (preproc_calib_images) is shifted vertically, the whole column, about
@@ -31,8 +29,7 @@ from astropy.io import fits
 
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
-from ..axes_helpers import find_axes
-from ..reduction_helpers import MIN_FLAT_FOR_MEASUREMENT, find_shared_input, shift_columns, transform_frames
+from ..reduction_helpers import find_shared_input, find_trace, shift_columns, transform_frames
 
 log = logging.getLogger("spectro.subplugin.tilt")
 
@@ -49,7 +46,7 @@ class TiltPlugin(SubPlugin):
         total = sum(fits.getdata(session_dir / name).astype(np.float64) for name in target_files)
         if total.shape != flat.shape:
             raise RuntimeError(f"TILT: target frames are {total.shape}, the master flat is {flat.shape}")
-        axes = find_axes(np.where(flat < MIN_FLAT_FOR_MEASUREMENT, 0.0, total))
+        axes = find_trace(total, flat)
         if axes is None:
             raise RuntimeError(f"TILT: no spectrum trace found on the sum of {len(target_files)} target frames")
 

@@ -13,7 +13,6 @@ sequencer:
   - slew
   - star_spectra_acquisition
 
-reduction:
-  - extract
+reduction: []  # the native reduction needs real frames; demo frames are empty placeholders
 
 sharing: blank_share

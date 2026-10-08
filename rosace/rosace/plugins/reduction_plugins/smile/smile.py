@@ -7,14 +7,15 @@ tilt_calib_images): each row is cross-correlated (CCF) with the reference --
 the rows around the trace row -- which gives, to a fraction of a pixel, how
 far that row's emission lines are shifted horizontally. Only the rows well
 inside the band lit through the slit are used: rows whose level (99th
-percentile of the row) reaches BAND_LEVEL_FRACTION of the trace row's,
-minus BAND_MARGIN_FRACTION of the band's height at each edge (slit edge
+percentile of the row) reaches LIT_BAND_LEVEL_FRACTION of the trace row's,
+minus LIT_BAND_MARGIN_FRACTION of the band's height at each edge (slit edge
 effects); a darker row inside the band (dust on the slit) is simply left
 out. A parabola shift(y) = a*y**2 + b*y + c is fitted on these rows,
 rejecting rows more than CLIP_SIGMA from it until stable.
 
 The trace row is found again here, by the principal axes on the sum of the
-tilt-corrected target frames (tilt_target_images). Every row of every lamp
+tilt-corrected target frames (tilt_target_images), on the lit band only
+(reduction_helpers.find_trace()). Every row of every lamp
 and target frame is then shifted by -(shift(y) - shift(trace row)), by
 overlap redistribution (reduction_helpers.shift_rows(), each row's total
 kept): the lines become straight and vertical, the trace row does not move.
@@ -36,13 +37,18 @@ from astropy.io import fits
 
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
-from ..axes_helpers import find_axes
-from ..reduction_helpers import MIN_FLAT_FOR_MEASUREMENT, find_shared_input, shift_rows, transform_frames
+from ..reduction_helpers import (
+    LIT_BAND_LEVEL_FRACTION,
+    LIT_BAND_MARGIN_FRACTION,
+    MIN_FLAT_FOR_MEASUREMENT,
+    find_shared_input,
+    find_trace,
+    shift_rows,
+    transform_frames,
+)
 
 log = logging.getLogger("spectro.subplugin.smile")
 
-BAND_LEVEL_FRACTION = 0.5    # a row is lit when its level reaches this fraction of the trace row's
-BAND_MARGIN_FRACTION = 0.05  # fraction of the lit band's height left out at each edge
 CLIP_SIGMA = 3.0             # rows further than this from the parabola are rejected
 MAX_LAG_PX = 50              # largest shift searched by the cross-correlation
 REFERENCE_HALF_ROWS = 2      # reference profile = mean of the trace row +- this many rows
@@ -56,11 +62,11 @@ def _sum_frames(session_dir: Path, files: list[str]) -> np.ndarray:
 def _used_rows(rows: np.ndarray, trace_row: int) -> np.ndarray:
     """Rows of the lit band used for the measurement (see module docstring)."""
     level = np.percentile(rows, 99, axis=1)
-    lit = level >= BAND_LEVEL_FRACTION * level[trace_row]
+    lit = level >= LIT_BAND_LEVEL_FRACTION * level[trace_row]
     lit_rows = np.nonzero(lit)[0]
     if len(lit_rows) == 0:
         return lit_rows
-    margin = BAND_MARGIN_FRACTION * (lit_rows[-1] - lit_rows[0])
+    margin = LIT_BAND_MARGIN_FRACTION * (lit_rows[-1] - lit_rows[0])
     return lit_rows[(lit_rows >= lit_rows[0] + margin) & (lit_rows <= lit_rows[-1] - margin)]
 
 
@@ -107,9 +113,10 @@ class SmilePlugin(SubPlugin):
         session_dir = Path(obs.obs_dir or "")
         target_files = find_shared_input(obs, "tilt_target_images")
         calib_files = find_shared_input(obs, "tilt_calib_images")
-        dead = fits.getdata(session_dir / find_shared_input(obs, "master_flat_image")) < MIN_FLAT_FOR_MEASUREMENT
+        flat = fits.getdata(session_dir / find_shared_input(obs, "master_flat_image")).astype(np.float64)
+        dead = flat < MIN_FLAT_FOR_MEASUREMENT
 
-        axes = find_axes(np.where(dead, 0.0, _sum_frames(session_dir, target_files)))
+        axes = find_trace(_sum_frames(session_dir, target_files), flat)
         if axes is None:
             raise RuntimeError(f"SMILE: no spectrum trace found on the sum of {len(target_files)} target frames")
         lamp = np.where(dead, 0.0, _sum_frames(session_dir, calib_files))

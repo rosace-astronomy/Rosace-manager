@@ -54,9 +54,9 @@ class TestLoadProgrammeYaml:
         assert len(data["sequencer"]) > 0
 
     def test_reduction_steps_are_list(self):
+        # Empty for demo: the native reduction needs real frames
         data = load_program_yaml("demo")
         assert isinstance(data["reduction"], list)
-        assert len(data["reduction"]) > 0
 
     def test_raises_on_unknown_program(self):
         with pytest.raises(FileNotFoundError, match="not found"):
@@ -201,7 +201,7 @@ class TestLoadPipelines:
         seq_names = [p.__class__.__name__ for p in seq]
         red_names = [p.__class__.__name__ for p in red]
         assert "FocusPlugin" not in seq_names
-        assert red_names == ["ExtractPlugin"]
+        assert red_names == []
 
     def test_nova_monitoring_minimal_sequencer(self):
         """Minimal sequencer (no focus, maximum responsiveness); minimal reduction."""
@@ -210,14 +210,14 @@ class TestLoadPipelines:
         red_names = [p.__class__.__name__ for p in red]
         assert "FocusPlugin" not in seq_names
         assert len(seq) == 2
-        assert red_names == ["ExtractPlugin"]
+        assert red_names == []
 
     def test_demo_full_pipeline(self):
         seq, red = load_pipelines("demo")
         seq_names = [p.__class__.__name__ for p in seq]
         red_names = [p.__class__.__name__ for p in red]
         assert seq_names == ["SlewPlugin", "StarSpectraAcquisitionPlugin"]
-        assert red_names == ["ExtractPlugin"]
+        assert red_names == []
 
     def test_be_stars_reduction_chain_resolves(self):
         """Every step of Be_stars.yaml's reduction chain resolves to a real

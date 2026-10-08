@@ -33,6 +33,9 @@ dependencies = [
     # focus SEQUENCER sub-plugin: star detection/shape filtering for the
     # guiding-camera focus-quality measurement (DAOStarFinder).
     "photutils>=1.13",
+    # reduction_plugins: diagnostic and spectrum plots (PNG/PDF/SVG), e.g.
+    # extract's picture of the spectrum window and sky zones.
+    "matplotlib>=3.8",
     "requests>=2.31",
     "bcrypt>=4.0",
 ]

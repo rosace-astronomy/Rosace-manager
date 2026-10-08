@@ -17,6 +17,7 @@ from astropy.io import fits
 from rosace.models import Observation
 from rosace.plugins.reduction_plugins.reduction_helpers import (
     find_shared_input,
+    flat_band,
     intermediate_dir,
     master_filename,
     minmax_mean,
@@ -231,6 +232,19 @@ class TestPreprocessFrames:
         assert data[0, 1] == 0.0
         assert np.all(np.isfinite(data))
 
+    def test_outside_the_lit_band_and_dead_pixels_give_zero(self, tmp_path):
+        flat = np.full(SHAPE, 1.0)
+        flat[0] = 0.2          # row below 50 % of the brightest: outside the lit band
+        flat[2, 3] = 0.04      # dead pixel inside the band
+        obs = self._setup(tmp_path, flat)
+
+        written, _ = preprocess_frames(obs, "calib_images")
+
+        data = fits.getdata(tmp_path / written[0])
+        assert np.all(data[0] == 0.0)
+        assert data[2, 3] == 0.0
+        assert data[1, 1] == pytest.approx(1000.0)
+
     def test_frame_of_another_size_is_an_error(self, tmp_path):
         obs = self._setup(tmp_path, np.ones(SHAPE))
         fits.writeto(tmp_path / "CALIB_x-1.fits", np.ones((2, 2), dtype=np.float32), overwrite=True)
@@ -315,3 +329,14 @@ class TestShiftRows:
         result = shift_rows(data, np.array([1.5]))
         assert result[0, 5] == pytest.approx(4.0)
         assert result[0, 6] == pytest.approx(4.0)
+
+
+class TestFlatBand:
+
+    def test_rows_above_half_of_the_brightest_row(self):
+        flat = np.zeros((20, 8))
+        flat[5:15] = 1.0
+        flat[9] = 1.2
+        flat[4] = 0.7   # 0.7 >= 0.6: in
+        flat[15] = 0.5  # 0.5 < 0.6: out
+        assert flat_band(flat) == (4, 14)

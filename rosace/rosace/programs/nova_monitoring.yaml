@@ -10,7 +10,6 @@ sequencer:
   - slew                        # Immediate pointing
   - star_spectra_acquisition    # Direct exposure, no focusing (emergency)
 
-reduction:
-  - extract     # 1D spectrum extraction (placeholder; the full chain lives in Be_stars.yaml)
+reduction: []  # no native reduction yet (the full chain lives in Be_stars.yaml)
 
 sharing: blank_share
