@@ -2,9 +2,11 @@
 REDUCTION sub-plugin — Spectrum flux of every raw science sub-exposure.
 Measures each file of sequencer_data["star_spectra_images"] with
 spectrum_flux_helpers.measure_spectrum_flux() (raw frame, flux above the
-per-column background, peak raw pixel) and records it both in this
-observation's casier and in rosace.db's spectrum_flux table, to follow
-spectrum intensity over time (transparency, exposure tuning).
+per-column background, peak raw pixel) and records it in the log (one line
+per frame) and in rosace.db's spectrum_flux table, to follow spectrum
+intensity over time (transparency, exposure tuning). The per-frame values are
+deliberately not written to the observation dossier (several YAML lines per
+frame, no use there); its casier only holds the exposure suggestion below.
 
 Never blocking: a sub-exposure that cannot be measured (no trace, unreadable
 file, database error) is logged as a warning and skipped, and execute() never
@@ -21,9 +23,8 @@ the session directory. When a frame is saturated, the true peak is unknown and
 the suggestion is only an upper bound (written "<=").
 
 Sequential on purpose (about 0.5 s of computation per frame, no await
-inside): REDUCTION currently shares the sequencer's event loop, so this
-sub-plugin is kept out of real-hardware programs until post-observation
-stages run in their own thread (TODO.md).
+inside): post-observation stages run in their own thread, so this time does
+not delay the sequencer.
 """
 
 from __future__ import annotations
@@ -40,7 +41,7 @@ from ....config import SUBPLUGIN_PARAMS
 from ....database import db_insert_spectrum_flux
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
-from ..spectrum_flux_helpers import METHOD_VERSION, SATURATION_ADU, measure_spectrum_flux
+from ..spectrum_flux_helpers import SATURATION_ADU, measure_spectrum_flux
 
 log = logging.getLogger("spectro.subplugin.calculate_flux")
 
@@ -157,9 +158,9 @@ class CalculateFluxPlugin(SubPlugin):
         if not images:
             return
         suggestion = exposure_suggestion(images)
-        obs.reduction_data["calculate_flux"] = {
-            "method_version": METHOD_VERSION, "images": images, "exposure_suggestion": suggestion,
-        }
+        # The per-frame measurements stay in the log and the spectrum_flux table:
+        # only the observation-level suggestion goes to the dossier
+        obs.reduction_data["calculate_flux"] = {"exposure_suggestion": suggestion}
         suggested = suggestion["suggested_exposure_s"]
         log.info(
             f"[CALCULATE_FLUX] Exposure suggestion: "

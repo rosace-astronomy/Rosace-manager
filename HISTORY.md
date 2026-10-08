@@ -927,3 +927,9 @@ Found while checking the zones: after the smile, the dead first column's huge va
 
 The programs that declared `extract` alone as a placeholder (All_stars, Cataclysmic, PN, bright_stars, nova_monitoring, demo, the two Docker demo programs) would have stopped their reduction once `extract` became real; it was removed from them (user), the last four now declaring `reduction: []`.
 
+## 2026-10-09 — Per-frame flux measurements leave the observation dossier
+
+*Relates to: "Spectrum trace axes and relative flux" (calculate_flux) in CLAUDE.md.*
+
+Since 2026-10-03, `calculate_flux` wrote every frame's measurement (about twenty values per frame) into its casier as well as into the `spectrum_flux` table, so that the observation dossier would stay self-contained. Reading real dossiers, the user found these many YAML lines out of place there: the per-frame values matter for the log and for long-term statistics in the database, not for the record of the observation. The casier now only holds the exposure suggestion (one entry per observation); the per-frame values remain in the log (one line per frame, unchanged) and in `spectrum_flux` (unchanged, `METHOD_VERSION` included). Dossiers written before this date keep their `images` block; they are not rewritten.
+

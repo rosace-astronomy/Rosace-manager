@@ -49,26 +49,24 @@ async def _rows(obs_id):
 
 class TestCalculateFluxPlugin:
 
-    async def test_every_sub_exposure_goes_to_casier_and_database(self, tmp_path):
+    async def test_every_sub_exposure_goes_to_log_and_database_not_casier(self, tmp_path, caplog):
         await db_init()
         _write_frame(tmp_path / "a-1.fits", exposure=30.0, seed=1)
         _write_frame(tmp_path / "a-2.fits", exposure=30.0, seed=2)
         obs = _make_obs(tmp_path, ["a-1.fits", "a-2.fits"], obs_id="obs-flux-both")
 
-        await CalculateFluxPlugin().execute(obs)
+        with caplog.at_level(logging.INFO, logger="spectro.subplugin.calculate_flux"):
+            await CalculateFluxPlugin().execute(obs)
 
-        casier = obs.reduction_data["calculate_flux"]
-        assert casier["method_version"] == METHOD_VERSION
-        assert set(casier["images"]) == {"a-1.fits", "a-2.fits"}
-        image = casier["images"]["a-1.fits"]
-        assert image["exposure_s"] == 30.0
-        assert image["total_adu"] > 0
-        assert "method_version" not in image and "notes" not in image
+        assert set(obs.reduction_data["calculate_flux"]) == {"exposure_suggestion"}
+        assert "a-1.fits: total" in caplog.text and "a-2.fits: total" in caplog.text
         rows = await _rows("obs-flux-both")
         assert [row["image_name"] for row in rows] == ["a-1.fits", "a-2.fits"]
         assert rows[0]["target_name"] == "16 Peg"
         assert rows[0]["magnitude_v"] == 5.08
-        assert rows[0]["total_adu"] == image["total_adu"]
+        assert rows[0]["exposure_s"] == 30.0
+        assert rows[0]["total_adu"] > 0
+        assert rows[0]["method_version"] == METHOD_VERSION
 
     async def test_unreadable_file_is_skipped_not_raised(self, tmp_path, caplog):
         await db_init()
@@ -79,7 +77,7 @@ class TestCalculateFluxPlugin:
         with caplog.at_level(logging.WARNING, logger="spectro.subplugin.calculate_flux"):
             await CalculateFluxPlugin().execute(obs)
 
-        assert set(obs.reduction_data["calculate_flux"]["images"]) == {"good.fits"}
+        assert obs.reduction_data["calculate_flux"]["exposure_suggestion"]["frames"] == 1
         assert "broken.fits: not measured" in caplog.text
 
     async def test_frame_without_trace_is_skipped(self, tmp_path, caplog):
@@ -105,7 +103,7 @@ class TestCalculateFluxPlugin:
         with caplog.at_level(logging.WARNING, logger="spectro.subplugin.calculate_flux"):
             await CalculateFluxPlugin().execute(obs)
 
-        assert "a-1.fits" in obs.reduction_data["calculate_flux"]["images"]
+        assert obs.reduction_data["calculate_flux"]["exposure_suggestion"]["frames"] == 1
         assert "not recorded in the database" in caplog.text
 
     async def test_no_science_file_does_nothing(self, tmp_path):
