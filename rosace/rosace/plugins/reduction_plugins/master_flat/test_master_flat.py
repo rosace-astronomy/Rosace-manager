@@ -1,6 +1,6 @@
 """
 Tests for the MASTER_FLAT sub-plugin (MasterFlatPlugin), on synthetic frames.
-The combination itself is covered by test_master_helpers.py.
+The combination itself is covered by test_reduction_helpers.py.
 Run: pytest plugins/reduction_plugins/master_flat/test_master_flat.py -v
 """
 

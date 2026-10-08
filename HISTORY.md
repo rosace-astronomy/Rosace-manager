@@ -880,3 +880,13 @@ The 2026-10-06 rules said "sigma-clipped mean" for the masters. Before writing t
 The flat: the dark keeps its bias because it is *subtracted* (the bias cancels between image and dark), but the flat is used in a *division*, where nothing removes its offset — in a faint part of the lamp spectrum the flat would be mostly offset and the division would correct the wrong thing. So `master_flat` subtracts the master bias (the dark current over a 3 s flat is neglected), then divides by its own mean (the lamp's spectral shape is left in, to be absorbed by the instrumental response). The flat's behaviour outside the lamp trace, where it is near 0, is left to `preproc_target`.
 
 Masters live in the session directory, named after their series (`<series root>_master.fits`) and reused when the file exists. Before this, the calibration acquisitions' file lists were moved to shared keys (`bias_images`, `dark_images`, `flat_images`, `calib_images`), and the series lookup now skips `_master` files: a master shares its series' prefix and, with a series count of 1, would otherwise have been reused as a raw frame.
+
+## 2026-10-08 — Preprocessing without the dark, for now
+
+*Relates to: "Native reduction chain" (preprocessing) in CLAUDE.md.*
+
+The darks are always shot at `max_exposure_time_seconds` (180 s on the 72ED), while science frames are often much shorter, so using the master dark would need a scaling `bias + (dark − bias) × t/180`. The 2026-09-25 masters show a median dark current of 0.33 ADU in 180 s at 0 °C: negligible. The user chose to start simple — `(frame − master bias) / master flat`, no dark — and to come back to it later if needed. Each frame is corrected on its own; stacking comes later.
+
+The whole frame is processed with no special handling outside the slit (user). One guard only: where the master flat is ≤ 0 (144 pixels, all in the sensor's first column, on 2026-09-25), the result is 0, so no `inf`/`NaN` breaks the sums of the later steps. The same column, with a tiny positive flat, still comes out with values up to ~10¹⁰ — accepted for now. On the real 16 Peg frames: 0.05 s per frame, values checked by hand.
+
+The intermediate files of an observation go to one directory, `<queried name>_<observation id>`, in the session directory. The helper module of the masters (`master_helpers.py`) was renamed `reduction_helpers.py` at the same time, so the whole native chain shares one helper module (user).

@@ -13,7 +13,7 @@ short flat exposure is neglected. The result is then divided by its own mean,
 so it averages 1; the lamp's spectral shape stays in it, to be absorbed by
 the instrumental response (see CLAUDE.md, "Native reduction chain"). Written
 to the session directory as "<series root>_master.fits" and reused when that
-file already exists (see master_helpers.py).
+file already exists (see reduction_helpers.py).
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from astropy.io import fits
 
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
-from ..master_helpers import find_shared_input, resolve_master
+from ..reduction_helpers import find_shared_input, resolve_master
 
 log = logging.getLogger("spectro.subplugin.master_flat")
 

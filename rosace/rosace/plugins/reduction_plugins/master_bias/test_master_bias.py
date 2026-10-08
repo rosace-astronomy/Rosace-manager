@@ -1,6 +1,6 @@
 """
 Tests for the MASTER_BIAS sub-plugin (MasterBiasPlugin), on synthetic frames.
-The combination itself is covered by test_master_helpers.py.
+The combination itself is covered by test_reduction_helpers.py.
 Run: pytest plugins/reduction_plugins/master_bias/test_master_bias.py -v
 """
 

@@ -9,7 +9,7 @@ master's file name under the shared reduction_data["master_dark_image"] key
 subtracted from an image that carries the same bias, which cancels out (see
 CLAUDE.md, "Native reduction chain"). Written to the session directory as
 "<series root>_master.fits" and reused when that file already exists (see
-master_helpers.py).
+reduction_helpers.py).
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import numpy as np
 
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
-from ..master_helpers import resolve_master
+from ..reduction_helpers import resolve_master
 
 log = logging.getLogger("spectro.subplugin.master_dark")
 

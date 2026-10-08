@@ -27,15 +27,14 @@ Claude peut le suggérer, jamais le faire lui-même.
       mesurées / saturées), calculé par `calculate_flux` et recopié via
       `obs.measurements` (phase B du scheduler multi-programmes) ; le détail
       pose par pose reste dans `spectrum_flux` (2026-10-02)
-- [ ] Distance à la Lune : filtre scheduler sur la distance de la cible à
-      la Lune (seuil à définir, probablement selon la phase) — pas urgent
+- [ ] Distance à la Lune : filtre scheduler sur la distance de la cible à la Lune (seuil à définir, probablement selon la phase) — pas urgent
 - [ ] Temps de pose des étoiles faibles : la loi `exposure_time_mag0 ×
       10^(mag/2,5)` vise l'approche de la saturation. Au-delà de
       `max_exposure_time`, la durée est déjà découpée en poses de 180 s, mais
       le temps total explose pour une étoile faible (magnitude 9,8 avec 4 s à
       magnitude 0 : environ 33 600 s, soit 187 poses).
 - [ ] Journalisation temporelle des étapes (time-series DB type InfluxDB). Définir les étapes que je veux suivre (pointing, science, focus, reference images... à compléter)
-
+- [ ] Virer du fichier Observation les mesures de flux (uniquement en log et dans la base de données, et de manière plus synthétique)
 - [ ] Responsive design sur la GUI web (X4) pour tablette et téléphone
       (2026-09-20)
 - [ ] Revoir les bibliothèques "fragiles"/peu maintenues du projet — une ou
@@ -83,3 +82,8 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] GUI web : l'affichage d'une nouvelle image (au moins panneau Spectre)
       repart en taille pleine à chaque nouvelle capture au lieu de garder
       le zoom courant (constaté 2026-09-19)
+- [ ] flat_acquisition : la lampe flat chauffe encore pendant la série — 1re
+      image à 88 % des suivantes, puis +1 % jusqu'à la 5e (nuit 2026-09-25).
+      Le rejet min/max du master l'écarte, mais une pause de stabilisation
+      avant la série (comme light_settle_seconds de slit_xy) serait plus
+      propre (idée 2026-10-07)

@@ -1,7 +1,8 @@
 """
-Tests for master_helpers.py (master calibration frames: min/max-rejected
-mean, file naming and reuse, shared input lookup), on synthetic frames.
-Run: pytest plugins/reduction_plugins/test_master_helpers.py -v
+Tests for reduction_helpers.py (shared input lookup, master calibration
+frames: min/max-rejected mean, file naming and reuse; intermediate-file
+directory; preprocessing of raw frames), on synthetic frames.
+Run: pytest plugins/reduction_plugins/test_reduction_helpers.py -v
 """
 
 from __future__ import annotations
@@ -13,12 +14,14 @@ import pytest
 from astropy.io import fits
 
 from rosace.models import Observation
-from rosace.plugins.reduction_plugins.master_helpers import (
+from rosace.plugins.reduction_plugins.reduction_helpers import (
     find_shared_input,
+    intermediate_dir,
     master_filename,
     minmax_mean,
+    preprocess_frames,
     resolve_master,
-    write_master,
+    write_float_image,
 )
 
 SHAPE = (4, 6)
@@ -102,7 +105,7 @@ class TestWriteMaster:
         header["BZERO"] = 32768
         header["BSCALE"] = 1
         header["EXPTIME"] = 3.0
-        write_master(tmp_path / "m.fits", np.full(SHAPE, 1234.5), header, ["line one", "line two"])
+        write_float_image(tmp_path / "m.fits", np.full(SHAPE, 1234.5), header, ["line one", "line two"])
 
         with fits.open(tmp_path / "m.fits") as hdul:
             assert hdul[0].data.dtype == np.dtype(">f4")
@@ -163,3 +166,75 @@ class TestResolveMaster:
     def test_obs_dir_required(self):
         with pytest.raises(RuntimeError, match="obs_dir"):
             resolve_master(_obs(sequencer_data={"bias_images": ["a-1.fits"]}), "bias_images", "Master bias")
+
+
+class TestIntermediateDir:
+
+    def test_named_after_queried_name_and_observation_id(self, tmp_path):
+        obs = _obs(tmp_path, scheduler_data={"queried_name": "alf Lyr / Vega"})
+        directory = intermediate_dir(obs)
+        assert directory == tmp_path / "alfLyrVega_obs-master"
+        assert directory.is_dir()
+
+    def test_existing_directory_is_kept(self, tmp_path):
+        obs = _obs(tmp_path, scheduler_data={"queried_name": "Vega"})
+        (intermediate_dir(obs) / "kept.fits").write_bytes(b"x")
+        assert (intermediate_dir(obs) / "kept.fits").exists()
+
+    def test_queried_name_required(self, tmp_path):
+        with pytest.raises(RuntimeError, match="queried_name"):
+            intermediate_dir(_obs(tmp_path))
+
+
+class TestPreprocessFrames:
+
+    def _setup(self, tmp_path, flat, raw_values=(1300.0,)):
+        fits.writeto(tmp_path / "bias_m.fits", np.full(SHAPE, 300.0, dtype=np.float32))
+        fits.writeto(tmp_path / "flat_m.fits", flat.astype(np.float32))
+        names = []
+        for i, value in enumerate(raw_values, start=1):
+            name = f"CALIB_x-{i}.fits"
+            fits.writeto(tmp_path / name, np.full(SHAPE, value, dtype=np.float32))
+            names.append(name)
+        return _obs(tmp_path, scheduler_data={"queried_name": "Vega"},
+                    sequencer_data={"calib_images": names},
+                    reduction_data={"master_bias_image": "bias_m.fits", "master_flat_image": "flat_m.fits"})
+
+    def test_subtracts_bias_and_divides_by_flat(self, tmp_path):
+        flat = np.full(SHAPE, 2.0)
+        flat[0, 0] = 0.5
+        obs = self._setup(tmp_path, flat, raw_values=(1300.0, 2300.0))
+
+        written, out_dir = preprocess_frames(obs, "calib_images")
+
+        assert written == ["Vega_obs-master/CALIB_x-1_preproc.fits", "Vega_obs-master/CALIB_x-2_preproc.fits"]
+        assert out_dir == tmp_path / "Vega_obs-master"
+        first = fits.getdata(tmp_path / written[0])
+        assert first[1, 1] == pytest.approx(500.0)   # (1300 - 300) / 2
+        assert first[0, 0] == pytest.approx(2000.0)  # (1300 - 300) / 0.5
+        assert fits.getdata(tmp_path / written[1])[1, 1] == pytest.approx(1000.0)
+
+    def test_flat_at_or_below_zero_gives_zero(self, tmp_path):
+        flat = np.full(SHAPE, 1.0)
+        flat[0, 0] = 0.0
+        flat[0, 1] = -0.01
+        obs = self._setup(tmp_path, flat)
+
+        written, _ = preprocess_frames(obs, "calib_images")
+
+        data = fits.getdata(tmp_path / written[0])
+        assert data[0, 0] == 0.0
+        assert data[0, 1] == 0.0
+        assert np.all(np.isfinite(data))
+
+    def test_frame_of_another_size_is_an_error(self, tmp_path):
+        obs = self._setup(tmp_path, np.ones(SHAPE))
+        fits.writeto(tmp_path / "CALIB_x-1.fits", np.ones((2, 2), dtype=np.float32), overwrite=True)
+        with pytest.raises(RuntimeError, match="masters are"):
+            preprocess_frames(obs, "calib_images")
+
+    def test_masters_of_different_sizes_are_an_error(self, tmp_path):
+        obs = self._setup(tmp_path, np.ones(SHAPE))
+        fits.writeto(tmp_path / "flat_m.fits", np.ones((2, 2), dtype=np.float32), overwrite=True)
+        with pytest.raises(RuntimeError, match="master flat"):
+            preprocess_frames(obs, "calib_images")

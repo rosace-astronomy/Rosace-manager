@@ -6,7 +6,7 @@ Input: the shared sequencer_data["bias_images"] key. Output: the master's
 file name under the shared reduction_data["master_bias_image"] key -- no
 casier of its own, nothing else descriptive to add. The master is written to
 the session directory as "<series root>_master.fits" and reused when that
-file already exists (see master_helpers.py), so it is computed once per
+file already exists (see reduction_helpers.py), so it is computed once per
 session.
 """
 
@@ -18,7 +18,7 @@ import logging
 
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
-from ..master_helpers import resolve_master
+from ..reduction_helpers import resolve_master
 
 log = logging.getLogger("spectro.subplugin.master_bias")
 

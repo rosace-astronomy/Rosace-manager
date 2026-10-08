@@ -1,6 +1,6 @@
 """
 Tests for the MASTER_DARK sub-plugin (MasterDarkPlugin), on synthetic frames.
-The combination itself is covered by test_master_helpers.py.
+The combination itself is covered by test_reduction_helpers.py.
 Run: pytest plugins/reduction_plugins/master_dark/test_master_dark.py -v
 """
 

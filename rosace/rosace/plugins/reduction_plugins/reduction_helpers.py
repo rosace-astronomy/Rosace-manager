@@ -1,10 +1,15 @@
 """
-Building the session's master calibration frames (bias, dark, flat) from a
-raw series, and finding a step's input under its shared key.
+Shared functions of the native reduction chain: finding a step's input under
+its shared key, writing float images, the observation's intermediate-file
+directory, the session's master calibration frames (bias, dark, flat) and
+the preprocessing of raw frames with them.
 
 Plain functions, not a sub-plugin: same status as axes_helpers.py -- not
 resolved by pipeline_loader.py's dynamic importlib convention, no program
 YAML ever declares this module as a step.
+
+Every computation works on whole numpy arrays, never pixel by pixel in a
+Python loop.
 
 A master is combined pixel by pixel: for each pixel, its N values (one per
 frame of the series) are sorted, the highest and the lowest are rejected,
@@ -30,6 +35,7 @@ from ...models import Observation
 MIN_FRAMES = 3
 
 _SERIES_INDEX_RE = re.compile(r"-\d+$")
+_UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]")
 
 # Casiers searched, in this order, for a shared input key.
 _CASIERS = ("scheduler_data", "sequencer_data", "reduction_data", "sharing_data", "archive_data")
@@ -74,11 +80,11 @@ def load_series(directory: Path, files: list[str]) -> tuple[np.ndarray, fits.Hea
     return stack, header
 
 
-def write_master(path: Path, data: np.ndarray, header: fits.Header, comments: list[str]) -> None:
-    """Writes a master as float32, keeping the first frame's header plus one
-    COMMENT card per line of comments. BZERO/BSCALE/BLANK, inherited from the
-    camera's integer frames, are removed: they describe an integer encoding
-    the float data no longer uses."""
+def write_float_image(path: Path, data: np.ndarray, header: fits.Header, comments: list[str]) -> None:
+    """Writes a computed image as float32, keeping the header of the raw frame
+    it comes from plus one COMMENT card per line of comments. BZERO/BSCALE/
+    BLANK, inherited from the camera's integer frames, are removed: they
+    describe an integer encoding the float data no longer uses."""
     header = header.copy()
     for key in ("BZERO", "BSCALE", "BLANK"):
         header.remove(key, ignore_missing=True, remove_all=True)
@@ -117,5 +123,60 @@ def resolve_master(
     comments += [f"Source: {f}" for f in files]
     if finish is not None:
         data = finish(data, comments)
-    write_master(directory / name, data, header, comments)
+    write_float_image(directory / name, data, header, comments)
     return name, False
+
+
+def intermediate_dir(obs: Observation) -> Path:
+    """The observation's directory of intermediate files, created if needed:
+    "<queried name>_<observation id>" inside the session directory (e.g.
+    "Vega_0e37017f"), the name stripped of anything but letters, digits, "_"
+    and "-" (same rule as FITS file names). Every intermediate file of the
+    observation goes there; deleting it loses nothing, everything can be
+    rebuilt from the raw frames."""
+    if not obs.obs_dir:
+        raise RuntimeError("Observation directory (obs_dir) not set")
+    name = _UNSAFE_NAME_CHARS.sub("", obs.scheduler_data.get("queried_name") or "")
+    if not name:
+        raise RuntimeError("No usable queried_name to name the intermediate-file directory")
+    directory = Path(obs.obs_dir) / f"{name}_{obs.id}"
+    directory.mkdir(exist_ok=True)
+    return directory
+
+
+def preprocess_frames(obs: Observation, input_key: str) -> tuple[list[str], Path]:
+    """Corrects each raw frame under input_key (e.g. "star_spectra_images")
+    with the session's masters: (frame - master bias) / master flat, frame by
+    frame (no stacking). The dark is not subtracted. Where the master flat is
+    <= 0 the result is 0, so no inf or NaN reaches the next steps. Each result
+    is written to intermediate_dir(obs) as "<raw name>_preproc.fits", float32,
+    with the raw frame's header plus COMMENT lines naming both masters.
+    Returns the written paths, relative to the session directory, and the
+    intermediate directory."""
+    session_dir = Path(obs.obs_dir or "")
+    files = find_shared_input(obs, input_key)
+    bias_name = find_shared_input(obs, "master_bias_image")
+    flat_name = find_shared_input(obs, "master_flat_image")
+    out_dir = intermediate_dir(obs)
+
+    bias = fits.getdata(session_dir / bias_name).astype(np.float64)
+    flat = fits.getdata(session_dir / flat_name).astype(np.float64)
+    if bias.shape != flat.shape:
+        raise RuntimeError(f"Master bias '{bias_name}' is {bias.shape}, master flat '{flat_name}' is {flat.shape}")
+    flat_usable = flat > 0
+    comments = [
+        f"Master bias subtracted: {bias_name}",
+        f"Divided by master flat: {flat_name}",
+        "Dark not subtracted",
+    ]
+
+    written = []
+    for name in files:
+        raw = fits.getdata(session_dir / name).astype(np.float64)
+        if raw.shape != bias.shape:
+            raise RuntimeError(f"'{name}' is {raw.shape}, the masters are {bias.shape}")
+        data = np.divide(raw - bias, flat, out=np.zeros_like(raw), where=flat_usable)
+        out_path = out_dir / f"{Path(name).stem}_preproc.fits"
+        write_float_image(out_path, data, fits.getheader(session_dir / name), comments)
+        written.append(str(out_path.relative_to(session_dir)))
+    return written, out_dir
