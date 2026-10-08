@@ -1,7 +1,8 @@
 """
 Tests for reduction_helpers.py (shared input lookup, master calibration
 frames: min/max-rejected mean, file naming and reuse; intermediate-file
-directory; preprocessing of raw frames), on synthetic frames.
+directory; preprocessing of raw frames; column shifts and frame
+transforms), on synthetic frames.
 Run: pytest plugins/reduction_plugins/test_reduction_helpers.py -v
 """
 
@@ -21,6 +22,8 @@ from rosace.plugins.reduction_plugins.reduction_helpers import (
     minmax_mean,
     preprocess_frames,
     resolve_master,
+    shift_columns,
+    transform_frames,
     write_float_image,
 )
 
@@ -238,3 +241,58 @@ class TestPreprocessFrames:
         fits.writeto(tmp_path / "flat_m.fits", np.ones((2, 2), dtype=np.float32), overwrite=True)
         with pytest.raises(RuntimeError, match="master flat"):
             preprocess_frames(obs, "calib_images")
+
+
+class TestShiftColumns:
+
+    def test_whole_pixel_shift_is_exact(self):
+        data = np.zeros((10, 2))
+        data[4, 0] = 7.0
+        data[4, 1] = 5.0
+        result = shift_columns(data, np.array([2.0, -3.0]))
+        assert result[6, 0] == 7.0 and result[1, 1] == 5.0
+        assert result.sum() == 12.0
+
+    def test_half_pixel_shift_splits_the_value(self):
+        data = np.zeros((10, 1))
+        data[4, 0] = 8.0
+        result = shift_columns(data, np.array([0.5]))
+        assert result[4, 0] == pytest.approx(4.0)
+        assert result[5, 0] == pytest.approx(4.0)
+
+    def test_negative_fractional_shift(self):
+        data = np.zeros((10, 1))
+        data[4, 0] = 10.0
+        result = shift_columns(data, np.array([-0.25]))
+        assert result[3, 0] == pytest.approx(2.5)
+        assert result[4, 0] == pytest.approx(7.5)
+
+    def test_each_column_total_is_kept(self):
+        rng = np.random.default_rng(0)
+        data = np.zeros((60, 40))
+        data[10:50] = rng.uniform(0, 1000, (40, 40))
+        shifts = rng.uniform(-5, 5, 40)
+        result = shift_columns(data, shifts)
+        assert result.sum(axis=0) == pytest.approx(data.sum(axis=0))
+
+    def test_entering_pixels_are_zero_and_leaving_ones_are_lost(self):
+        data = np.ones((5, 1))
+        result = shift_columns(data, np.array([2.0]))
+        assert list(result[:, 0]) == [0.0, 0.0, 1.0, 1.0, 1.0]
+
+
+class TestTransformFrames:
+
+    def test_writes_suffixed_frames_with_extra_comments(self, tmp_path):
+        obs = _obs(tmp_path, scheduler_data={"queried_name": "Vega"})
+        sub = intermediate_dir(obs)
+        header = fits.Header()
+        header["COMMENT"] = "earlier step"
+        fits.writeto(sub / "a_preproc.fits", np.full(SHAPE, 2.0, dtype=np.float32), header)
+
+        written = transform_frames(obs, ["Vega_obs-master/a_preproc.fits"], "tilt", lambda d: d * 3, ["this step"])
+
+        assert written == ["Vega_obs-master/a_preproc_tilt.fits"]
+        with fits.open(tmp_path / written[0]) as hdul:
+            assert np.all(hdul[0].data == 6.0)
+            assert list(hdul[0].header["COMMENT"]) == ["earlier step", "this step"]

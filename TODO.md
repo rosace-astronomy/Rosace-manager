@@ -87,3 +87,10 @@ Claude peut le suggérer, jamais le faire lui-même.
       Le rejet min/max du master l'écarte, mais une pause de stabilisation
       avant la série (comme light_settle_seconds de slit_xy) serait plus
       propre (idée 2026-10-07)
+
+## Réduction
+
+- [ ] tilt : le décalage s'applique pour l'instant à toute la hauteur de la
+      colonne. À optimiser si c'est trop lent : se limiter à une bande autour
+      de la trace (par exemple 200 px, assez pour garder le fond de ciel de
+      la zone éclairée par le flat) (idée 2026-10-08)

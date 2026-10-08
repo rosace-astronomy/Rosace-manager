@@ -34,6 +34,11 @@ from ...models import Observation
 
 MIN_FRAMES = 3
 
+# Below this value of the normalized master flat (~300 ADU of flat signal on
+# the 72ED), a pixel is a dead sensor edge: after the division by the flat it
+# can reach 1e10, so a measurement must ignore it.
+MIN_FLAT_FOR_MEASUREMENT = 0.05
+
 _SERIES_INDEX_RE = re.compile(r"-\d+$")
 _UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]")
 
@@ -180,3 +185,48 @@ def preprocess_frames(obs: Observation, input_key: str) -> tuple[list[str], Path
         write_float_image(out_path, data, fits.getheader(session_dir / name), comments)
         written.append(str(out_path.relative_to(session_dir)))
     return written, out_dir
+
+
+def shift_columns(data: np.ndarray, shifts: np.ndarray) -> np.ndarray:
+    """Shifts each column x of data by shifts[x] pixels along Y (upwards when
+    positive), by overlap redistribution: moved by k + f pixels (k whole, f in
+    [0, 1)), each original pixel overlaps two new pixels, the first by 1 - f,
+    the second by f, and gives each that fraction of its value -- so nothing
+    is created or lost and each column's total is kept exactly, except what
+    leaves through the top or bottom edge. Pixels entering from an edge are 0.
+    Whole-array numpy operations, no loop over pixels."""
+    height, width = data.shape
+    whole = np.floor(shifts).astype(int)
+    fraction = shifts - whole
+    rows = np.arange(height)[:, None]
+    cols = np.arange(width)[None, :]
+    result = np.zeros(data.shape, dtype=np.float64)
+    for source, weight in ((rows - whole, 1.0 - fraction), (rows - whole - 1, fraction)):
+        inside = (source >= 0) & (source < height)
+        values = data[np.clip(source, 0, height - 1), cols]
+        result += np.where(inside, values * weight, 0.0)
+    return result
+
+
+def transform_frames(
+    obs: Observation,
+    files: list[str],
+    suffix: str,
+    transform: Callable[[np.ndarray], np.ndarray],
+    comments: list[str],
+) -> list[str]:
+    """Applies transform to each image (paths relative to the session
+    directory) and writes the result to intermediate_dir(obs) as
+    "<name>_<suffix>.fits", float32, with the image's own header plus the
+    given COMMENT lines. Returns the written paths, relative to the session
+    directory."""
+    session_dir = Path(obs.obs_dir or "")
+    out_dir = intermediate_dir(obs)
+    written = []
+    for name in files:
+        data = fits.getdata(session_dir / name).astype(np.float64)
+        out_path = out_dir / f"{Path(name).stem}_{suffix}.fits"
+        write_float_image(out_path, transform(data), fits.getheader(session_dir / name), comments)
+        written.append(str(out_path.relative_to(session_dir)))
+    return written
+
