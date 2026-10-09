@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 import numpy as np
 import pytest
 from astropy.io import fits
+from numpy.polynomial import Polynomial
 
 from rosace.models import Observation
 from rosace.plugins.reduction_plugins.reduction_helpers import (
@@ -22,6 +23,8 @@ from rosace.plugins.reduction_plugins.reduction_helpers import (
     master_filename,
     minmax_mean,
     preprocess_frames,
+    read_law,
+    resample_linear,
     resolve_master,
     series_root,
     shift_columns,
@@ -344,3 +347,45 @@ class TestFlatBand:
         flat[4] = 0.7   # 0.7 >= 0.6: in
         flat[15] = 0.5  # 0.5 < 0.6: out
         assert flat_band(flat) == (4, 14)
+
+
+class TestResampleLinear:
+
+    def test_linear_law_at_its_own_step_keeps_the_spectrum(self):
+        spectrum = np.random.default_rng(0).uniform(0, 100, 50)
+        law = Polynomial([4000.0, 2.5])
+        result = resample_linear(spectrum, law, 4000.0, 2.5, 50)
+        assert result == pytest.approx(spectrum)
+
+    def test_total_kept_with_a_non_linear_law(self):
+        spectrum = np.random.default_rng(1).uniform(0, 100, 200)
+        law = Polynomial([4000.0, 3.5, 2e-3, -3e-6])
+        first, last = law(-0.5), law(199.5)
+        step = 1.3
+        count = int((last - first) / step) + 2
+        result = resample_linear(spectrum, law, first + step / 2, step, count)
+        assert result.sum() == pytest.approx(spectrum.sum())
+
+    def test_line_centre_found_in_wavelength(self):
+        x = np.arange(300)
+        law = Polynomial([4000.0, 3.5, 1e-3])
+        spectrum = np.exp(-0.5 * ((x - 150.3) / 2.0) ** 2)
+        result = resample_linear(spectrum, law, 4000.0, 1.0, 1300)
+        wavelengths = 4000.0 + np.arange(1300)
+        centre = np.sum(wavelengths * result) / result.sum()
+        assert centre == pytest.approx(law(150.3), abs=0.05)
+
+    def test_decreasing_law_is_an_error(self):
+        with pytest.raises(ValueError, match="does not increase"):
+            resample_linear(np.ones(10), Polynomial([5000.0, -3.0]), 4900.0, 3.0, 10)
+
+
+class TestReadLaw:
+
+    def test_coefficients_unit_and_comments(self, tmp_path):
+        path = tmp_path / "law.yaml"
+        path.write_text("# Dispersion law of lamp series X.\n# 8 lines, RMS 0.2 A.\nunit: A\nA0: 3054.8\nA1: 3.5\nA2: 0.0002\n")
+        law = read_law(path)
+        assert law == {"unit": "A", "coefficients": [3054.8, 3.5, 0.0002],
+                       "comments": ["Dispersion law of lamp series X.", "8 lines, RMS 0.2 A."]}
+

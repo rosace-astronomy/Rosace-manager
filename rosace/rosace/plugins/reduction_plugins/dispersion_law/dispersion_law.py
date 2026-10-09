@@ -65,7 +65,7 @@ from scipy.signal import find_peaks, peak_widths
 from ....config import BASE_DATA_DIR, SUBPLUGIN_PARAMS
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
-from ..reduction_helpers import find_shared_input, series_root
+from ..reduction_helpers import find_shared_input, read_law, series_root
 from ..spectrum_flux_helpers import _fit_gaussian
 
 log = logging.getLogger("spectro.subplugin.dispersion_law")
@@ -344,15 +344,6 @@ def write_law(path: Path, solution: DispersionSolution, lamp_series: str, unit: 
     ]
     body = {"unit": unit} | {f"A{k}": c for k, c in enumerate(solution.coefficients)}
     path.write_text("\n".join(header) + "\n" + yaml.safe_dump(body, sort_keys=False))
-
-
-def read_law(path: Path) -> dict:
-    """The YAML law file's content: unit and coefficients A0..An."""
-    data = yaml.safe_load(Path(path).read_text())
-    coefficients = []
-    while f"A{len(coefficients)}" in data:
-        coefficients.append(float(data[f"A{len(coefficients)}"]))
-    return {"unit": data.get("unit", "A"), "coefficients": coefficients}
 
 
 def _reference_path(name: str) -> Path:

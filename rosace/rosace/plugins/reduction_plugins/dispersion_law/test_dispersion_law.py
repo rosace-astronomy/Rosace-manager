@@ -13,11 +13,11 @@ from numpy.polynomial import Polynomial
 
 from rosace.models import Observation
 from rosace.plugins.reduction_plugins.dispersion_law import dispersion_law as module
+from rosace.plugins.reduction_plugins.reduction_helpers import read_law
 from rosace.plugins.reduction_plugins.dispersion_law.dispersion_law import (
     DispersionLawPlugin,
     detect_lines,
     local_minima_background,
-    read_law,
     read_reference_lines,
     solve_dispersion,
 )

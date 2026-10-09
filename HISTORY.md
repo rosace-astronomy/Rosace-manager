@@ -956,3 +956,11 @@ The first version used triplets (a parabola through three pairs) without constra
 
 Background under the lamp lines: local minima joined by straight lines (user's idea), rather than a running median of a given width (a size in pixels depends on the camera). Line positions: a Gaussian fit, 0.02–0.08 px on the lines kept; the user aims at better than a tenth of a pixel.
 
+## 2026-10-09 — Lambda calibration: mean-dispersion step, overlap redistribution
+
+*Relates to: "Native reduction chain" (lambda calibration) in CLAUDE.md.*
+
+The step of the calibrated spectrum (`CDELT1`) has no BeSS rule. The user first suggested A1, the linear coefficient of the law; but A1 is the dispersion at pixel 0 only, and the local dispersion A1 + 2·A2·x + 3·A3·x² runs from about 3.5 to 3.2 Å/px across the sensor (on 16 Peg A1 is 3.4976, close to the mean by chance). Demetra writes 0.87 Å, an oversampling by 4 that adds no information (the points are correlated, the file four times larger, only the curve looks smoother). Chosen: the mean dispersion over the sensor, one point per pixel (3.4723 Å on 16 Peg), with an optional `step` to impose another value. The whole sensor is kept, extrapolated edges included: `crop` removes them later (user).
+
+Resampling by overlap redistribution (user), the same principle as the tilt and smile shifts: each pixel's flux spread over the wavelength interval it covers, shared among the new intervals it overlaps, so the total flux is kept exactly (checked on 16 Peg: ratio 1.000000) and nothing oscillates around sharp lines, unlike a spline interpolation. The lamp is calibrated too: its retained lines fall within ±0.31 Å of their reference, the law's own residuals, so the resampling adds no shift. FITS keywords `CRVAL1`, `CDELT1`, `CRPIX1 = 1`, `CTYPE1 = 'Wavelength'`, `CUNIT1 = 'Angstrom'`, expected to be accepted by BeSS (user); the calibrated 16 Peg spectrum was handed to the user to check in Demetra.
+

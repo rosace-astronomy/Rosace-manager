@@ -258,3 +258,10 @@ subplugin_params:
     # the search up. Absent = no assumption on the scale (about 3.5 A/px on
     # the 72ED's Alpy 600 + Atik 314L).
     # approx_dispersion: 3.5
+
+  # lambda_calibration:
+    # Wavelength step of the calibrated spectrum (unit of the dispersion law).
+    # Absent = the mean dispersion over the sensor, one point per pixel (about
+    # 3.47 A on the 72ED) -- a finer step oversamples without adding
+    # information. Kept commented out: an empty block would read as null.
+    # step: 3.5

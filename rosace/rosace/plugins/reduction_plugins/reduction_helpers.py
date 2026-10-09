@@ -1,8 +1,9 @@
 """
 Shared functions of the native reduction chain: finding a step's input under
 its shared key, writing float images, the observation's intermediate-file
-directory, the session's master calibration frames (bias, dark, flat) and
-the preprocessing of raw frames with them.
+directory, the session's master calibration frames (bias, dark, flat), the
+preprocessing of raw frames with them, column/row shifts, reading the
+dispersion law and resampling a spectrum on a constant wavelength step.
 
 Plain functions, not a sub-plugin: same status as axes_helpers.py -- not
 resolved by pipeline_loader.py's dynamic importlib convention, no program
@@ -29,7 +30,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
+import yaml
 from astropy.io import fits
+from numpy.polynomial import Polynomial
 
 from ...models import Observation
 from .axes_helpers import FeatureAxes, find_axes
@@ -278,3 +281,33 @@ def transform_frames(
         written.append(str(out_path.relative_to(session_dir)))
     return written
 
+
+
+def read_law(path: Path) -> dict:
+    """A dispersion law file (written by dispersion_law): {"unit",
+    "coefficients" (A0..An), "comments" (its header comment lines, without
+    the leading "# ")}."""
+    text = Path(path).read_text()
+    data = yaml.safe_load(text)
+    coefficients = []
+    while f"A{len(coefficients)}" in data:
+        coefficients.append(float(data[f"A{len(coefficients)}"]))
+    comments = [line[1:].strip() for line in text.splitlines() if line.startswith("#")]
+    return {"unit": data.get("unit", "A"), "coefficients": coefficients, "comments": comments}
+
+
+def resample_linear(spectrum: np.ndarray, law: Polynomial, start: float, step: float, count: int) -> np.ndarray:
+    """Resamples a spectrum given per pixel onto count points of constant
+    step (point k centred on start + k * step), by overlap redistribution:
+    pixel x covers [law(x - 0.5), law(x + 0.5)], its flux spread evenly over
+    that interval, and each new interval receives the part of every pixel's
+    flux that falls inside it -- so the total is kept, except what falls
+    outside the new grid. Built on the cumulative flux at the pixel edges,
+    interpolated linearly: no loop over pixels. Raises ValueError when law
+    does not increase across the pixels."""
+    edges = law(np.arange(spectrum.size + 1) - 0.5)
+    if np.any(np.diff(edges) <= 0):
+        raise ValueError("The dispersion law does not increase across the spectrum")
+    cumulative = np.concatenate(([0.0], np.cumsum(np.asarray(spectrum, dtype=np.float64))))
+    new_edges = start + (np.arange(count + 1) - 0.5) * step
+    return np.diff(np.interp(new_edges, edges, cumulative))
