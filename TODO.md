@@ -94,3 +94,6 @@ Claude peut le suggérer, jamais le faire lui-même.
       colonne. À optimiser si c'est trop lent : se limiter à une bande autour
       de la trace (par exemple 200 px, assez pour garder le fond de ciel de
       la zone éclairée par le flat) (idée 2026-10-08)
+- [ ] Rayons cosmiques : les traiter au prétraitement (détection sur l'image
+      2D seule), en vérifiant que les raies de la lampe ne sont pas touchées
+      (2026-10-09)
