@@ -50,9 +50,6 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Faire un plan d'observation Be plus sophstiqué, pour ne pas refaire toujours les mêmes obserations. Prendre en compte les obserations récentes et les demandes de BeSS.
 - [ ] Mettre en place un système qui permet de ne pas consommer les étoiles qui ont plantées. Peut-être calculer un facteur global de priorité
 - [ ] Aller chercher toutes les Be dans BeSS. Et regarder le priorités d'observation BeSS. 
-- [ ] Réduction : traitement de la lampe (prétraitement, tilt, smile,
-      extraction) avant le calcul de la loi de dispersion — détail à
-      définir à l'implémentation de `dispersion_law` (2026-10-06)
 - [ ] Réduction : option pour garder ou non le répertoire des fichiers
       intermédiaires de chaque observation, et purge de ces répertoires
       (ARCHIVE ou CLOSE, à voir) — reconstructibles, rien de perdu (2026-10-06)
@@ -97,3 +94,12 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Rayons cosmiques : les traiter au prétraitement (détection sur l'image
       2D seule), en vérifiant que les raies de la lampe ne sont pas touchées
       (2026-10-09)
+- [ ] Étape « Summary » en fin de réduction : une page de synthèse par
+      observation (spectre en longueur d'onde avec les raies repères, lampe
+      avec les raies de référence retenues et leurs résidus, loi de
+      dispersion, domaine couvert) — sur le modèle du PDF de vérification de
+      16 Peg (2026-10-09)
+- [ ] dispersion_law : privilégier les raies extrêmes de la liste de
+      référence (elles étendent le domaine calculé et réduisent
+      l'extrapolation) ; sur 16 Peg, les deux raies bleues (4158, 4200) ne
+      sont jamais retenues et Hδ est décalée de −8 à −15 Å (2026-10-09)

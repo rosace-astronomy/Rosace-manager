@@ -23,6 +23,7 @@ from rosace.plugins.reduction_plugins.reduction_helpers import (
     minmax_mean,
     preprocess_frames,
     resolve_master,
+    series_root,
     shift_columns,
     shift_rows,
     transform_frames,
@@ -83,6 +84,9 @@ class TestMasterFilename:
 
     def test_single_file_without_index(self):
         assert master_filename(["FLAT_20261007.fits"]) == "FLAT_20261007_master.fits"
+
+    def test_series_root(self):
+        assert series_root(["CALIB_3x3s_20260925_194111-1.fits", "x-2.fits"]) == "CALIB_3x3s_20260925_194111"
 
 
 class TestFindSharedInput:

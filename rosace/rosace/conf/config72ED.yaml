@@ -238,3 +238,23 @@ subplugin_params:
     # saturation level (spectrum_flux_helpers.SATURATION_ADU) -- the margin
     # left for seeing and centring variations.
     target_peak_fraction: 0.7
+
+  dispersion_law:
+    # Reference lines of the calibration lamp: a text file in
+    # <base_data_dir>/reference_lines/ (or an absolute path), one air
+    # wavelength per line, "#" comments. A fact of the instrument (its lamp),
+    # not of the scientific program -- hence here.
+    reference_lines: Alpy600_ArNe.txt
+    # Unit of the list, the tolerance, the approximate dispersion and the law:
+    # A or nm.
+    unit: A
+    # Largest distance between a measured line and its reference wavelength.
+    tolerance: 1.0
+    # Degree of the polynomial law.
+    degree: 3
+    # Fewer lines kept than this is a failure, which stops the reduction.
+    min_lines: 7
+    # Optional approximate dispersion (unit per pixel, +-20 %): only speeds
+    # the search up. Absent = no assumption on the scale (about 3.5 A/px on
+    # the 72ED's Alpy 600 + Atik 314L).
+    # approx_dispersion: 3.5

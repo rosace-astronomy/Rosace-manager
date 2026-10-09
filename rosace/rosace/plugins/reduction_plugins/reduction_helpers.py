@@ -68,12 +68,16 @@ def find_shared_input(obs: Observation, key: str) -> Any:
     raise RuntimeError(f"Shared input '{key}' not found in any casier -- the step producing it did not run")
 
 
+def series_root(files: list[str]) -> str:
+    """A raw series' common name: the first frame's name minus its "-<N>"
+    index and extension -- e.g. "BIAS_..._120000-1.fits" -> "BIAS_..._120000"."""
+    return _SERIES_INDEX_RE.sub("", Path(files[0]).stem)
+
+
 def master_filename(files: list[str]) -> str:
-    """Master file name for a series: the first frame's name minus its
-    "-<N>" index, plus "_master.fits" -- e.g. "BIAS_..._120000-1.fits" ->
-    "BIAS_..._120000_master.fits"."""
-    stem = Path(files[0]).stem
-    return f"{_SERIES_INDEX_RE.sub('', stem)}_master.fits"
+    """Master file name for a series: series_root() plus "_master.fits" --
+    e.g. "BIAS_..._120000-1.fits" -> "BIAS_..._120000_master.fits"."""
+    return f"{series_root(files)}_master.fits"
 
 
 def minmax_mean(stack: np.ndarray) -> np.ndarray:
