@@ -49,10 +49,11 @@ databases_dir: databases
 log_dir: log
 observations_dir: observations
 dark_library_dir: dark_library
-site_name: TestSite
-site_latitude_deg: 45.0
-site_longitude_deg: 5.0
-site_elevation_m: 950
+observatory:
+  site_name: TestSite
+  latitude_deg: 45.0
+  longitude_deg: 5.0
+  elevation_m: 950
 active_hardware: hardware_indi_simu
 active_scheduler: scheduler_rosace_2026
 sequencer_backend: internal

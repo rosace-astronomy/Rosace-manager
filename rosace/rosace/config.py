@@ -69,31 +69,31 @@ OBSERVATIONS_DIR = BASE_DATA_DIR / _cfg["observations_dir"]
 GUI_PREVIEW_DIR = BASE_DATA_DIR / "gui_preview"
 
 # ── Observing site ─────────────────────────────────────────
+# Every fact of the installation lives in one required `observatory` block:
+# the site (name, position, local horizon) and the observatory's names
+# (observer, BeSS site and equipment names, the equipment's parts).
+OBSERVATORY: dict = _cfg["observatory"]
+
 # Generic name used to name session directories.
-SITE_NAME = _cfg["site_name"]
+SITE_NAME = OBSERVATORY["site_name"]
 
 # The site's geographic position (longitude signed, East positive) — a
-# physical fact about the installation, not a plugin setting, even though
-# only scheduler_rosace_2026 reads it today (AltAz visibility calculation).
-SITE_LATITUDE_DEG = _cfg["site_latitude_deg"]
-SITE_LONGITUDE_DEG = _cfg["site_longitude_deg"]
-SITE_ELEVATION_M = _cfg["site_elevation_m"]
+# physical fact about the installation, not a plugin setting.
+SITE_LATITUDE_DEG = OBSERVATORY["latitude_deg"]
+SITE_LONGITUDE_DEG = OBSERVATORY["longitude_deg"]
+SITE_ELEVATION_M = OBSERVATORY["elevation_m"]
 
 # Optional — absent (None) in every config without a local horizon mask
-# (packaged config, demo configs): no obstruction beyond the scheduler's own
+# (packaged config, demo configs): no obstruction beyond the schedulers' own
 # flat minimum altitude. A KStars "Artificial Horizon" text export describing
-# this site's terrain obstructions (see plugins/schedulers/scheduler_rosace_2026/
-# horizon.py); a site fact like the coordinates above, hence Core rather than
-# subplugin_params.
-_horizon_file = _cfg.get("horizon_file")
+# this site's terrain obstructions (see horizon.py).
+_horizon_file = OBSERVATORY.get("horizon_file")
 HORIZON_FILE: Path | None = Path(_horizon_file).expanduser() if _horizon_file else None
 
-# Optional -- the observatory's names, a fact of the installation like the site
-# above: observer, BeSS site and equipment names, the equipment's parts and
-# its typical resolving power (see the `observatory` block of config72ED.yaml).
-# Read by write_spectrum (BeSS keywords), plot_spectrum, summary and
-# export_demetra; absent ({}) in configs that never write a BeSS spectrum.
-OBSERVATORY: dict = _cfg.get("observatory") or {}
+# The other keys of the block (observer, site, equipment, telescope,
+# spectrograph, camera, resolving_power, Demetra-only keys) are optional,
+# read through OBSERVATORY by write_spectrum (BeSS keywords), plot_spectrum,
+# summary and export_demetra — see the block in config72ED.yaml.
 
 # ── Active hardware configuration ────────────────────────────
 # Name of the YAML file in conf/ (without extension) describing the hardware

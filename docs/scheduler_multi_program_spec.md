@@ -84,7 +84,7 @@ skipped for this round. `SchedulerFatalError`: program disabled until the sessio
 Used by planners to choose and by the selector to verify, so both apply the same rules.
 Installation settings in `subplugin_params.selector` (`min_altitude_deg` 10,
 `min_meridian_distance_deg` 0 — 3 on the 72ED, `overhead_minutes` 5,
-`planner_timeout_seconds` 10), plus `horizon_file` and the site position (Core).
+`planner_timeout_seconds` 10), plus `horizon_file` and the site position (Core, `observatory` block).
 
 - `estimate_duration_s(star, exposure)` = total exposure, with the same function and settings
   as `star_spectra_acquisition` (`compute_exposure_time_and_count()`), + the fixed overhead.

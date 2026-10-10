@@ -29,30 +29,24 @@ observations_dir: observations
 # shape/lifecycle as the paths above. Exposed as DARK_LIBRARY_DIR.
 dark_library_dir: dark_library
 
-# Human-readable site name, used to name session directories.
-# Exposed as SITE_NAME in config.py.
-site_name: St-Pancrasse
-
-# Site location — a physical fact about the installation, not a plugin
-# setting, even though only scheduler_rosace_2026 reads it today. Longitude
-# is signed, East positive (e.g. 5.0 = 5° East).
-# Exposed as SITE_LATITUDE_DEG / SITE_LONGITUDE_DEG / SITE_ELEVATION_M.
-site_latitude_deg: 45.2895
-site_longitude_deg: 5.855 # East positive
-site_elevation_m: 955
-
-# Local horizon of the site (KStars "Artificial Horizon" export) — see
-# config.yaml for the details. Exposed as HORIZON_FILE.
-horizon_file: ~/.rosace/horizon/Horizon St-Pan.txt
-
-# The observatory's names -- the three BeSS forms (observer, site, equipment,
-# exactly as in BeSS) and the equipment's parts, in English, ASCII, at most
-# 40 characters for the BeSS names. A fact of the installation, like the site
-# above. Read by write_spectrum (FITS keywords OBSERVER, BSS_SITE, BSS_INST,
-# TELESCOP, INSTRUME, DETNAM, BSS_ITRP), plot_spectrum and summary, and by
-# export_demetra (the last four keys are Demetra only). Optional for an
-# installation that never writes a BeSS spectrum. Exposed as OBSERVATORY.
+# The installation's own facts, in one required block. Exposed as OBSERVATORY.
+# - The site: site_name (names the session directories, SITE_NAME), position
+#   (longitude signed, East positive; SITE_LATITUDE_DEG / SITE_LONGITUDE_DEG /
+#   SITE_ELEVATION_M) and optional local horizon (KStars "Artificial Horizon"
+#   export, see config.yaml; HORIZON_FILE). Required, except horizon_file.
+# - The observatory's names: the three BeSS forms (observer, site, equipment,
+#   exactly as in BeSS) and the equipment's parts, in English, ASCII, at most
+#   40 characters for the BeSS names. Read by write_spectrum (FITS keywords
+#   OBSERVER, BSS_SITE, BSS_INST, TELESCOP, INSTRUME, DETNAM, BSS_ITRP),
+#   plot_spectrum and summary, and by export_demetra (the last four keys are
+#   Demetra only). Optional for an installation that never writes a BeSS
+#   spectrum.
 observatory:
+  site_name: St-Pancrasse           # names the session directories
+  latitude_deg: 45.2895
+  longitude_deg: 5.855              # East positive
+  elevation_m: 955
+  horizon_file: ~/.rosace/horizon/Horizon St-Pan.txt
   observer: F. Cochard              # OBSERVER
   site: St-Pancrasse                # BSS_SITE, exactly as in BeSS
   equipment: Alpy600-72ED-AM3       # BSS_INST, exactly as in BeSS

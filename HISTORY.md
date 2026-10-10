@@ -990,3 +990,9 @@ Layout reviewed by the user on the first 16 Peg summary: A4 portrait (two sheets
 
 The user then asked for the slit itself on the whole guide image, "modelled by the calculation, slope and ends included". `slit_xy` only recorded the retained point, so its casier now also keeps the angle and the slit's two ends (`segment`). The ends were first taken as the extent of the dark pixels `find_axes()` retained; on the real QHY images that ran to the search zone's edges, because a faint dark trace (about 15 times shallower) continues beyond the slit. They are now the columns where the line is at least half as deep as at its deepest: x = 700 to 1218 on 2026-09-27, matching the profile. For observations recorded before, the summary measures the slit again on the slit image their dossier names.
 
+
+## 2026-10-10 — Site keys moved into the observatory block
+
+*Relates to: "Key configuration" (Core table) in CLAUDE.md.*
+
+The site's name, coordinates and local horizon were top-level Core keys (`site_name`, `site_latitude_deg`, `site_longitude_deg`, `site_elevation_m`, `horizon_file`), next to an optional `observatory` block holding the observer and equipment names. Both describe the installation itself, so they now form one block (user): `observatory.site_name`, `latitude_deg`, `longitude_deg`, `elevation_m`, `horizon_file` (optional), then the names. The block becomes required, since it carries the coordinates; the constants `SITE_NAME`, `SITE_LATITUDE_DEG`, `SITE_LONGITUDE_DEG`, `SITE_ELEVATION_M` and `HORIZON_FILE` keep their names, so no plugin changed. `site_name` (session directory names) and `site` (the BeSS site name) stay two keys: they need not be spelled the same. A configuration still written the old way fails at startup on the missing `observatory` key (`--check-config` reports it); the four configs of the repository (packaged, 72ED, demo, Docker demo) and the three test helpers that write a configuration were converted.

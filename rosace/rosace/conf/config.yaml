@@ -29,26 +29,27 @@ observations_dir: observations
 # shape/lifecycle as the paths above. Exposed as DARK_LIBRARY_DIR.
 dark_library_dir: dark_library
 
-# Human-readable site name, used to name session directories.
-# Exposed as SITE_NAME in config.py.
-site_name: St-Pancrasse
-
-# Site location — a physical fact about the installation, not a plugin
-# setting, even though only scheduler_rosace_2026 reads it today. Longitude
-# is signed, East positive (e.g. 5.0 = 5° East).
-# Exposed as SITE_LATITUDE_DEG / SITE_LONGITUDE_DEG / SITE_ELEVATION_M.
-site_latitude_deg: 45.0
-site_longitude_deg: 5.0 # East positive
-site_elevation_m: 950
-
-# Optional — local horizon of the site (trees, house, hills): a KStars
-# "Artificial Horizon" text export (Alt/Az points, azimuth North through East).
-# scheduler_rosace_2026 skips, without consuming it, any target below this
-# profile at its current azimuth (on top of min_target_altitude_deg below).
-# Absent = no local horizon, only the flat minimum altitude applies. Read on
-# every SCHEDULER call; a missing or malformed file is fatal. Validate it with
-# `python -m rosace.main --check-config`. Exposed as HORIZON_FILE.
-# horizon_file: ~/.rosace/horizon/Horizon St-Pan.txt
+# The installation's own facts, in one required block. Exposed as OBSERVATORY.
+observatory:
+  # Human-readable site name, used to name session directories (SITE_NAME).
+  site_name: St-Pancrasse
+  # Site location — a physical fact about the installation, not a plugin
+  # setting. Longitude is signed, East positive (e.g. 5.0 = 5° East).
+  # Exposed as SITE_LATITUDE_DEG / SITE_LONGITUDE_DEG / SITE_ELEVATION_M.
+  latitude_deg: 45.0
+  longitude_deg: 5.0 # East positive
+  elevation_m: 950
+  # Optional — local horizon of the site (trees, house, hills): a KStars
+  # "Artificial Horizon" text export (Alt/Az points, azimuth North through
+  # East). The schedulers skip, without consuming it, any target below this
+  # profile at its current azimuth (on top of their flat minimum altitude).
+  # Absent = no local horizon, only the flat minimum altitude applies. Read on
+  # every SCHEDULER call; a missing or malformed file is fatal. Validate it
+  # with `python -m rosace.main --check-config`. Exposed as HORIZON_FILE.
+  # horizon_file: ~/.rosace/horizon/Horizon St-Pan.txt
+  # The observatory's names (observer, BeSS site and equipment names, the
+  # equipment's parts) — optional, needed only to write BeSS spectra; see
+  # the same block in config72ED.yaml.
 
 # Name (without extension) of the active hardware profile in conf/ — only
 # consulted when sequencer_backend (below) is 'indi'.

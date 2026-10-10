@@ -32,11 +32,11 @@ observations_dir: observations
 
 dark_library_dir: dark_library
 
-site_name: Rosace-Demo
-
-site_latitude_deg: 45.0
-site_longitude_deg: 5.0 # East positive
-site_elevation_m: 950
+observatory:
+  site_name: Rosace-Demo
+  latitude_deg: 45.0
+  longitude_deg: 5.0 # East positive
+  elevation_m: 950
 
 # Never actually consulted: sequencer_backend below is "internal", which
 # skips connect_session_hardware() entirely. Present because it's a Core key.

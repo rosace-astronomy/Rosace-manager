@@ -210,10 +210,12 @@ class TestCheckConfigCLI:
         assert str(missing) in result.stdout
 
     def _config_with_horizon(self, tmp_path, horizon_path):
-        """A complete valid config (the packaged demo one) plus a horizon_file key."""
+        """A complete valid config (the packaged demo one) plus a horizon_file key
+        in its observatory block."""
         demo_config_path = Path(__file__).parent / "conf" / "config_demo.yaml"
         config = tmp_path / "with_horizon.yaml"
-        config.write_text(demo_config_path.read_text() + f"\nhorizon_file: {horizon_path}\n")
+        config.write_text(demo_config_path.read_text().replace(
+            "observatory:\n", f"observatory:\n  horizon_file: {horizon_path}\n", 1))
         return config
 
     def test_valid_horizon_file_is_reported_with_its_point_count(self, tmp_path):
@@ -2609,10 +2611,11 @@ databases_dir: databases
 log_dir: log
 observations_dir: observations
 dark_library_dir: dark_library
-site_name: TestSite
-site_latitude_deg: 45.0
-site_longitude_deg: 5.0
-site_elevation_m: 950
+observatory:
+  site_name: TestSite
+  latitude_deg: 45.0
+  longitude_deg: 5.0
+  elevation_m: 950
 active_hardware: hardware_indi_simu
 active_scheduler: blank
 sequencer_backend: internal
