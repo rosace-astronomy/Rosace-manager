@@ -1,17 +1,26 @@
 """
 REDUCTION sub-plugin — Export to Demetra
 Exports the observation as a Demetra-compatible .obs.srl project file and
-adds it, with every FITS file it references, to the session's single ZIP
-bundle, for reduction with Shelyak's Demetra software.
+adds it, with every FITS file it references, to a ZIP bundle, for reduction
+with Shelyak's Demetra software.
 
-One ZIP per session (<session dir>_<session_id>_demetra.zip, in the session
-directory), created by the session's first observation and completed by each
-next one: a file already in the ZIP is not added again, so the calibration
-frames (DARK/BIAS/FLAT/CALIB), shared by every observation of a session, are
-stored once. Demetra reads a ZIP holding several observations (confirmed by
-the user). If the server is killed while a file is being added, the session's
-ZIP may be damaged; every FITS and .obs.srl file stays in the session
-directory, so it can be rebuilt from them.
+Two independent options (subplugin_params.export_demetra):
+- global (default true): one ZIP per session (<session dir>_<session_id>_
+  demetra.zip, in the session directory), created by the session's first
+  observation and completed by each next one: a file already in the ZIP is
+  not added again, so the calibration frames (DARK/BIAS/FLAT/CALIB), shared by
+  every observation of a session, are stored once. Demetra reads a ZIP
+  holding several observations (confirmed by the user). If the server is
+  killed while a file is being added, the session's ZIP may be damaged; every
+  FITS and .obs.srl file stays in the session directory, so it can be rebuilt
+  from them.
+- individual (default false): one ZIP per observation (<observation file
+  name>_demetra.zip), holding this observation's project file and files only.
+Both false: nothing is exported.
+
+The installation's names (observer, site, equipment, telescope,
+spectrograph, camera...) come from the configuration's observatory block, shared with
+write_spectrum.
 """
 
 from __future__ import annotations
@@ -24,7 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from ....config import SITE_ELEVATION_M, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, SITE_NAME, SUBPLUGIN_PARAMS
+from ....config import OBSERVATORY, SITE_ELEVATION_M, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, SITE_NAME, SUBPLUGIN_PARAMS
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
 
@@ -141,6 +150,13 @@ class ExportDemetraPlugin(SubPlugin):
     with its FITS files, to the session's ZIP."""
 
     async def execute(self, obs: Observation) -> Observation:
+        options = SUBPLUGIN_PARAMS.get("export_demetra", {})
+        session_zip = bool(options.get("global", True))
+        individual_zip = bool(options.get("individual", False))
+        if not session_zip and not individual_zip:
+            log.info("[EXPORT_DEMETRA] Nothing to export (export_demetra.global and .individual both false)")
+            return obs
+
         star_files = _required_files(obs, "star_spectra_images", "science")
         bias_files = _required_files(obs, "bias_images", "bias")
         dark_files = _required_files(obs, "dark_images", "dark")
@@ -155,7 +171,7 @@ class ExportDemetraPlugin(SubPlugin):
             zip(_BASKET_NAMES, _BASKET_SRL_TYPES, (star_files, bias_files, dark_files, flat_files, calib_files))
         )
 
-        params = SUBPLUGIN_PARAMS.get("export_demetra", {})
+        params = OBSERVATORY
         target = obs.scheduler_data.get("target")
         observation_name = obs.scheduler_data.get("queried_name") or (target.name if target else None) or "target"
 
@@ -190,12 +206,12 @@ class ExportDemetraPlugin(SubPlugin):
         )
 
         ctx = ET.SubElement(root, "Context", {"Version": "3.0"})
-        ET.SubElement(ctx, "Observer", {"Name": params.get("observer_name", "")})
+        ET.SubElement(ctx, "Observer", {"Name": params.get("observer", "")})
         ET.SubElement(
             ctx,
             "Site",
             {
-                "Name": SITE_NAME,
+                "Name": params.get("site", SITE_NAME),
                 "Description": "",
                 "Latitude": str(SITE_LATITUDE_DEG),
                 "Longitude": str(SITE_LONGITUDE_DEG),
@@ -203,25 +219,27 @@ class ExportDemetraPlugin(SubPlugin):
                 "UAICode": params.get("site_uai_code", ""),
             },
         )
-        instrument = ET.SubElement(ctx, "Instrument", {"Version": "1.0", "Name": params.get("instrument_name", "")})
+        instrument = ET.SubElement(ctx, "Instrument", {"Version": "1.0", "Name": params.get("equipment", "")})
         ET.SubElement(
             instrument,
             "Telescope",
             {
                 "Version": "2",
-                "Name": params.get("telescope_name", ""),
+                "Name": params.get("telescope", ""),
                 "Diameter_mm": str(params.get("telescope_diameter_mm", 0)),
                 "Focal_mm": str(params.get("telescope_focal_mm", 0)),
                 "Description": "",
             },
         )
-        ET.SubElement(instrument, "Spectroscope", {"Name": "", "Description": "", "SlitPresence": "False"})
+        ET.SubElement(
+            instrument, "Spectroscope", {"Name": params.get("spectrograph", ""), "Description": "", "SlitPresence": "False"}
+        )
         ET.SubElement(
             instrument,
             "Camera",
             {
                 "Version": "1",
-                "Name": params.get("camera_name", ""),
+                "Name": params.get("camera", ""),
                 "Description": "",
                 "SensorType": params.get("sensor_type", "CCD"),
             },
@@ -262,33 +280,42 @@ class ExportDemetraPlugin(SubPlugin):
         total_raw = len(star_files) + len(bias_files) + len(dark_files) + len(flat_files) + len(calib_files)
         log.info(f"[EXPORT_DEMETRA] Wrote Demetra project file {srl_filename} — {total_raw} raw file(s) referenced")
 
-        # One ZIP per session, appended to by each observation (mode "a" creates it on the
-        # first one). File names carry their timestamp, so a name already in the ZIP is the
-        # same file -- typically a calibration frame shared with an earlier observation.
-        # No await in this block: two post-observation reductions, running on the same
-        # event loop, can never write to the ZIP at the same time.
-        zip_filename = f"{obs_dir.name}_{obs.session_id}_demetra.zip"
-        zip_path = obs_dir / zip_filename
-        added = already = 0
-        with zipfile.ZipFile(zip_path, mode="a", compression=zipfile.ZIP_DEFLATED) as zf:
-            present = set(zf.namelist())
-            if srl_filename in present:
-                # A ZIP member can't be rewritten in place: a re-exported observation keeps
-                # the project file it was first exported with.
-                log.warning(f"[EXPORT_DEMETRA] {srl_filename} already in {zip_filename}, not replaced")
-            members = [(srl_path, srl_filename)] + [(obs_dir / f, f) for _, _, files in baskets for f in files]
-            for path, name in members:
-                if name in present:
-                    already += 1
-                    continue
-                zf.write(path, arcname=name)
-                present.add(name)
-                added += 1
-            total_members = len(present)
-        log.info(
-            f"[EXPORT_DEMETRA] Added {added} file(s) to {zip_filename} ({already} already present), "
-            f"{total_members} member(s) in total"
-        )
+        members = [(srl_path, srl_filename)] + [(obs_dir / f, f) for _, _, files in baskets for f in files]
+        casier = {"srl_file": srl_filename}
+        if session_zip:
+            # One ZIP per session, appended to by each observation (mode "a" creates it on the
+            # first one). File names carry their timestamp, so a name already in the ZIP is the
+            # same file -- typically a calibration frame shared with an earlier observation.
+            # Post-observation stages run one observation at a time, so two exports never
+            # write to the ZIP at the same time.
+            casier["zip_file"] = _add_to_zip(obs_dir / f"{obs_dir.name}_{obs.session_id}_demetra.zip", members, "a")
+        if individual_zip:
+            casier["individual_zip_file"] = _add_to_zip(obs_dir / f"{base_name}_demetra.zip", members, "w")
 
-        obs.reduction_data["export_demetra"] = {"srl_file": srl_filename, "zip_file": zip_filename}
+        obs.reduction_data["export_demetra"] = casier
         return obs
+
+
+def _add_to_zip(zip_path: Path, members: list[tuple[Path, str]], mode: str) -> str:
+    """Adds members (path, name in the ZIP) to zip_path, skipping a name
+    already there ("a" mode: a ZIP member can't be rewritten in place, so a
+    re-exported observation keeps the project file it was first exported
+    with); "w" starts a new ZIP. Returns the ZIP's file name."""
+    added = already = 0
+    with zipfile.ZipFile(zip_path, mode=mode, compression=zipfile.ZIP_DEFLATED) as zf:
+        present = set(zf.namelist())
+        if members[0][1] in present:
+            log.warning(f"[EXPORT_DEMETRA] {members[0][1]} already in {zip_path.name}, not replaced")
+        for path, name in members:
+            if name in present:
+                already += 1
+                continue
+            zf.write(path, arcname=name)
+            present.add(name)
+            added += 1
+        total_members = len(present)
+    log.info(
+        f"[EXPORT_DEMETRA] Added {added} file(s) to {zip_path.name} ({already} already present), "
+        f"{total_members} member(s) in total"
+    )
+    return zip_path.name

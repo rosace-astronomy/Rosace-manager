@@ -10,6 +10,7 @@ from xml.etree import ElementTree as ET
 import pytest
 
 from rosace.models import Observation, Target
+from rosace.plugins.reduction_plugins.export_demetra import export_demetra as module
 from rosace.plugins.reduction_plugins.export_demetra.export_demetra import (
     _TEMPLATE_PATH,
     ExportDemetraPlugin,
@@ -294,3 +295,61 @@ def test_ra_deg_to_hms_seconds_rounding_carry():
     result = _ra_deg_to_hms(ra_deg)
     assert "60.0S" not in result
     assert result == "10H31M0.0S"
+
+
+def _touch_full_files(directory):
+    for files in _FULL_FILES.values():
+        for name in files:
+            (directory / name).touch()
+
+
+class TestExportOptions:
+
+    @pytest.mark.parametrize("individual, session, expected", [
+        (False, True, {"zip_file"}),
+        (True, False, {"individual_zip_file"}),
+        (True, True, {"zip_file", "individual_zip_file"}),
+    ])
+    async def test_individual_and_global_zips(self, tmp_path, monkeypatch, individual, session, expected):
+        monkeypatch.setattr(module, "SUBPLUGIN_PARAMS", {"export_demetra": {"individual": individual, "global": session}})
+        _touch_full_files(tmp_path)
+        obs = _make_obs(obs_dir=tmp_path, queried_name="Vega", **_FULL_FILES)
+
+        result = await ExportDemetraPlugin().execute(obs)
+
+        casier = result.reduction_data["export_demetra"]
+        assert set(casier) - {"srl_file"} == expected
+        if individual:
+            assert casier["individual_zip_file"] == casier["srl_file"].replace(".obs.srl", "_demetra.zip")
+            with zipfile.ZipFile(tmp_path / casier["individual_zip_file"]) as zf:
+                assert set(zf.namelist()) == {casier["srl_file"], *[n for f in _FULL_FILES.values() for n in f]}
+        assert {p.name for p in tmp_path.glob("*.zip")} == {casier[k] for k in expected}
+
+    async def test_nothing_exported_when_both_options_are_false(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(module, "SUBPLUGIN_PARAMS", {"export_demetra": {"individual": False, "global": False}})
+        _touch_full_files(tmp_path)
+        obs = _make_obs(obs_dir=tmp_path, queried_name="Vega", **_FULL_FILES)
+
+        result = await ExportDemetraPlugin().execute(obs)
+
+        assert "export_demetra" not in result.reduction_data
+        assert not list(tmp_path.glob("*.srl")) and not list(tmp_path.glob("*.zip"))
+
+    async def test_names_come_from_the_observatory_block(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(module, "OBSERVATORY", {
+            "observer": "F. Cochard", "site": "St-Pancrasse", "equipment": "Alpy600-72ED-AM3",
+            "telescope": "72ED refractor", "spectrograph": "Alpy 600", "camera": "Atik 314L",
+        })
+        _touch_full_files(tmp_path)
+        obs = _make_obs(obs_dir=tmp_path, queried_name="Vega", **_FULL_FILES)
+
+        result = await ExportDemetraPlugin().execute(obs)
+
+        context = ET.parse(tmp_path / result.reduction_data["export_demetra"]["srl_file"]).getroot().find("Context")
+        assert context.find("Observer").attrib["Name"] == "F. Cochard"
+        assert context.find("Site").attrib["Name"] == "St-Pancrasse"
+        assert context.find("Instrument").attrib["Name"] == "Alpy600-72ED-AM3"
+        assert context.find("Instrument/Telescope").attrib["Name"] == "72ED refractor"
+        assert context.find("Instrument/Spectroscope").attrib["Name"] == "Alpy 600"
+        assert context.find("Instrument/Camera").attrib["Name"] == "Atik 314L"
+

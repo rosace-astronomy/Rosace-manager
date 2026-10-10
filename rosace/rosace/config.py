@@ -49,6 +49,10 @@ def _resolve_config_path() -> Path:
 _CONFIG_PATH = _resolve_config_path()
 _cfg = _load_config(_CONFIG_PATH)
 
+# The active config.yaml (derived, no config key): named in an observation's
+# summary, so a reader knows which configuration produced it.
+CONFIG_PATH = _CONFIG_PATH
+
 # Optional — absent (False) in every normal config.yaml. Only conf/config_demo.yaml
 # sets this, to trigger demo_seed.py's one-time catalogue seeding at startup.
 IS_DEMO_MODE: bool = bool(_cfg.get("is_demo", False))
@@ -83,6 +87,13 @@ SITE_ELEVATION_M = _cfg["site_elevation_m"]
 # subplugin_params.
 _horizon_file = _cfg.get("horizon_file")
 HORIZON_FILE: Path | None = Path(_horizon_file).expanduser() if _horizon_file else None
+
+# Optional -- the observatory's names, a fact of the installation like the site
+# above: observer, BeSS site and equipment names, the equipment's parts and
+# its typical resolving power (see the `observatory` block of config72ED.yaml).
+# Read by write_spectrum (BeSS keywords), plot_spectrum, summary and
+# export_demetra; absent ({}) in configs that never write a BeSS spectrum.
+OBSERVATORY: dict = _cfg.get("observatory") or {}
 
 # ── Active hardware configuration ────────────────────────────
 # Name of the YAML file in conf/ (without extension) describing the hardware

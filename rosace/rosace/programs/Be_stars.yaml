@@ -49,6 +49,7 @@ reduction:
   - crop                # Wavelength bounds
   - write_spectrum      # Final 1D FITS with BeSS keywords
   - plot_spectrum       # PNG / PDF / SVG plot
+  - summary             # Few-page PDF showing how the observation went
   - export_demetra      # Demetra .obs.srl + ZIP export, in parallel with the chain above
 
 sharing: blank_share

@@ -103,3 +103,15 @@ Claude peut le suggérer, jamais le faire lui-même.
       largeur à mi-hauteur des raies de la lampe étalonnée), étape encore à
       choisir ; Demetra écrit BSS_ITRP = 600 (valeur indicative de
       l'instrument) (2026-10-09)
+- [ ] Summary : ajouter une image grand champ (avec la position de l'étoile
+      observée) et une image Fripon, qui montreraient toutes deux s'il y
+      avait des nuages — pour plus tard (2026-10-10)
+- [ ] Mouvement propre : le pointage (slew_72ed, pointing_72ed) place sur la
+      fente la position J2000 du catalogue, sans mouvement propre. Pour Vega
+      (0,35"/an), l'étoile réelle est à 9,4" de ce point en 2026 ; pour la
+      plupart des étoiles Be l'effet est faible, mais certaines ont un
+      mouvement propre notable. Importer pmra/pmdec de Simbad dans targets.db
+      et ramener la position à la date de l'observation (2026-10-10)
+- [ ] Summary et log : séparer l'écart étoile–fente en composante le long de
+      la fente (sans effet sur le flux) et en travers (pertes de lumière) ;
+      seule la seconde compte pour le centrage (2026-10-10)

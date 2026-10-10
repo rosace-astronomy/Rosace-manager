@@ -31,8 +31,11 @@ light_settle_seconds pause: a lamp can keep shining for a moment after its
 power is cut, and the next guide exposure must not catch that light.
 
 Casier: sequencer_data["slit_xy"] = {"status": "calculated", "slit_x",
-"slit_y", "image"} or {"status": "default", "image"} (image None when the
-capture itself failed). acquisition_helpers.py::slit_position() is what
+"slit_y", "angle_deg", "segment", "image"} or {"status": "default", "image"}
+(image None when the capture itself failed). segment is the measured slit as
+[xa, ya, xb, yb]: its two ends (where the dark line is at least half as
+deep as at its deepest), on the fitted line (the slit as seen, without offset_y) -- drawn
+by the observation summary. acquisition_helpers.py::slit_position() is what
 pointing_72ed and stop_phd2_guiding read.
 
 Pixel coordinates follow the app-wide convention (0-indexed, Y up), the same
@@ -69,6 +72,14 @@ ALLOWED_LIGHT_SOURCES = ("CALIB", "FLAT", "SKY")
 MIN_ELONGATION = 10.0
 # ...close to horizontal.
 MAX_ANGLE_DEG = 10.0
+
+
+# Ends of the slit: columns where the dark line, sampled END_HALF_ROWS rows
+# either side of the fitted line and smoothed over END_SMOOTH_COLUMNS, is at
+# least END_DEPTH_FRACTION of its deepest
+END_HALF_ROWS = 2
+END_SMOOTH_COLUMNS = 9
+END_DEPTH_FRACTION = 0.5
 
 
 class SlitMeasurementError(Exception):
@@ -149,9 +160,16 @@ class SlitMeasurement:
     center_x: float
     center_y: float
     angle_deg: float
+    x_first: float = 0.0     # first and last columns of the slit (_slit_ends())
+    x_last: float = 0.0
 
     def y_at(self, x: float) -> float:
         return self.center_y + (x - self.center_x) * math.tan(math.radians(self.angle_deg))
+
+    def segment(self) -> list[float]:
+        """The detected slit as [xa, ya, xb, yb]: its two ends on the fitted line."""
+        return [round(self.x_first, 2), round(self.y_at(self.x_first), 2),
+                round(self.x_last, 2), round(self.y_at(self.x_last), 2)]
 
 
 def measure_slit(data: np.ndarray, zone: SearchZone, slit_x: float) -> SlitMeasurement:
@@ -178,12 +196,36 @@ def measure_slit(data: np.ndarray, zone: SearchZone, slit_x: float) -> SlitMeasu
     measurement = SlitMeasurement(
         y_at_slit_x=0.0, center_x=center_x, center_y=center_y, angle_deg=axes.angle_deg
     )
+    measurement.x_first, measurement.x_last = _slit_ends(flattened, zone, measurement)
     measurement.y_at_slit_x = measurement.y_at(slit_x)
     if not zone.y0 - 0.5 <= measurement.y_at_slit_x <= zone.y1 - 0.5:
         raise SlitMeasurementError(
             f"slit height {measurement.y_at_slit_x:.2f} at x={slit_x} falls outside the search zone"
         )
     return measurement
+
+
+def _slit_ends(flattened: np.ndarray, zone: SearchZone, measurement: SlitMeasurement) -> tuple[float, float]:
+    """First and last columns of the slit along the fitted line: where the
+    line's depth (how much darker than its column's median, over a few rows
+    around the line, smoothed along it) reaches END_DEPTH_FRACTION of its
+    deepest, in the run of columns containing the deepest point. A faint
+    dark trace beyond the slit itself is left out."""
+    columns = np.arange(flattened.shape[1])
+    rows = np.round([measurement.y_at(x + zone.x0) - zone.y0 for x in columns]).astype(int)
+    offsets = np.arange(-END_HALF_ROWS, END_HALF_ROWS + 1)
+    sample = np.clip(rows[None, :] + offsets[:, None], 0, flattened.shape[0] - 1)
+    depth = -flattened[sample, columns[None, :]].min(axis=0)
+    depth = np.convolve(depth, np.ones(END_SMOOTH_COLUMNS) / END_SMOOTH_COLUMNS, mode="same")
+    deepest = int(np.argmax(depth))
+    deep = depth >= END_DEPTH_FRACTION * depth[deepest]
+    first = deepest
+    while first > 0 and deep[first - 1]:
+        first -= 1
+    last = deepest
+    while last < len(deep) - 1 and deep[last + 1]:
+        last += 1
+    return float(first + zone.x0), float(last + zone.x0)
 
 
 class SlitXyPlugin(SubPlugin):
@@ -234,6 +276,8 @@ class SlitXyPlugin(SubPlugin):
             "status": "calculated",
             "slit_x": round(float(default_x), 2),
             "slit_y": slit_y,
+            "angle_deg": round(measurement.angle_deg, 3),
+            "segment": measurement.segment(),
             "image": image_path.name,
         }
         obs.measurements["slit_y_px"] = slit_y

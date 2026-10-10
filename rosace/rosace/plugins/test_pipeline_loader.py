@@ -231,7 +231,7 @@ class TestLoadPipelines:
 
         assert len(pipeline) == len(program["reduction"])
         assert program["reduction"][:2] == ["calculate_flux", "master_bias"]
-        assert program["reduction"][-3:] == ["write_spectrum", "plot_spectrum", "export_demetra"]
+        assert program["reduction"][-4:] == ["write_spectrum", "plot_spectrum", "summary", "export_demetra"]
 
     def test_raises_on_unknown_program(self):
         with pytest.raises(FileNotFoundError):

@@ -45,6 +45,26 @@ site_elevation_m: 955
 # config.yaml for the details. Exposed as HORIZON_FILE.
 horizon_file: ~/.rosace/horizon/Horizon St-Pan.txt
 
+# The observatory's names -- the three BeSS forms (observer, site, equipment,
+# exactly as in BeSS) and the equipment's parts, in English, ASCII, at most
+# 40 characters for the BeSS names. A fact of the installation, like the site
+# above. Read by write_spectrum (FITS keywords OBSERVER, BSS_SITE, BSS_INST,
+# TELESCOP, INSTRUME, DETNAM, BSS_ITRP), plot_spectrum and summary, and by
+# export_demetra (the last four keys are Demetra only). Optional for an
+# installation that never writes a BeSS spectrum. Exposed as OBSERVATORY.
+observatory:
+  observer: F. Cochard              # OBSERVER
+  site: St-Pancrasse                # BSS_SITE, exactly as in BeSS
+  equipment: Alpy600-72ED-AM3       # BSS_INST, exactly as in BeSS
+  telescope: 72ED refractor         # TELESCOP
+  spectrograph: Alpy 600            # INSTRUME
+  camera: Atik 314L                 # DETNAM
+  resolving_power: 600              # BSS_ITRP: typical resolving power (indicative)
+  site_uai_code: ""                 # Demetra only
+  telescope_diameter_mm: 72         # Demetra only
+  telescope_focal_mm: 420           # Demetra only -- to check
+  sensor_type: CCD                  # Demetra only
+
 # Name (without extension) of the active hardware profile in conf/ — only
 # consulted when sequencer_backend (below) is 'indi'.
 # Exposed as ACTIVE_HARDWARE / HARDWARE_CONFIG_PATH in config.py.
@@ -283,3 +303,16 @@ subplugin_params:
     # faint or too noisy for this instrument.
     wavelength_min: 3750
     wavelength_max: 7500
+
+  plot_spectrum:
+    # Formats of the final spectrum's plot, each produced only when true.
+    png: true
+    pdf: true
+    svg: true
+    balmer_lines: true                # mark the Balmer lines
+
+  export_demetra:
+    # Demetra export: one ZIP per observation and/or one ZIP per session
+    # (both false: no export).
+    individual: false
+    global: true

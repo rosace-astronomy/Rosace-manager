@@ -92,7 +92,7 @@ class TestSlitXyMeasurement:
         assert data["slit_x"] == DEFAULT_X
         assert data["slit_y"] == pytest.approx(TRUE_Y_AT_DEFAULT_X, abs=0.05)
         assert data["image"] == IMAGE_NAME
-        assert set(data) == {"status", "slit_x", "slit_y", "image"}
+        assert set(data) == {"status", "slit_x", "slit_y", "angle_deg", "segment", "image"}
 
     async def test_y_is_taken_at_default_column_not_at_slit_centre(self, tmp_path, setup):
         """The slit only starts at column 120, so within the 50-349 zone its
@@ -134,6 +134,22 @@ class TestSlitXyMeasurement:
 
         slit_y = obs.sequencer_data["slit_xy"]["slit_y"]
         assert slit_y == round(slit_y, 2)
+
+    async def test_slit_angle_and_segment_recorded(self, tmp_path, setup):
+        setup["params"]["slit_x_area"] = None
+        setup["params"]["slit_y_area"] = None
+        setup["frame"] = _slit_frame(slit_x_start=120)
+        obs = _make_obs(tmp_path)
+
+        await SlitXyPlugin().execute(obs)
+
+        casier = obs.sequencer_data["slit_xy"]
+        assert casier["angle_deg"] == pytest.approx(TILT_DEG, abs=0.1)
+        xa, ya, xb, yb = casier["segment"]
+        assert xa == pytest.approx(120, abs=3) and xb == pytest.approx(WIDTH - 1, abs=3)
+        slope = math.tan(math.radians(TILT_DEG))
+        assert ya == pytest.approx(TRUE_Y_AT_DEFAULT_X + (xa - DEFAULT_X) * slope, abs=0.3)
+        assert yb == pytest.approx(TRUE_Y_AT_DEFAULT_X + (xb - DEFAULT_X) * slope, abs=0.3)
 
     @pytest.mark.parametrize("area", [None, "none", "None"])
     async def test_whole_frame_when_areas_are_none(self, tmp_path, setup, area):

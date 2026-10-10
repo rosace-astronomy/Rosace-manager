@@ -17,7 +17,9 @@ from numpy.polynomial import Polynomial
 
 from rosace.models import Observation
 from rosace.plugins.reduction_plugins.reduction_helpers import (
+    final_name,
     find_shared_input,
+    law_coverage,
     flat_band,
     intermediate_dir,
     master_filename,
@@ -399,4 +401,19 @@ class TestWavelengthAxis:
         assert wavelength_axis(header) == pytest.approx([4000.0, 4002.5, 4005.0, 4007.5])
         header["CRPIX1"] = 2
         assert wavelength_axis(header) == pytest.approx([3997.5, 4000.0, 4002.5, 4005.0])
+
+
+class TestLawCoverageAndFinalName:
+
+    def test_law_coverage(self, tmp_path):
+        path = tmp_path / "law.yaml"
+        path.write_text("# Dispersion law.\n# 8 reference lines, RMS 0.2 A; valid between 4158.59 and 7147.04 A "
+                        "(extrapolated outside).\nunit: A\nA0: 3000.0\nA1: 3.5\n")
+        assert law_coverage(path) == (4158.59, 7147.04)
+        assert law_coverage(tmp_path / "absent.yaml") is None
+
+    def test_final_name(self, tmp_path):
+        obs = _obs(tmp_path)
+        obs.yaml_file = str(tmp_path / "20260925T213751_16_Peg.yaml")
+        assert final_name(obs) == f"20260925T213751_16_Peg_{obs.id}"
 

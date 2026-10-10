@@ -76,6 +76,32 @@ def _build_header(
     return "\n".join(lines)
 
 
+def read_log_lines(since: datetime) -> tuple[list[str], datetime | None]:
+    """Every line of rosace.log and its rotated backups (oldest first)
+    timestamped at or after since, continuation lines (no leading timestamp)
+    kept with the record they follow; and the earliest timestamp seen in the
+    files, or None. A missing or unreadable file contributes nothing."""
+    log_files = [LOG_DIR / f"rosace.log.{n}" for n in _BACKUP_SUFFIXES] + [LOG_DIR / "rosace.log"]
+    lines: list[str] = []
+    earliest_seen: datetime | None = None
+    for log_file in log_files:
+        try:
+            content = log_file.read_text(errors="replace")
+        except OSError:
+            continue
+        keep = False
+        for raw_line in content.splitlines(keepends=True):
+            match = _TIMESTAMP_RE.match(raw_line)
+            if match:
+                timestamp = datetime.strptime(match.group(1), _TIMESTAMP_FORMAT).replace(tzinfo=timezone.utc)
+                if earliest_seen is None:
+                    earliest_seen = timestamp
+                keep = timestamp >= since
+            if keep:
+                lines.append(raw_line)
+    return lines, earliest_seen
+
+
 def extract_session_log(ctx: SessionContext) -> Path:
     """Reads every existing rosace.log* file (oldest rotated backup first,
     current file last), and writes a header (night/session id/start/
@@ -100,23 +126,7 @@ def extract_session_log(ctx: SessionContext) -> Path:
     extracted file is diagnostic convenience, not something the app depends
     on to close a session."""
     current_log = LOG_DIR / "rosace.log"
-    log_files = [LOG_DIR / f"rosace.log.{n}" for n in _BACKUP_SUFFIXES] + [current_log]
-
-    lines: list[str] = []
-    earliest_seen: datetime | None = None
-    for log_file in log_files:
-        if not log_file.exists():
-            continue
-        keep = False
-        for raw_line in log_file.read_text(errors="replace").splitlines(keepends=True):
-            match = _TIMESTAMP_RE.match(raw_line)
-            if match:
-                timestamp = datetime.strptime(match.group(1), _TIMESTAMP_FORMAT).replace(tzinfo=timezone.utc)
-                if earliest_seen is None:
-                    earliest_seen = timestamp
-                keep = timestamp >= ctx.started_at
-            if keep:
-                lines.append(raw_line)
+    lines, earliest_seen = read_log_lines(ctx.started_at)
 
     header = _build_header(ctx, datetime.now(timezone.utc), current_log, earliest_seen)
     footer = "\n".join(["", _RULE, "# End of file", _RULE, ""])

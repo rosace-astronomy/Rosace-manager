@@ -337,3 +337,65 @@ def transform_spectrum(
     out_path = intermediate_dir(obs) / f"{Path(name).stem}_{suffix}.fits"
     write_float_image(out_path, data, header, [])
     return str(out_path.relative_to(session_dir))
+
+
+_LAW_COVERAGE_RE = re.compile(r"valid between ([-+0-9.eE]+) and ([-+0-9.eE]+)")
+
+# Balmer lines, air wavelengths in angstroms, for the spectrum plots
+BALMER_LINES_A = {"Hα": 6562.79, "Hβ": 4861.35, "Hγ": 4340.47, "Hδ": 4101.74, "Hε": 3970.07, "H8": 3889.05}
+
+
+def law_coverage(law_file: Path) -> tuple[float, float] | None:
+    """The range covered by the reference lines of a dispersion law file
+    ("valid between X and Y" in its header comments), or None when the file
+    or the comment is missing."""
+    try:
+        comments = read_law(law_file)["comments"]
+    except (OSError, ValueError, TypeError, yaml.YAMLError):
+        return None
+    for line in comments:
+        match = _LAW_COVERAGE_RE.search(line)
+        if match:
+            return float(match.group(1)), float(match.group(2))
+    return None
+
+
+def final_name(obs: Observation) -> str:
+    """Common name of the observation's delivered files (final spectrum,
+    plots, summary): the observation file's name without extension, plus the
+    observation ID -- e.g. "20260925T213751_16_Peg_ba79e32c"."""
+    return f"{Path(obs.yaml_file or obs.suggested_filename).stem}_{obs.id}"
+
+
+def draw_spectrum(axes, wavelengths: np.ndarray, data: np.ndarray, coverage: tuple[float, float] | None,
+                  balmer: bool, unit: str = "Angstrom", extra_lines: dict[str, float] | None = None) -> None:
+    """Draws a 1D spectrum on matplotlib axes: the curve, the parts outside
+    the dispersion law's coverage shaded as extrapolation, the Balmer lines
+    when asked and any extra_lines (name -> wavelength, dotted green; angstrom
+    spectra only). Plain matplotlib axes, never pyplot, whose global state is
+    not meant for the post-observation thread."""
+    axes.plot(wavelengths, data, lw=0.8, color="#1d3c6e")
+    axes.set_xlim(wavelengths[0], wavelengths[-1])
+    top = float(np.nanmax(data)) if data.size else 1.0
+    axes.set_ylim(bottom=min(0.0, float(np.nanmin(data))), top=top * 1.1)
+    if coverage:
+        for low, high in ((wavelengths[0], coverage[0]), (coverage[1], wavelengths[-1])):
+            if high > low:
+                axes.axvspan(low, high, color="#f3e0c0", alpha=0.6, lw=0)
+        if coverage[0] > wavelengths[0] or coverage[1] < wavelengths[-1]:
+            axes.text(0.995, 0.02, "shaded: extrapolated", transform=axes.transAxes, ha="right",
+                      va="bottom", fontsize=7, color="#8a6d3b")
+    if balmer and unit == "Angstrom":
+        for name, line in BALMER_LINES_A.items():
+            if wavelengths[0] <= line <= wavelengths[-1]:
+                axes.axvline(line, color="#c0392b", ls="--", lw=0.7)
+                axes.text(line, top * 1.03, name, color="#c0392b", ha="center", fontsize=8)
+    if extra_lines and unit == "Angstrom":
+        for name, line in extra_lines.items():
+            if wavelengths[0] <= line <= wavelengths[-1]:
+                axes.axvline(line, color="#27864a", ls=":", lw=0.8)
+                axes.text(line, top * 0.97, name, color="#27864a", ha="right", va="top", fontsize=6.5, rotation=90)
+    axes.set_xlabel(f"Wavelength ({unit}, air)")
+    axes.set_ylabel("Relative flux")
+    axes.grid(alpha=0.25)
+
