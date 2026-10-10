@@ -265,3 +265,21 @@ subplugin_params:
     # 3.47 A on the 72ED) -- a finer step oversamples without adding
     # information. Kept commented out: an empty block would read as null.
     # step: 3.5
+
+  response:
+    # Instrumental response: a 1D FITS with a linear wavelength axis
+    # (CRVAL1/CDELT1), in <base_data_dir>/response/ or an absolute path. The
+    # target spectrum is divided by it.
+    file: Vega_Object_C_RI.fit
+
+  scaling:
+    # Wavelength zone (spectrum's unit) whose mean level becomes 1. Must lie
+    # inside the spectrum.
+    wavelength_min: 6600
+    wavelength_max: 6700
+
+  crop:
+    # Wavelength range kept (spectrum's unit): outside it the spectrum is too
+    # faint or too noisy for this instrument.
+    wavelength_min: 3750
+    wavelength_max: 7500

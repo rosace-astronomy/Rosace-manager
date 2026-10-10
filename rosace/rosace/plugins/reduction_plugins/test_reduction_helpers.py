@@ -30,6 +30,7 @@ from rosace.plugins.reduction_plugins.reduction_helpers import (
     shift_columns,
     shift_rows,
     transform_frames,
+    wavelength_axis,
     write_float_image,
 )
 
@@ -388,4 +389,14 @@ class TestReadLaw:
         law = read_law(path)
         assert law == {"unit": "A", "coefficients": [3054.8, 3.5, 0.0002],
                        "comments": ["Dispersion law of lamp series X.", "8 lines, RMS 0.2 A."]}
+
+
+class TestWavelengthAxis:
+
+    def test_with_and_without_crpix1(self):
+        header = fits.Header()
+        header["NAXIS1"], header["CRVAL1"], header["CDELT1"] = 4, 4000.0, 2.5
+        assert wavelength_axis(header) == pytest.approx([4000.0, 4002.5, 4005.0, 4007.5])
+        header["CRPIX1"] = 2
+        assert wavelength_axis(header) == pytest.approx([3997.5, 4000.0, 4002.5, 4005.0])
 

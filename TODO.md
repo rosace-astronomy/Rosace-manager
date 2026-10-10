@@ -99,7 +99,7 @@ Claude peut le suggérer, jamais le faire lui-même.
       avec les raies de référence retenues et leurs résidus, loi de
       dispersion, domaine couvert) — sur le modèle du PDF de vérification de
       16 Peg (2026-10-09)
-- [ ] dispersion_law : privilégier les raies extrêmes de la liste de
-      référence (elles étendent le domaine calculé et réduisent
-      l'extrapolation) ; sur 16 Peg, les deux raies bleues (4158, 4200) ne
-      sont jamais retenues et Hδ est décalée de −8 à −15 Å (2026-10-09)
+- [ ] Pouvoir de résolution R = λ / Δλ : le mesurer (par exemple sur la
+      largeur à mi-hauteur des raies de la lampe étalonnée), étape encore à
+      choisir ; Demetra écrit BSS_ITRP = 600 (valeur indicative de
+      l'instrument) (2026-10-09)

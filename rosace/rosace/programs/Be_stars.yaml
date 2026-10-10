@@ -45,7 +45,7 @@ reduction:
   - dispersion_law      # Pixel-to-wavelength law of the lamp series (reused if already computed)
   - lambda_calibration  # Law applied, constant wavelength step
   - response            # Instrumental response correction
-  - normalize           # Normalization on a continuum zone
+  - scaling             # Division by the mean level in a wavelength zone (set to 1)
   - crop                # Wavelength bounds
   - write_spectrum      # Final 1D FITS with BeSS keywords
   - plot_spectrum       # PNG / PDF / SVG plot

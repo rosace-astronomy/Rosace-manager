@@ -311,3 +311,29 @@ def resample_linear(spectrum: np.ndarray, law: Polynomial, start: float, step: f
     cumulative = np.concatenate(([0.0], np.cumsum(np.asarray(spectrum, dtype=np.float64))))
     new_edges = start + (np.arange(count + 1) - 0.5) * step
     return np.diff(np.interp(new_edges, edges, cumulative))
+
+
+def wavelength_axis(header: fits.Header) -> np.ndarray:
+    """Wavelength of every point of a 1D spectrum with a linear axis:
+    CRVAL1 + (i + 1 - CRPIX1) * CDELT1, CRPIX1 being 1 when absent."""
+    count = header["NAXIS1"]
+    return header["CRVAL1"] + (np.arange(count) + 1 - header.get("CRPIX1", 1)) * header["CDELT1"]
+
+
+def transform_spectrum(
+    obs: Observation,
+    input_key: str,
+    suffix: str,
+    transform: Callable[[np.ndarray, fits.Header], tuple[np.ndarray, fits.Header]],
+) -> str:
+    """Reads the 1D spectrum under input_key (a path relative to the session
+    directory), applies transform(data, header) -> (data, header) and writes
+    the result to intermediate_dir(obs) as "<name>_<suffix>.fits". Returns
+    its path, relative to the session directory."""
+    session_dir = Path(obs.obs_dir or "")
+    name = find_shared_input(obs, input_key)
+    data, header = fits.getdata(session_dir / name, header=True)
+    data, header = transform(data.astype(np.float64), header.copy())
+    out_path = intermediate_dir(obs) / f"{Path(name).stem}_{suffix}.fits"
+    write_float_image(out_path, data, header, [])
+    return str(out_path.relative_to(session_dir))

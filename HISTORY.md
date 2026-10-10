@@ -964,3 +964,15 @@ The step of the calibrated spectrum (`CDELT1`) has no BeSS rule. The user first 
 
 Resampling by overlap redistribution (user), the same principle as the tilt and smile shifts: each pixel's flux spread over the wavelength interval it covers, shared among the new intervals it overlaps, so the total flux is kept exactly (checked on 16 Peg: ratio 1.000000) and nothing oscillates around sharp lines, unlike a spline interpolation. The lamp is calibrated too: its retained lines fall within ±0.31 Å of their reference, the law's own residuals, so the resampling adds no shift. FITS keywords `CRVAL1`, `CDELT1`, `CRPIX1 = 1`, `CTYPE1 = 'Wavelength'`, `CUNIT1 = 'Angstrom'`, expected to be accepted by BeSS (user); the calibrated 16 Peg spectrum was handed to the user to check in Demetra.
 
+## 2026-10-10 — Response, scaling and crop; parameters in the configuration
+
+*Relates to: "Native reduction chain" (response, scaling, crop) in CLAUDE.md.*
+
+The last three corrections of the target spectrum before the final FITS, deliberately simple. `response` divides by the instrumental response (the observed spectrum is the true one times the response), a 1D FITS made by hand for now and named in the configuration; it is interpolated onto the spectrum's grid and the spectrum set to 0 where the response is missing or nearly zero, which `crop` then removes. The lamp is no longer carried past `lambda_calibration` (user).
+
+The `normalize` placeholder was renamed `scaling` (user): the step divides by one constant, the mean level of a wavelength zone (6600–6700 Å, just after Hα), only so that the values read naturally; it is not a normalization to the continuum, which is what "normalize" means to a spectroscopist (BeSS's `BSS_NORM` will stay `'none'`). The user first thought of "100 pixels after Hα"; the zone is in wavelength, since a number of pixels means a different width with every step (87 Å at Demetra's 0.87 Å, 347 Å at ours). `crop` keeps 3750–7500 Å without resampling.
+
+Where the parameters live: the 2026-10-06 rule put the crop bounds, normalization zone and response file in the program YAML. The user decided on the configuration instead: they describe what the instrument can cover, not a scientific choice, like the lamp's reference lines. No FITS keyword is added by these steps (user): the bounds are known from the spectrum itself and the scaling has no scientific effect.
+
+Tested on 16 Peg (2026-09-25) with a response made by Demetra in 2015 on another telescope (C8 at OHP, same Alpy 600 and Atik 314L): the chain runs end to end, the scaling zone averages 1, the final spectrum covers 3752.7–7499.4 Å (1 080 points), its last 14 points 0 beyond the response's 7454 Å. A response measured on the 72ED itself is still to be made.
+
