@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """
-WebSocket broadcast of newly written images, for the Spectre/Guidage panels in the
-web GUI. Sibling to log_broadcast.py's WebSocketLogHandler. The connected WebSockets
+WebSocket broadcast of newly written images, for the GUI's "Spectre 2D" (panel
+"spectre"), "Guidage" ("guidage") and "Spectre 1D" ("spectre1d") panels. Sibling to log_broadcast.py's WebSocketLogHandler. The connected WebSockets
 belong to the server's main event loop (bound once at startup, bind_loop()): a call
 from the main loop sends directly, as before; a call from another thread's loop -- the
 post-obs thread running REDUCTION/SHARING/ARCHIVE (main.py) -- is handed over to the
@@ -17,12 +17,16 @@ URL for each panel (GET /images/{panel}) and just re-fetches it.
 An optional `source` names the sub-plugin that produced this capture -- informative
 only, the GUI never reads it. Omitted from the message entirely when not given.
 
-An optional `overlay` (a small JSON-serialisable dict) carries per-image geometry the GUI
-draws on top of the image, in Rosace's pixel convention, from a fixed set of drawing
-elements -- `window` (solid rectangle), `zone` (dashed rectangle), `line`, `point` -- see
-fits_viewer.ts's ImageOverlay. The GUI draws whatever elements are present, whichever
-sub-plugin sent them, and an image without an overlay clears the previous one. Omitted
-from the message when not given, same as `source`.
+An optional `overlay` (a small JSON-serialisable dict) carries what the GUI draws on top
+of the image; its content depends on the panel. For a 2D image, geometry in Rosace's
+pixel convention from a fixed set of drawing elements -- `window` (solid rectangle),
+`zone` (dashed rectangle), `line`, `point` -- see fits_viewer.ts's ImageOverlay; for the
+1D spectrum, a title, the lines to mark and the dispersion law's coverage -- see
+spectrum_viewer.ts's SpectrumOverlay. The GUI draws whatever elements are present,
+whichever sub-plugin sent them, and an image without an overlay clears the previous one.
+Omitted from the message when not given, same as `source`. A publisher may also keep it
+next to the file (<panel>.json, served by GET /images/{panel}/overlay) so a reloaded page
+finds it again -- reduction_helpers.publish_spectrum_preview() does.
 """
 
 from __future__ import annotations

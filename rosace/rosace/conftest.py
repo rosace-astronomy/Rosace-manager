@@ -51,6 +51,8 @@ def tmp_data_dir(tmp_path_factory):
     init_session_mod.OBSERVATIONS_DIR = tmp / "observations"
     import rosace.plugins.sequencer_plugins.acquisition_helpers as acq_helpers_mod
     acq_helpers_mod.GUI_PREVIEW_DIR = tmp / "gui_preview"
+    import rosace.plugins.reduction_plugins.reduction_helpers as red_helpers_mod
+    red_helpers_mod.GUI_PREVIEW_DIR = tmp / "gui_preview"
     # rosace.main itself is deliberately NOT imported/patched here: importing it runs
     # configure_logging() (module level), which applies conf/logging.cfg's propagate=0
     # on the "spectro" logger -- fine normally, but forcing that as a side effect of

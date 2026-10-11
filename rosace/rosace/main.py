@@ -27,6 +27,7 @@ if __name__ == "__main__":
     run_cli(sys.argv[1:])
 
 import asyncio
+import json
 import logging
 import re
 import uuid
@@ -591,6 +592,19 @@ async def get_gui_image(panel: str):
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Image introuvable")
     return FileResponse(path, media_type="application/octet-stream", headers={"Cache-Control": "no-store"})
+
+
+@protected.get("/images/{panel}/overlay")
+async def get_gui_image_overlay(panel: str):
+    """The overlay kept next to a panel's preview image (<panel>.json in
+    GUI_PREVIEW_DIR, written by the sub-plugin that published it), so a reloaded
+    page finds it again -- null when the panel has none."""
+    if not _SAFE_PANEL_NAME.match(panel):
+        raise HTTPException(status_code=404, detail="Image introuvable")
+    path = GUI_PREVIEW_DIR / f"{panel}.json"
+    if not path.is_file():
+        return None
+    return json.loads(path.read_text())
 
 
 # ─────────────────────────────────────────────────────────────

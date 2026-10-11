@@ -522,6 +522,49 @@ body {
 	padding: 0.4rem 1.2rem 0.9rem 0;
 	gap: 0.9rem;
 
+	// "Spectre 2D" and "Guidage" side by side, under the "Spectre 1D" panel
+	.images-row {
+		gap: 0.9rem;
+		min-height: 0;
+	}
+
+	.panel.spectre1d {
+		min-height: 120px;
+	}
+
+	// Divider between "Spectre 1D" and the images below -- same look as the
+	// vertical one between the two columns (.main-split)
+	> .x4csizer {
+		flex: 0 0 auto;
+		height: 6px;
+		margin: -0.45rem 0;	// sits in the gap between the panels
+		border-radius: 3px;
+		background: var(--border);
+		transition: background-color 120ms ease;
+
+		&:hover,
+		&:active {
+			background: var(--accent);
+		}
+	}
+
+	// Room for "λ: 6562.8 Å  F: 1.234  (extrapolé)" without moving the title
+	.spectrum-viewer .fits-toolbar .fits-readout {
+		min-width: 44ch;
+	}
+
+	// Title shown in the "Spectre 1D" toolbar (target, program, time, observation ID)
+	.spectrum-title {
+		align-self: center;
+		justify-content: center;
+		font-weight: 700;
+		color: var(--text);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		min-width: 0;
+	}
+
 	.fits-viewer {
 		flex: 1;
 		min-height: 0;

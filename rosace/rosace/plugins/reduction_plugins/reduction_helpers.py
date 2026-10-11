@@ -25,15 +25,20 @@ as is, otherwise it is computed -- so a master is computed once per session.
 from __future__ import annotations
 
 import dataclasses
+import json
 import re
+import shutil
 from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
 import yaml
 from astropy.io import fits
+from astropy.time import Time
 from numpy.polynomial import Polynomial
 
+from ...config import GUI_PREVIEW_DIR
+from ...image_broadcast import ws_image_broadcaster
 from ...models import Observation
 from .axes_helpers import FeatureAxes, find_axes
 
@@ -399,3 +404,43 @@ def draw_spectrum(axes, wavelengths: np.ndarray, data: np.ndarray, coverage: tup
     axes.set_ylabel("Relative flux")
     axes.grid(alpha=0.25)
 
+
+
+SPECTRUM_PANEL = "spectre1d"
+
+
+async def publish_spectrum_preview(obs: Observation, spectrum_path: Path) -> None:
+    """Shows a 1D spectrum on the GUI's "Spectre 1D" panel, the same way
+    acquisition_helpers.publish_guide_preview() shows a guide image: copies it
+    to GUI_PREVIEW_DIR/"spectre1d.fits" and notifies connected clients. Its
+    overlay -- title, dispersion-law coverage (the rest is drawn as
+    extrapolated) and Balmer lines within the spectrum, angstrom spectra only
+    -- is sent with the message and also written next to the file,
+    "spectre1d.json", so a reloaded page finds it again (GET /images/{panel}/overlay)."""
+    header = fits.getheader(spectrum_path)
+    wavelengths = wavelength_axis(header)
+    low, high = float(np.min(wavelengths)), float(np.max(wavelengths))
+
+    session_dir = Path(obs.obs_dir or "")
+    law_name = obs.reduction_data.get("dispersion_law_file")
+    coverage = law_coverage(session_dir / law_name) if law_name else None
+    lines = []
+    if header.get("CUNIT1", "Angstrom") == "Angstrom":
+        lines = [{"name": name, "wavelength": line} for name, line in BALMER_LINES_A.items() if low <= line <= high]
+
+    if "JD-MID" in header:
+        middle = Time(header["JD-MID"], format="jd", scale="utc").datetime
+    else:
+        middle = Time(header["DATE-OBS"], format="isot", scale="utc").datetime
+    name = obs.scheduler_data.get("queried_name") or header.get("OBJNAME", "")
+    parts = [name, obs.scheduler_data.get("program", ""), f"{middle:%Y-%m-%d %H:%M} UT", f"obs {obs.id}"]
+    overlay = {
+        "title": " — ".join(p for p in parts if p),
+        "coverage": list(coverage) if coverage else None,
+        "lines": lines,
+    }
+
+    GUI_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(spectrum_path, GUI_PREVIEW_DIR / f"{SPECTRUM_PANEL}.fits")
+    (GUI_PREVIEW_DIR / f"{SPECTRUM_PANEL}.json").write_text(json.dumps(overlay, ensure_ascii=False))
+    await ws_image_broadcaster.broadcast(SPECTRUM_PANEL, source="write_spectrum", overlay=overlay)

@@ -37,6 +37,9 @@ BESS_KEYWORDS = {
     "BSS_TELL": (str, None), "BSS_COSM": (str, None), "BSS_NORM": (str, None),
     "BSS_STYP": (str, None), "BSS_VMAG": (float, (-27, 30)), "BSS_ITRP": (float, None),
 }
+# Spectra passed to the GUI publication, mocked by _setup()
+PUBLISHED: list = []
+
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$")
 
 
@@ -103,6 +106,11 @@ def _setup(tmp_path, monkeypatch, observatory=OBSERVATORY, queried_name="16 Peg"
     async def star(name):
         return type("Star", (), {"spectral_type": "B6IIIe"})() if name == "*  16 Peg" else None
     monkeypatch.setattr(module, "star_get_by_name", star)
+    PUBLISHED.clear()
+
+    async def publish(obs, path):
+        PUBLISHED.append(path)
+    monkeypatch.setattr(module, "publish_spectrum_preview", publish)
     return obs
 
 
@@ -159,6 +167,25 @@ class TestWriteSpectrumPlugin:
 
         with pytest.raises(RuntimeError, match="non-ASCII"):
             await WriteSpectrumPlugin().execute(obs)
+
+    async def test_spectrum_published_to_the_gui(self, tmp_path, monkeypatch):
+        obs = _setup(tmp_path, monkeypatch)
+
+        result = await WriteSpectrumPlugin().execute(obs)
+
+        assert PUBLISHED == [tmp_path / result.reduction_data["final_spectrum"]]
+
+    async def test_gui_publication_failure_is_only_a_warning(self, tmp_path, monkeypatch, caplog):
+        obs = _setup(tmp_path, monkeypatch)
+
+        async def failing(obs, path):
+            raise OSError("disk full")
+        monkeypatch.setattr(module, "publish_spectrum_preview", failing)
+
+        result = await WriteSpectrumPlugin().execute(obs)
+
+        assert result.reduction_data["final_spectrum"]
+        assert "Could not show the spectrum in the GUI" in caplog.text
 
     def test_rules_checker_catches_a_bad_header(self):
         header = fits.Header()

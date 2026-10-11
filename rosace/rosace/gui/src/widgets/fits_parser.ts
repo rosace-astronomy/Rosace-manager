@@ -1,6 +1,7 @@
 /**
- * Minimal FITS parser -- single-HDU 2D images only (NAXIS=2), no multi-extension
- * or table support. Enough to read the science/guide images Rosace itself writes.
+ * Minimal FITS parser -- single-HDU images (NAXIS=2) and 1D spectra (NAXIS=1, read
+ * as an image one row high), no multi-extension or table support. Enough to read
+ * the science/guide images and the final spectra Rosace itself writes.
  */
 
 const BLOCK_SIZE = 2880;
@@ -72,13 +73,14 @@ export function parseFits( buffer: ArrayBuffer ): FitsImage {
 	const { header, dataOffset } = parseHeader( buffer );
 
 	const width  = parseInt( header["NAXIS1"] );
-	const height = parseInt( header["NAXIS2"] );
+	// a 1D spectrum (NAXIS=1) is read as an image one row high
+	const height = parseInt( header["NAXIS"] ) === 1 ? 1 : parseInt( header["NAXIS2"] );
 	const bitpix = parseInt( header["BITPIX"] );
 	const bzero  = header["BZERO"]  !== undefined ? parseFloat( header["BZERO"] )  : 0;
 	const bscale = header["BSCALE"] !== undefined ? parseFloat( header["BSCALE"] ) : 1;
 
 	if( !width || !height ) {
-		throw new Error( "Not a 2D FITS image (missing/invalid NAXIS1/NAXIS2)" );
+		throw new Error( "Not a FITS image or spectrum (missing/invalid NAXIS1/NAXIS2)" );
 	}
 
 	const n = width * height;

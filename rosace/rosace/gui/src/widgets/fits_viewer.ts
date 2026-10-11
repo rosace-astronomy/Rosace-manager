@@ -100,7 +100,7 @@ export class FitsViewer extends VBox {
 
 		this.setContent( [
 			new HBox({ cls: "fits-toolbar", content: [
-				new Button({ cls: "fits-btn", label: "Zoom", click: () => this.zoomFit() }),
+				new Button({ cls: "fits-btn", label: "Tout", click: () => this.zoomFit() }),
 				new Button({ cls: "fits-btn", label: "Zoom H", click: () => this.zoomFitWidth() }),
 				new Button({ cls: "fits-btn", label: "1:1", click: () => this.zoomOneToOne() }),
 				this.zoneButton = new Button({ cls: "fits-btn", label: "Zone", click: () => this.toggleZoneMode() }),
@@ -433,7 +433,7 @@ export class FitsViewer extends VBox {
 		}
 
 		const menu = new Menu({ items: [
-			{ text: "Zoom", click: () => this.zoomFit() },
+			{ text: "Tout", click: () => this.zoomFit() },
 			{ text: "Zoom H", click: () => this.zoomFitWidth() },
 			{ text: "1:1", click: () => this.zoomOneToOne() },
 			{ text: this.selectionMode ? "Désactiver Zone" : "Activer Zone", click: () => this.toggleZoneMode() },
@@ -452,6 +452,11 @@ export class FitsViewer extends VBox {
 
 	private paint( ctx: CanvasEx ) {
 		if( !this.image || !this.offscreen ) {
+			// same empty state as SpectrumViewer's "Aucun spectre"
+			ctx.font = "11px sans-serif";
+			ctx.fillStyle = getComputedStyle( this.dom ).getPropertyValue( "--muted" ).trim() || "#7c7364";
+			ctx.textAlign = "center";
+			ctx.fillText( "Aucune image", ctx.width / 2, ctx.height / 2 );
 			return;
 		}
 

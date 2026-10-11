@@ -56,11 +56,11 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Retraiter une observation ou toute une session (réduction relancée sur
       les fichiers existants) : un point d'entrée API REST, appelé depuis
       le GUI (2026-10-06)
-- [ ] GUI : panneaux Guidage et Spectre côte à côte, et un panneau spectre 1D
-      au-dessus, lu depuis le FITS (zoom, déplacement) (2026-10-06)
 - [ ] Mode démo : images réalistes (guidage avec fente et étoiles, vrai
       spectre) et spectre résultant affiché, même factice (2026-10-06)
-- [ ] GUI : bouton de lancement différé d'une session — pas urgent (2026-10-06)
+- [ ] GUI : version anglaise de l'interface (libellés, messages, menus d'aide),
+      avec choix de la langue — x4js a un module de traduction (`core_i18n`)
+      à regarder (2026-10-11)
 
 ## Chantiers plus lointains
 

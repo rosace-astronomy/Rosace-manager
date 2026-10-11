@@ -2570,6 +2570,21 @@ class TestApiEndpoints:
 
         assert res.status_code == 404
 
+    def test_get_gui_image_overlay_kept_next_to_the_file(self, tmp_path, monkeypatch):
+        import rosace.main as main_mod
+
+        monkeypatch.setattr(main_mod, "GUI_PREVIEW_DIR", tmp_path)
+        (tmp_path / "spectre1d.json").write_text('{"title": "16 Peg", "lines": []}')
+
+        with self._client() as client:
+            res = client.get("/images/spectre1d/overlay")
+            none = client.get("/images/guidage/overlay")
+            unsafe = client.get("/images/foo-bar/overlay")
+
+        assert res.status_code == 200 and res.json() == {"title": "16 Peg", "lines": []}
+        assert none.status_code == 200 and none.json() is None
+        assert unsafe.status_code == 404
+
 
 # ═════════════════════════════════════════════════════════════
 # GROUP 8 — Authentication (auth.py)

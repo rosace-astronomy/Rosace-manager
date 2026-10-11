@@ -32,6 +32,10 @@ frame's cards survive.
 An observer, site or equipment name missing from the configuration, a text
 longer than BeSS's 40 characters, or a non-ASCII character is an error that
 stops the reduction.
+
+Once written, the spectrum is shown on the GUI's "Spectre 1D" panel
+(reduction_helpers.publish_spectrum_preview()) -- a display for the observer,
+not processing: a failure there is only a warning.
 """
 
 from __future__ import annotations
@@ -50,7 +54,7 @@ from ....config import OBSERVATORY, SITE_ELEVATION_M, SITE_LATITUDE_DEG, SITE_LO
 from ....models import Observation
 from ....targets import star_get_by_name
 from ...sub_plugin_base import SubPlugin
-from ..reduction_helpers import final_name, find_shared_input
+from ..reduction_helpers import final_name, find_shared_input, publish_spectrum_preview
 
 log = logging.getLogger("spectro.subplugin.write_spectrum")
 
@@ -174,4 +178,8 @@ class WriteSpectrumPlugin(SubPlugin):
         fits.writeto(session_dir / name, np.asarray(data, dtype=np.float32), h, overwrite=True)
         obs.reduction_data["final_spectrum"] = name
         log.info(f"[WRITE_SPECTRUM] Wrote {name} ({data.size} points, {len(h)} header cards)")
+        try:
+            await publish_spectrum_preview(obs, session_dir / name)
+        except Exception as e:
+            log.warning(f"[WRITE_SPECTRUM] Could not show the spectrum in the GUI: {e}")
         return obs

@@ -20,6 +20,7 @@ from rosace.plugins.reduction_plugins.reduction_helpers import (
     final_name,
     find_shared_input,
     law_coverage,
+    publish_spectrum_preview,
     flat_band,
     intermediate_dir,
     master_filename,
@@ -417,3 +418,59 @@ class TestLawCoverageAndFinalName:
         obs.yaml_file = str(tmp_path / "20260925T213751_16_Peg.yaml")
         assert final_name(obs) == f"20260925T213751_16_Peg_{obs.id}"
 
+
+
+class TestPublishSpectrumPreview:
+    """publish_spectrum_preview(): the 1D spectrum shown on the GUI's "Spectre 1D" panel."""
+
+    def _spectrum(self, tmp_path, unit="Angstrom", crval=3752.73, cdelt=3.4723):
+        header = fits.Header()
+        header["CRVAL1"], header["CDELT1"], header["CRPIX1"], header["CUNIT1"] = crval, cdelt, 1, unit
+        header["OBJNAME"], header["DATE-OBS"], header["JD-MID"] = "16 Peg", "2026-09-25T21:39:44", 2461309.405763
+        path = tmp_path / "final.fits"
+        fits.writeto(path, np.ones(1080, dtype=np.float32), header)
+        return path
+
+    def _obs(self, tmp_path):
+        obs = _obs(tmp_path)
+        obs.scheduler_data["queried_name"] = "16 Peg"
+        obs.scheduler_data["program"] = "Be_stars"
+        (tmp_path / "law.yaml").write_text("# valid between 4158.59 and 7147.04 A\nunit: A\nA0: 3000.0\n")
+        obs.reduction_data["dispersion_law_file"] = "law.yaml"
+        return obs
+
+    @pytest.fixture
+    def published(self, tmp_path, monkeypatch):
+        import rosace.plugins.reduction_plugins.reduction_helpers as module
+        calls = []
+
+        async def broadcast(panel, source=None, overlay=None):
+            calls.append((panel, source, overlay))
+        monkeypatch.setattr(module, "GUI_PREVIEW_DIR", tmp_path / "gui")
+        monkeypatch.setattr(module.ws_image_broadcaster, "broadcast", broadcast)
+        return calls
+
+    async def test_file_overlay_and_broadcast(self, tmp_path, published):
+        import json
+        obs = self._obs(tmp_path)
+        await publish_spectrum_preview(obs, self._spectrum(tmp_path))
+
+        assert (tmp_path / "gui" / "spectre1d.fits").is_file()
+        panel, source, overlay = published[0]
+        assert (panel, source) == ("spectre1d", "write_spectrum")
+        assert overlay == json.loads((tmp_path / "gui" / "spectre1d.json").read_text())
+        assert overlay["title"] == f"16 Peg — Be_stars — 2026-09-25 21:44 UT — obs {obs.id}"
+        assert overlay["coverage"] == [4158.59, 7147.04]
+        names = [line["name"] for line in overlay["lines"]]
+        assert names == ["Hα", "Hβ", "Hγ", "Hδ", "Hε", "H8"]
+
+    async def test_only_lines_within_the_spectrum(self, tmp_path, published):
+        await publish_spectrum_preview(self._obs(tmp_path), self._spectrum(tmp_path, crval=4500.0, cdelt=1.0))
+        assert [line["name"] for line in published[0][2]["lines"]] == ["Hβ"]
+
+    async def test_no_lines_in_nm_and_no_coverage_without_law(self, tmp_path, published):
+        obs = self._obs(tmp_path)
+        del obs.reduction_data["dispersion_law_file"]
+        await publish_spectrum_preview(obs, self._spectrum(tmp_path, unit="nm", crval=375.0, cdelt=0.35))
+        overlay = published[0][2]
+        assert overlay["lines"] == [] and overlay["coverage"] is None

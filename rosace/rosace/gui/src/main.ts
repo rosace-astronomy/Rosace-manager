@@ -1,12 +1,13 @@
 import { VBox, HBox, Button, Label, Application, BoxProps, Image, Listbox, ListItem,
 	SimpleText, SimpleTextArea, Notification, Tag, initTooltips, makeState, asap, EvMessage, HSizer,
-	Component, TextEdit,
+	VSizer, Component, TextEdit,
 	} from "x4js";
 
 import "./main.scss";
 
 import { LoginView, fetchCurrentUser, logout as authLogout, UserOut } from "./auth";
 import { FitsViewer, ImageOverlay } from "./widgets/fits_viewer";
+import { SpectrumViewer, SpectrumOverlay } from "./widgets/spectrum_viewer";
 
 import play_icon from "./assets/play.svg";
 import stop_icon from "./assets/stop.svg";
@@ -152,6 +153,12 @@ const WS_RETRY_DELAY = 5000;
 // Local/UTC choice for the scheduled start/stop times, remembered by the browser.
 const TZ_MODE_STORAGE_KEY = "rosace.schedule_tz";
 
+// Height of the "Spectre 1D" panel set with its divider, remembered by the browser.
+const SPECTRUM_HEIGHT_STORAGE_KEY = "rosace.spectrum_height";
+
+// Backend panel names (image_broadcast.py, GET /images/{panel})
+const SPECTRUM_PANEL = "spectre1d";
+
 // How long the SEQUENCER/REDUCTION step-progress lines stay visible, showing
 // their last state ("all done"), after the whole observation finishes
 // (ARCHIVE's own done_at) -- purely a display grace period, not tied to
@@ -275,6 +282,8 @@ class MainView extends VBox {
 	private last_stage: OrchestratorStageType;
 	private spectre_viewer: FitsViewer;
 	private guidage_viewer: FitsViewer;
+	private spectrum_panel: VBox;
+	private spectrum_viewer: SpectrumViewer;
 	// Tracks, per panel, whether its first real (non-placeholder) image has
 	// already received its automatic stretch -- see loadPanelImage below.
 	private autoStretched: Record<string, boolean> = {};
@@ -327,15 +336,24 @@ class MainView extends VBox {
 
 				]}),
 				new HSizer(),
+				// Spectre 1D on top (fed by the reduction only), a divider to share the
+				// height, then the two camera images side by side
 				new VBox({ cls: "right-col", flex: 1, content: [
-					new VBox({ cls: "panel spectre", flex: 1, content: [
-						new Label({ cls: "title", text: "Spectre" }),
-						this.spectre_viewer = new FitsViewer({ flex: 1 }),
+					this.spectrum_panel = new VBox({ cls: "panel spectre1d", flex: 1, content: [
+						new Label({ cls: "title", text: "Spectre 1D" }),
+						this.spectrum_viewer = new SpectrumViewer({ flex: 1 }),
 					] }),
-					new VBox({ cls: "panel guidage", flex: 1, content: [
-						new Label({ cls: "title", text: "Guidage" }),
-						this.guidage_viewer = new FitsViewer({ flex: 1 }),
-					] })
+					this.makeSpectrumSizer( ),
+					new HBox({ cls: "images-row", flex: 1, content: [
+						new VBox({ cls: "panel spectre", flex: 1, content: [
+							new Label({ cls: "title", text: "Spectre 2D" }),
+							this.spectre_viewer = new FitsViewer({ flex: 1 }),
+						] }),
+						new VBox({ cls: "panel guidage", flex: 1, content: [
+							new Label({ cls: "title", text: "Guidage" }),
+							this.guidage_viewer = new FitsViewer({ flex: 1 }),
+						] }),
+					] }),
 				] })
 			]}),
 
@@ -380,20 +398,30 @@ class MainView extends VBox {
 		asap( () => {
 			this.fetchStatus();
 			this.fetchObs();
-			this.loadDemoImages();
+			this.loadLastImages();
 			this.fetchDisplayNames();
+			this.restoreSpectrumHeight();
+			this.loadSpectrum( null, true );
 		});
     }
 
 	/**
-	 * Temporary: loads a bundled demo FITS into both viewers as a startup placeholder,
-	 * replaced by a real image as soon as one is pushed (see loadPanelImage below).
+	 * At startup, shows the last image each 2D panel received (its preview file
+	 * survives a server restart), with its overlay when the server kept one --
+	 * a panel that never received any image stays empty.
 	 */
 
-	private async loadDemoImages() {
-		const buffer = await ( await fetch( "assets/demo.fits" ) ).arrayBuffer();
-		this.spectre_viewer.loadFits( buffer );
-		this.guidage_viewer.loadFits( buffer );
+	private async loadLastImages() {
+		for( const panel of [ "spectre", "guidage" ] ) {
+			try {
+				const res = await fetch( `${API}/images/${panel}/overlay`, { cache: "no-store" } );
+				const overlay = res.ok ? await res.json() as ImageOverlay | null : null;
+				await this.loadPanelImage( panel, overlay );
+			}
+			catch( e ) {
+				this.showError( `${panel} image load error`, e.toString() );
+			}
+		}
 	}
 
 	/**
@@ -416,10 +444,13 @@ class MainView extends VBox {
 	 * Fetches a panel's current preview image (pushed by the backend, see
 	 * image_broadcast.py) and displays it with its overlay -- applied only once
 	 * the new image is loaded, and null clears the previous image's one. panel
-	 * is "guidage" or "spectre".
+	 * is "guidage" or "spectre" (the 2D images); "spectre1d" goes to loadSpectrum().
 	 */
 
 	private async loadPanelImage( panel: string, overlay: ImageOverlay | null ) {
+		if( panel === SPECTRUM_PANEL ) {
+			return this.loadSpectrum( overlay as SpectrumOverlay | null, false );
+		}
 		const viewer = panel === "guidage" ? this.guidage_viewer
 		             : panel === "spectre" ? this.spectre_viewer
 		             : undefined;
@@ -435,17 +466,70 @@ class MainView extends VBox {
 		viewer.loadFits( await res.arrayBuffer() );
 		viewer.setOverlay( overlay );
 
-		// first real image on this panel: apply the automatic (whole-image)
-		// percentile stretch once, so it doesn't come up all-black by default --
-		// never touches the startup placeholder (loadDemoImages), and never
-		// re-applies on later images (a manual "Ajuster les niveaux" click
-		// takes over from here, same persistence rule as any other adjustment).
+		// first image on this panel (the last one at startup, or a new capture):
+		// apply the automatic (whole-image) percentile stretch once, so it doesn't
+		// come up all-black by default -- never re-applies on later images (a
+		// manual "Ajuster les niveaux" click takes over from here, same
+		// persistence rule as any other adjustment).
 		if( !this.autoStretched[panel] ) {
 			viewer.adjustLevels();
 			this.autoStretched[panel] = true;
 		}
 	}
 
+
+	/**
+	 * Fetches the last published 1D spectrum (see reduction_helpers.publish_spectrum_preview())
+	 * and shows it with its overlay. At startup (fromStart), the overlay is read from the
+	 * server, which keeps it next to the file, and a missing spectrum is not an error.
+	 */
+
+	private async loadSpectrum( overlay: SpectrumOverlay | null, fromStart: boolean ) {
+		try {
+			const res = await fetch( `${API}/images/${SPECTRUM_PANEL}`, { cache: "no-store" } );
+			if( !res.ok ) {
+				return;
+			}
+			const buffer = await res.arrayBuffer( );
+			if( fromStart ) {
+				const ov = await fetch( `${API}/images/${SPECTRUM_PANEL}/overlay`, { cache: "no-store" } );
+				overlay = ov.ok ? await ov.json( ) as SpectrumOverlay | null : null;
+			}
+			this.spectrum_viewer.loadFits( buffer );
+			this.spectrum_viewer.setOverlay( overlay );
+		}
+		catch( e ) {
+			this.showError( "spectrum load error", e.toString( ) );
+		}
+	}
+
+	/** Divider under the "Spectre 1D" panel: resizes it, and remembers its height. */
+
+	private makeSpectrumSizer( ) {
+		const sizer = new VSizer( false );	// resizes the panel above it
+		sizer.on( "resize", ev => {
+			try {
+				localStorage.setItem( SPECTRUM_HEIGHT_STORAGE_KEY, String( Math.round( ev.height ) ) );
+			}
+			catch( e ) {
+				// storage unavailable: the height just isn't remembered
+			}
+		} );
+		return sizer;
+	}
+
+	private restoreSpectrumHeight( ) {
+		let height = 0;
+		try {
+			height = parseInt( localStorage.getItem( SPECTRUM_HEIGHT_STORAGE_KEY ) ?? "" );
+		}
+		catch( e ) {
+			// storage unavailable: default split
+		}
+		if( height > 0 ) {
+			this.spectrum_panel.setStyleValue( "flex", `0 0 ${height}px` );
+		}
+	}
 
 	/**
 	 * render observations,
