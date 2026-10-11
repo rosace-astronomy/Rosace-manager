@@ -72,9 +72,28 @@ uvicorn rosace.main:app --host 0.0.0.0 --port 8000
 # http://localhost:8000/
 ```
 
-### Deferred (unattended) session start
+### Scheduled session start / stop
 
-To start a session at a given time while nobody is at the PC, use a systemd
+The GUI's controls bar schedules a start and/or a stop at a **time of day** (no
+date), local or UTC: a time field next to each button — filled, the button
+schedules ("START 21:20"); empty, it acts now as before. The time is resolved to
+its **next occurrence within 24 hours** (`control_schedule.py::next_occurrence()`;
+a stop after the scheduled start, if any). The schedule lives in the server
+(`state.scheduled_start`/`scheduled_stop`, aware UTC, in memory only — lost on a
+server restart), checked every second by `main.py::_control_schedule_loop()`
+(started in `lifespan()`): a due start starts the session like `POST /control/start`
+(ignored with a WARNING if a session is still active), a due stop is the usual clean
+stop (the current observation finishes). A manual start cancels a scheduled start,
+a manual stop a scheduled stop; each leaves the other one. API: `PUT
+/control/schedule/{start|stop}` `{"time": "HH:MM", "tz": "local"|"utc"}` (422 on a bad
+time), `DELETE /control/schedule/{start|stop}`, and `GET /status`'s
+`scheduled_start`/`scheduled_stop` (ISO UTC or `null`). In the GUI, one chip per
+scheduled instant with a countdown and a ✕ to cancel, and a Local/UTC toggle
+remembered by the browser. The PC must still not suspend.
+
+#### Alternative: systemd timer
+
+To start a session at a given time without the GUI, use a systemd
 transient timer (`at` is not installed on the observatory PC): one command to
 log in, one to schedule `POST /control/start`. Validated on the real setup
 2026-09-19.
@@ -152,7 +171,7 @@ Tests patch `BASE_DATA_DIR`, `DB_PATH`, and `TARGETS_DB_PATH` via a session-scop
 
 `plugins/test_hardware_connectivity.py` covers `plugins/hardware_connectivity.py` the same way, next to it.
 
-`test_time_helpers.py` covers `time_helpers.py` the same way, next to it; so do `test_horizon.py` (`horizon.py`, local horizon file parsing/interpolation) and `test_cli.py` (`cli.py`: the command-line options not already exercised through the real process in `test_rosace_core.py`). `test_log_config.py` covers `log_config.py`'s own behavior (the UTC `converter` switch) the same way — separate from `test_log_broadcast.py`, which covers the WebSocket-streaming handler, not the file/console formatter setup.
+`test_time_helpers.py` covers `time_helpers.py` the same way, next to it, and `test_control_schedule.py` covers `control_schedule.py`; so do `test_horizon.py` (`horizon.py`, local horizon file parsing/interpolation) and `test_cli.py` (`cli.py`: the command-line options not already exercised through the real process in `test_rosace_core.py`). `test_log_config.py` covers `log_config.py`'s own behavior (the UTC `converter` switch) the same way — separate from `test_log_broadcast.py`, which covers the WebSocket-streaming handler, not the file/console formatter setup.
 
 ## Architecture
 
@@ -164,7 +183,7 @@ The global singleton `state` (a `SystemState` instance) drives the orchestration
 IDLE → INIT_SESSION → [SCHEDULER → SEQUENCER → REDUCTION → SHARING → ARCHIVE] × N → CLOSE_SESSION → IDLE
 ```
 
-The session runs as a FastAPI background task. `POST /control/start` starts it; `POST /control/stop` sets `state.is_running = False`. No plugin needs to know about this flag: `session_runner()`'s own loop checks `state.is_running` before every stage call, so a stop request is picked up between stages and reaches `CLOSE_SESSION` cleanly — no exception involved. **A stop lets the current observation finish completely**: SEQUENCER runs every remaining step and every series to the end (so a stop during a long series can take up to its full duration), then REDUCTION/SHARING/ARCHIVE run as usual before `CLOSE_SESSION`. Only a stop during the SCHEDULER's retry wait, or during INIT_SESSION's camera cooldown, takes effect at once. Before 2026-09-28, sub-plugins cut their series short on a stop and each remaining calibration step then started and stopped after one frame, leaving useless 1-frame series behind (see HISTORY.md).
+The session runs as an asyncio task. `POST /control/start` starts it; `POST /control/stop` sets `state.is_running = False`; both can also be scheduled at a time of day (see "Scheduled session start / stop" above). No plugin needs to know about this flag: `session_runner()`'s own loop checks `state.is_running` before every stage call, so a stop request is picked up between stages and reaches `CLOSE_SESSION` cleanly — no exception involved. **A stop lets the current observation finish completely**: SEQUENCER runs every remaining step and every series to the end (so a stop during a long series can take up to its full duration), then REDUCTION/SHARING/ARCHIVE run as usual before `CLOSE_SESSION`. Only a stop during the SCHEDULER's retry wait, or during INIT_SESSION's camera cooldown, takes effect at once. Before 2026-09-28, sub-plugins cut their series short on a stop and each remaining calibration step then started and stopped after one frame, leaving useless 1-frame series behind (see HISTORY.md).
 
 On any plugin error in the observation loop, the error is recorded in the DB, and the loop restarts from **SCHEDULER** (not from INIT_SESSION) — except `SessionFatalError` (`errors.py`, a tiny module with no imports so anything can import it), raised by a plugin that finds an unrecoverable fault: `session_runner()` stops the session instead (`CLOSE_SESSION` still runs, the log line carries the failing stage's own name). `SchedulerFatalError` (see SCHEDULER plugins below) is its subclass for a SCHEDULER configuration/data problem that retrying cannot fix, and stops the session the same way. `main.py` knows only `SessionFatalError`, never which plugin raised it.
 

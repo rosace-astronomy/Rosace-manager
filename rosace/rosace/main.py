@@ -33,13 +33,13 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from contextlib import asynccontextmanager
 
 import yaml
 from fastapi import (
-    APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException,
+    APIRouter, Depends, FastAPI, HTTPException,
     Request, Response, UploadFile, WebSocket, WebSocketDisconnect,
 )
 from fastapi.responses import FileResponse
@@ -70,6 +70,7 @@ from .database import (
     db_set_stage_status, db_get_recent_observations, db_record_measurements,
 )
 from .demo_seed import seed_demo_data
+from .control_schedule import next_occurrence
 from .errors import SessionFatalError
 from .observation_file import create_observation_file, write_observation_file
 from .plugins  import plugins
@@ -101,7 +102,9 @@ async def lifespan(_app: FastAPI):
     ws_log_handler.bind_loop(asyncio.get_running_loop())
     ws_image_broadcaster.bind_loop(asyncio.get_running_loop())
     logging.getLogger("spectro").addHandler(ws_log_handler)
+    schedule_task = asyncio.create_task(_control_schedule_loop())
     yield
+    schedule_task.cancel()
 
 app = FastAPI(
     title="Spectro Orchestrator",
@@ -138,6 +141,10 @@ class SystemState:
         self.session_active: bool = False
         self.completed: list[Observation] = []
         self.pending_post_obs: int = 0
+        # Session start/stop scheduled from the GUI (aware UTC instants, None when
+        # nothing is scheduled) -- in memory only, lost on a server restart.
+        self.scheduled_start: datetime | None = None
+        self.scheduled_stop: datetime | None = None
 
 state = SystemState()
 
@@ -363,6 +370,10 @@ async def _session_runner_body():
 # Endpoints API
 # ─────────────────────────────────────────────────────────────
 
+def _iso(instant: datetime | None) -> str | None:
+    return instant.isoformat() if instant else None
+
+
 @protected.get("/status")
 async def get_status():
     """Returns the current orchestrator state."""
@@ -372,6 +383,8 @@ async def get_status():
         "session_active": state.session_active,
         "completed_count": len(state.completed),
         "pending_post_obs_count": state.pending_post_obs,
+        "scheduled_start": _iso(state.scheduled_start),
+        "scheduled_stop": _iso(state.scheduled_stop),
     }
 
 @protected.get("/observations/completed")
@@ -407,24 +420,132 @@ async def get_observation(obs_id: str):
             return obs
     raise HTTPException(status_code=404, detail="Observation non trouvée")
 
-@protected.post("/control/start")
-async def start_session(background_tasks: BackgroundTasks):
-    """Starts a new observation session. Refuses as long as a previous session
-    hasn't fully finished stopping (session_active), not just while a stop has
-    been requested (is_running) — otherwise a second session could start while
-    the first one is still finishing its cleanup."""
+# Keeps a reference to each running session task, so it is never garbage-collected
+# while it runs (asyncio only keeps weak references to tasks).
+_session_tasks: set[asyncio.Task] = set()
+
+
+def _request_start() -> bool:
+    """Starts a new observation session, unless one is still active. Refuses as long
+    as a previous session hasn't fully finished stopping (session_active), not just
+    while a stop has been requested (is_running) — otherwise a second session could
+    start while the first one is still finishing its cleanup."""
     if state.session_active:
-        return {"message": "Session déjà en cours"}
+        return False
     state.is_running = True
-    background_tasks.add_task(session_runner)
+    task = asyncio.create_task(session_runner())
+    _session_tasks.add(task)
+    task.add_done_callback(_session_tasks.discard)
+    return True
+
+
+def _request_stop() -> None:
+    """Requests a clean session stop (after the current observation)."""
+    state.is_running = False
+    log.info("[ORCHESTRATOR] Stop requested — CLOSE_SESSION will run at the end of the cycle")
+
+
+def _describe(instant: datetime) -> str:
+    """'21:20 local (19:20 UTC)' — for the log lines of the scheduled start/stop."""
+    return f"{instant.astimezone():%Y-%m-%d %H:%M} local ({instant.astimezone(timezone.utc):%H:%M} UTC)"
+
+
+def _check_control_schedule(now: datetime) -> None:
+    """One tick of the scheduled start/stop: acts on whatever is due at `now`."""
+    if state.scheduled_start and state.scheduled_start <= now:
+        state.scheduled_start = None
+        if _request_start():
+            log.info("[ORCHESTRATOR] Scheduled start reached — session started")
+        else:
+            log.warning("[ORCHESTRATOR] Scheduled start reached, but a session is already active — ignored")
+    if state.scheduled_stop and state.scheduled_stop <= now:
+        state.scheduled_stop = None
+        if state.is_running:
+            log.info("[ORCHESTRATOR] Scheduled stop reached")
+            _request_stop()
+        else:
+            log.info("[ORCHESTRATOR] Scheduled stop reached, no session running — nothing to do")
+
+
+CONTROL_SCHEDULE_TICK_SECONDS = 1.0
+
+async def _control_schedule_loop() -> None:
+    """Runs for the server's whole lifetime (started in lifespan())."""
+    while True:
+        try:
+            _check_control_schedule(datetime.now(timezone.utc))
+        except Exception as e:
+            log.error(f"[ORCHESTRATOR] Scheduled start/stop check failed: {e}")
+        await asyncio.sleep(CONTROL_SCHEDULE_TICK_SECONDS)
+
+
+@protected.post("/control/start")
+async def start_session():
+    """Starts a new observation session now; cancels a scheduled start."""
+    if state.scheduled_start:
+        state.scheduled_start = None
+        log.info("[ORCHESTRATOR] Scheduled start cancelled by a manual start")
+    if not _request_start():
+        return {"message": "Session déjà en cours"}
     return {"message": "Session démarrée"}
 
 @protected.post("/control/stop")
 async def stop_session():
-    """Requests a clean session stop (after the current observation)."""
-    state.is_running = False
-    log.info("[ORCHESTRATOR] Stop requested — CLOSE_SESSION will run at the end of the cycle")
+    """Requests a clean session stop (after the current observation); cancels a scheduled stop."""
+    if state.scheduled_stop:
+        state.scheduled_stop = None
+        log.info("[ORCHESTRATOR] Scheduled stop cancelled by a manual stop")
+    _request_stop()
     return {"message": "Arrêt demandé — CLOSE_SESSION sera exécuté en fin de cycle"}
+
+
+class ScheduleRequest(BaseModel):
+    time: str                          # "HH:MM", 24-hour
+    tz: Literal["local", "utc"] = "local"
+
+
+def _resolve(request: ScheduleRequest, after: datetime) -> datetime:
+    try:
+        return next_occurrence(request.time, request.tz, after)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@protected.put("/control/schedule/start")
+async def schedule_start(request: ScheduleRequest):
+    """Schedules (or reschedules) the session start at the next occurrence of a time
+    of day, within 24 hours."""
+    state.scheduled_start = _resolve(request, datetime.now(timezone.utc))
+    log.info(f"[ORCHESTRATOR] Start scheduled at {_describe(state.scheduled_start)}")
+    if state.scheduled_stop and state.scheduled_stop < state.scheduled_start:
+        log.warning("[ORCHESTRATOR] The scheduled stop comes before the scheduled start")
+    return {"scheduled_start": _iso(state.scheduled_start)}
+
+
+@protected.put("/control/schedule/stop")
+async def schedule_stop(request: ScheduleRequest):
+    """Schedules (or reschedules) the session stop at the next occurrence of a time
+    of day — after the scheduled start, if there is one."""
+    now = datetime.now(timezone.utc)
+    state.scheduled_stop = _resolve(request, max(now, state.scheduled_start or now))
+    log.info(f"[ORCHESTRATOR] Stop scheduled at {_describe(state.scheduled_stop)}")
+    return {"scheduled_stop": _iso(state.scheduled_stop)}
+
+
+@protected.delete("/control/schedule/start")
+async def cancel_scheduled_start():
+    if state.scheduled_start:
+        state.scheduled_start = None
+        log.info("[ORCHESTRATOR] Scheduled start cancelled")
+    return {"scheduled_start": None}
+
+
+@protected.delete("/control/schedule/stop")
+async def cancel_scheduled_stop():
+    if state.scheduled_stop:
+        state.scheduled_stop = None
+        log.info("[ORCHESTRATOR] Scheduled stop cancelled")
+    return {"scheduled_stop": None}
 
 
 WS_PING_INTERVAL = 30  # seconds — matches the 'ping' heartbeat convention of x4js's setupSocketMessaging()

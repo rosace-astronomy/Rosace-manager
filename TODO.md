@@ -76,6 +76,12 @@ Claude peut le suggérer, jamais le faire lui-même.
 
 ## Petits items
 
+- [ ] Commande `rosace` cassée : `[project.scripts]` de `pyproject.toml`
+      pointe sur l'application FastAPI (`rosace.main:app`), pas sur une
+      fonction de lancement — `rosace --help` échoue (TypeError). La faire
+      pointer sur le lancement de `cli.py` (même comportement que
+      `python -m rosace.main`), ou supprimer la déclaration (2026-10-11)
+
 - [ ] GUI web : l'affichage d'une nouvelle image (au moins panneau Spectre)
       repart en taille pleine à chaque nouvelle capture au lieu de garder
       le zoom courant (constaté 2026-09-19)

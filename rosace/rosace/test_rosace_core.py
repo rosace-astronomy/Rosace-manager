@@ -2077,10 +2077,14 @@ class TestApiEndpoints:
         main_mod.state.is_running = False
         main_mod.state.session_active = False
         main_mod.state.stage = OrchestratorStage.IDLE
+        main_mod.state.scheduled_start = None
+        main_mod.state.scheduled_stop = None
         yield
         main_mod.state.is_running = False
         main_mod.state.session_active = False
         main_mod.state.stage = OrchestratorStage.IDLE
+        main_mod.state.scheduled_start = None
+        main_mod.state.scheduled_stop = None
 
     _TEST_ADMIN_USER = "pytest_admin"
     _TEST_ADMIN_PASS = "pytest_password"
@@ -2128,6 +2132,7 @@ class TestApiEndpoints:
         data = res.json()
         assert set(data.keys()) == {
             "stage", "is_running", "session_active", "completed_count", "pending_post_obs_count",
+            "scheduled_start", "scheduled_stop",
         }
 
     def test_control_start_when_idle(self, monkeypatch):
@@ -2178,6 +2183,71 @@ class TestApiEndpoints:
 
         assert res.status_code == 200
         assert main_mod.state.is_running is False
+
+    # ── Scheduled start / stop ──────────────────────────────────
+
+    def test_schedule_start_put_and_status(self):
+        from datetime import datetime, timezone
+        with self._client() as client:
+            res = client.put("/control/schedule/start", json={"time": "21:20", "tz": "utc"})
+            status = client.get("/status").json()
+        assert res.status_code == 200
+        instant = datetime.fromisoformat(res.json()["scheduled_start"])
+        assert (instant.hour, instant.minute) == (21, 20)
+        assert instant > datetime.now(timezone.utc)
+        assert status["scheduled_start"] == res.json()["scheduled_start"]
+        assert status["scheduled_stop"] is None
+
+    @pytest.mark.parametrize("body", [
+        {"time": "25:00", "tz": "utc"}, {"time": "9h30"}, {"time": "21:20", "tz": "paris"},
+    ])
+    def test_schedule_invalid_request_is_422(self, body):
+        with self._client() as client:
+            res = client.put("/control/schedule/start", json=body)
+        assert res.status_code == 422
+
+    def test_schedule_stop_resolved_after_scheduled_start(self):
+        """A stop time earlier in the day than the start belongs to the day after the start."""
+        from datetime import datetime
+        with self._client() as client:
+            start = client.put("/control/schedule/start", json={"time": "21:00", "tz": "utc"}).json()
+            stop = client.put("/control/schedule/stop", json={"time": "20:00", "tz": "utc"}).json()
+        start_at = datetime.fromisoformat(start["scheduled_start"])
+        stop_at = datetime.fromisoformat(stop["scheduled_stop"])
+        assert start_at < stop_at
+        assert (stop_at - start_at).total_seconds() == 23 * 3600
+
+    def test_schedule_delete_is_idempotent(self):
+        import rosace.main as main_mod
+        with self._client() as client:
+            client.put("/control/schedule/stop", json={"time": "05:30"})
+            first = client.delete("/control/schedule/stop")
+            second = client.delete("/control/schedule/stop")
+        assert first.status_code == second.status_code == 200
+        assert main_mod.state.scheduled_stop is None
+
+    def test_manual_start_cancels_scheduled_start_not_stop(self, monkeypatch):
+        import rosace.main as main_mod
+
+        async def fake_runner():
+            pass
+
+        monkeypatch.setattr(main_mod, "session_runner", fake_runner)
+        with self._client() as client:
+            client.put("/control/schedule/start", json={"time": "21:00"})
+            client.put("/control/schedule/stop", json={"time": "05:00"})
+            client.post("/control/start")
+        assert main_mod.state.scheduled_start is None
+        assert main_mod.state.scheduled_stop is not None
+
+    def test_manual_stop_cancels_scheduled_stop_not_start(self):
+        import rosace.main as main_mod
+        with self._client() as client:
+            client.put("/control/schedule/start", json={"time": "21:00"})
+            client.put("/control/schedule/stop", json={"time": "05:00"})
+            client.post("/control/stop")
+        assert main_mod.state.scheduled_stop is None
+        assert main_mod.state.scheduled_start is not None
 
     def test_get_star_404_when_missing(self):
         with self._client() as client:
@@ -2660,3 +2730,76 @@ session_cookie_secure: false
         second = self._run(tmp_path, "second_admin")
         assert second.returncode != 0
         assert "[FAIL]" in second.stdout
+
+
+class TestControlScheduleTick:
+    """main._check_control_schedule(): what happens when a scheduled start or stop is due."""
+
+    NOW = datetime(2026, 10, 11, 19, 20, tzinfo=timezone.utc)
+
+    @pytest.fixture(autouse=True)
+    def reset_state(self, monkeypatch):
+        import rosace.main as main_mod
+        self.started = []
+
+        async def fake_runner():
+            self.started.append(True)
+
+        monkeypatch.setattr(main_mod, "session_runner", fake_runner)
+        for attr, value in (("is_running", False), ("session_active", False),
+                            ("scheduled_start", None), ("scheduled_stop", None)):
+            setattr(main_mod.state, attr, value)
+        yield
+        for attr, value in (("is_running", False), ("session_active", False),
+                            ("scheduled_start", None), ("scheduled_stop", None)):
+            setattr(main_mod.state, attr, value)
+
+    def _tick(self, now):
+        import rosace.main as main_mod
+
+        async def run():
+            main_mod._check_control_schedule(now)
+            await asyncio.sleep(0)  # lets a started session task run
+
+        asyncio.run(run())
+
+    def test_due_start_starts_an_idle_session(self):
+        import rosace.main as main_mod
+        main_mod.state.scheduled_start = self.NOW
+        self._tick(self.NOW)
+        assert main_mod.state.is_running is True
+        assert self.started == [True]
+        assert main_mod.state.scheduled_start is None
+
+    def test_due_start_ignored_while_a_session_is_active(self):
+        import rosace.main as main_mod
+        main_mod.state.session_active = True
+        main_mod.state.scheduled_start = self.NOW
+        self._tick(self.NOW)
+        assert self.started == []
+        assert main_mod.state.scheduled_start is None
+
+    def test_due_stop_stops_a_running_session(self):
+        import rosace.main as main_mod
+        main_mod.state.is_running = True
+        main_mod.state.scheduled_stop = self.NOW
+        self._tick(self.NOW)
+        assert main_mod.state.is_running is False
+        assert main_mod.state.scheduled_stop is None
+
+    def test_due_stop_without_session_is_cleared(self):
+        import rosace.main as main_mod
+        main_mod.state.scheduled_stop = self.NOW
+        self._tick(self.NOW)
+        assert main_mod.state.is_running is False
+        assert main_mod.state.scheduled_stop is None
+
+    def test_nothing_due_changes_nothing(self):
+        import rosace.main as main_mod
+        later = self.NOW + timedelta(minutes=1)
+        main_mod.state.scheduled_start = later
+        main_mod.state.scheduled_stop = later
+        self._tick(self.NOW)
+        assert self.started == []
+        assert main_mod.state.scheduled_start == later
+        assert main_mod.state.scheduled_stop == later

@@ -1,6 +1,6 @@
 import { VBox, HBox, Button, Label, Application, BoxProps, Image, Listbox, ListItem,
 	SimpleText, SimpleTextArea, Notification, Tag, initTooltips, makeState, asap, EvMessage, HSizer,
-	Component,
+	Component, TextEdit,
 	} from "x4js";
 
 import "./main.scss";
@@ -81,7 +81,12 @@ interface ApiStatus {
     session_active: boolean;
     completed_count: number;
     pending_post_obs_count: number;
+    scheduled_start: string | null;		// ISO UTC instant, null when nothing is scheduled
+    scheduled_stop: string | null;
 }
+
+type ScheduleKind = "start" | "stop";
+type TimeZoneMode = "local" | "utc";
 
 /**
  * application data
@@ -99,7 +104,8 @@ interface AppData {
 };
 
 const app_data = makeState<AppData>( {
-	status: { stage: "idle", is_running: false, session_active: false, completed_count: 0, pending_post_obs_count: 0 },
+	status: { stage: "idle", is_running: false, session_active: false, completed_count: 0, pending_post_obs_count: 0,
+		scheduled_start: null, scheduled_stop: null },
 	connected: false,
 	observations: [],
 	step_progress: {},
@@ -128,7 +134,9 @@ const FAKE_STATUS: ApiStatus = {
 	session_active: true,
 	completed_count: 1,
 	pending_post_obs_count: 5,
-	stage: "idle"
+	stage: "idle",
+	scheduled_start: null,
+	scheduled_stop: null,
 }
 
 
@@ -140,6 +148,9 @@ const API = "";
 const OBS_FETCH_TIME = 3000;
 const STATUS_FETCH_TIME = 5000;
 const WS_RETRY_DELAY = 5000;
+
+// Local/UTC choice for the scheduled start/stop times, remembered by the browser.
+const TZ_MODE_STORAGE_KEY = "rosace.schedule_tz";
 
 // How long the SEQUENCER/REDUCTION step-progress lines stay visible, showing
 // their last state ("all done"), after the whole observation finishes
@@ -268,6 +279,16 @@ class MainView extends VBox {
 	// already received its automatic stretch -- see loadPanelImage below.
 	private autoStretched: Record<string, boolean> = {};
 
+	// Scheduled start/stop (controls bar): one time field per button, one chip per
+	// scheduled instant (shown only while something is scheduled), Local/UTC toggle.
+	private start_button: Button;
+	private stop_button: Button;
+	private start_time: TextEdit;
+	private stop_time: TextEdit;
+	private tz_button: Button;
+	private tz_mode: TimeZoneMode = "local";
+	private schedule_chips = {} as Record<ScheduleKind, { box: HBox, label: Label }>;
+
 	constructor( props: BoxProps ) {
 		super( props );
 
@@ -280,11 +301,18 @@ class MainView extends VBox {
 				new VBox( { cls: "left-col", flex: 1, content: [
 					//<todo: x4btngroup
 					new HBox( { cls: "controls-bar", content: [
-						//<todo: use button.icon
-						new Button({ label: "START", icon: play_icon, id: "start", click: () => this.controlStart() }),
-						//<todo: use button.icon
-						new Button({ label: "STOP", icon: stop_icon, id: "stop",  click: () => this.controlStop() }),
-						//new SimpleText({ flex: 1, id: "status-text", text: "text" }), // replaced by notification
+						this.start_button = new Button({ label: "START", icon: play_icon, id: "start", click: () => this.controlStart() }),
+						this.start_time = new TextEdit({ cls: "schedule-time", label: "", type: "time", value: "",
+							tooltip: "Heure de départ (vide : départ immédiat)", change: () => this.updateControls() }),
+						new HBox({ cls: "schedule-chips", flex: 1, content: [
+							this.makeScheduleChip( "start" ),
+							this.makeScheduleChip( "stop" ),
+						] }),
+						this.stop_time = new TextEdit({ cls: "schedule-time", label: "", type: "time", value: "",
+							tooltip: "Heure d'arrêt (vide : arrêt immédiat)", change: () => this.updateControls() }),
+						this.stop_button = new Button({ label: "STOP", icon: stop_icon, id: "stop",  click: () => this.controlStop() }),
+						this.tz_button = new Button({ cls: "tz-toggle", label: "Local", tooltip: "Heures en heure locale ou en UTC",
+							click: () => this.toggleTimeZoneMode() }),
 					]} ),
 					//<todo: use x4panel
 					new VBox({ cls: "panel obs", flex: 1, content: [
@@ -315,6 +343,16 @@ class MainView extends VBox {
 		]);
 
 		this.log( "application started" )
+
+		let savedMode: string | null = null;
+		try {
+			savedMode = localStorage.getItem( TZ_MODE_STORAGE_KEY );
+		}
+		catch( e ) {
+			// storage unavailable: default to local time
+		}
+		this.setTimeZoneMode( savedMode === "utc" ? "utc" : "local" );
+		this.setInterval( "schedule", 1000, ( ) => this.renderScheduleChips( ) );
 
 		// backend log records, pushed over the WebSocket log channel in periodic batches
 		this.onGlobalEvent( ( ev: EvMessage ) => {
@@ -608,8 +646,8 @@ class MainView extends VBox {
 			app_data.status = data;
 
 			//this.obsCountBadge.setText(`${d.completed_count} obs`);
-			this.query("#start").enable(!data.session_active);
-			this.query("#stop").enable(data.is_running);
+			this.updateControls();
+			this.renderScheduleChips();
 
 			if (data.stage !== this.last_stage) {
 				if (this.last_stage !== null) {
@@ -680,6 +718,9 @@ class MainView extends VBox {
     }
 
 	private async controlStart() {
+		if( this.start_time.getValue() ) {
+			return this.scheduleControl( "start" );
+		}
         const bt = this.query("#start")
 		
     	bt.disable();
@@ -700,11 +741,14 @@ class MainView extends VBox {
 			this.showError( `fetch error`, e.toString() );
 		}
 		finally {
-            bt.enable( );
+            this.updateControls( );
         }
     }
 
     private async controlStop() {
+		if( this.stop_time.getValue() ) {
+			return this.scheduleControl( "stop" );
+		}
         const bt = this.query("#stop")
 		bt.disable();
 
@@ -725,9 +769,138 @@ class MainView extends VBox {
             this.log(`Erreur STOP : ${e}`);
         }
 		finally {
-            bt.enable( );
+            this.updateControls( );
         }
     }
+
+	// ::: Scheduled start / stop :::::::::::::::::::::::::::::::::::::::::::::::
+
+	/**
+	 * Buttons follow their time field: filled, the button schedules ("START 21:20");
+	 * empty, it acts now. A filled field also enables its button, so a stop can be
+	 * scheduled before the session has started.
+	 */
+	private updateControls( ) {
+		const status = app_data.status;
+		const start = this.start_time.getValue( );
+		const stop = this.stop_time.getValue( );
+		this.start_button.setText( start ? `START ${start}` : "START" );
+		this.stop_button.setText( stop ? `STOP ${stop}` : "STOP" );
+		this.start_button.enable( !status.session_active || !!start );
+		this.stop_button.enable( status.is_running || !!stop );
+	}
+
+	private async scheduleControl( kind: ScheduleKind ) {
+		const field = kind === "start" ? this.start_time : this.stop_time;
+		const time = field.getValue( );
+		try {
+			const res = await fetch( `${API}/control/schedule/${kind}`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify( { time, tz: this.tz_mode } ),
+				signal: AbortSignal.timeout( 5000 ),
+			} );
+			if( res.ok ) {
+				const data = await res.json( ) as Record<string, string>;
+				const text = `${kind === "start" ? "Départ" : "Arrêt"} planifié : ${this.formatScheduleTime( new Date( data[`scheduled_${kind}`] ) )}`;
+				this.log( text );
+				this.showMsg( kind, text );
+				field.setValue( "" );
+				this.fetchStatus( );
+			}
+			else {
+				this.showError( `schedule error ${res.status}`, res.statusText );
+			}
+		}
+		catch( e ) {
+			this.showError( `fetch error`, e.toString() );
+		}
+		finally {
+			this.updateControls( );
+		}
+	}
+
+	private async cancelSchedule( kind: ScheduleKind ) {
+		try {
+			const res = await fetch( `${API}/control/schedule/${kind}`, { method: "DELETE", signal: AbortSignal.timeout( 5000 ) } );
+			if( res.ok ) {
+				this.log( `${kind === "start" ? "Départ" : "Arrêt"} planifié annulé` );
+				this.fetchStatus( );
+			}
+			else {
+				this.showError( `cancel error ${res.status}`, res.statusText );
+			}
+		}
+		catch( e ) {
+			this.showError( `fetch error`, e.toString() );
+		}
+	}
+
+	/** One chip per kind, built once and only shown while that kind is scheduled. */
+	private makeScheduleChip( kind: ScheduleKind ) {
+		const label = new Label( { cls: "schedule-text", text: "" } );
+		const box = new HBox( { cls: `schedule-chip ${kind}`, content: [
+			label,
+			new Button( { cls: "schedule-cancel", label: "✕", tooltip: "Annuler", click: ( ) => this.cancelSchedule( kind ) } ),
+		] } );
+		box.hide( );
+		this.schedule_chips[kind] = { box, label };
+		return box;
+	}
+
+	/** Called every second (countdown) and after each /status poll. */
+	private renderScheduleChips( ) {
+		const now = Date.now( );
+		for( const kind of ["start", "stop"] as ScheduleKind[] ) {
+			const iso = kind === "start" ? app_data.status.scheduled_start : app_data.status.scheduled_stop;
+			const chip = this.schedule_chips[kind];
+			if( !iso ) {
+				chip.box.hide( );
+				continue;
+			}
+			const at = new Date( iso );
+			chip.label.setText( `${this.formatScheduleTime( at )} · dans ${this.formatCountdown( at.getTime( ) - now )}` );
+			chip.box.show( );
+		}
+	}
+
+	/** "21:20", "dim. 05:30" when not today, with " UTC" in UTC mode. */
+	private formatScheduleTime( at: Date ) {
+		const timeZone = this.tz_mode === "utc" ? "UTC" : undefined;
+		const time = at.toLocaleTimeString( undefined, { timeZone, hour: "2-digit", minute: "2-digit", hour12: false } );
+		const day = ( d: Date ) => d.toLocaleDateString( undefined, { timeZone } );
+		const prefix = day( at ) === day( new Date( ) ) ? "" : at.toLocaleDateString( undefined, { timeZone, weekday: "short" } ) + " ";
+		return prefix + time + ( this.tz_mode === "utc" ? " UTC" : "" );
+	}
+
+	/** "2 h 14", "12 min", "45 s" (seconds only in the last minute). */
+	private formatCountdown( ms: number ) {
+		const seconds = Math.max( 0, Math.round( ms / 1000 ) );
+		if( seconds < 60 ) {
+			return `${seconds} s`;
+		}
+		const minutes = Math.ceil( seconds / 60 );
+		if( minutes < 60 ) {
+			return `${minutes} min`;
+		}
+		return `${Math.floor( minutes / 60 )} h ${String( minutes % 60 ).padStart( 2, "0" )}`;
+	}
+
+	private toggleTimeZoneMode( ) {
+		this.setTimeZoneMode( this.tz_mode === "local" ? "utc" : "local" );
+		try {
+			localStorage.setItem( TZ_MODE_STORAGE_KEY, this.tz_mode );
+		}
+		catch( e ) {
+			// storage unavailable (private window...): the choice just isn't remembered
+		}
+	}
+
+	private setTimeZoneMode( mode: TimeZoneMode ) {
+		this.tz_mode = mode;
+		this.tz_button.setText( mode === "utc" ? "UTC" : "Local" );
+		this.renderScheduleChips( );
+	}
 
 	private showMsg( title: string, text: string) {
         new Notification( {title,text,}).display( 5 );

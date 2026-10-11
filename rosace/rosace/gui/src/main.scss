@@ -253,6 +253,67 @@ body {
 				background-color: var(--disabled-bg);
 			}
 		}
+
+		// Scheduled start/stop: time fields next to their buttons, chips in the middle.
+		// The fields take the bar's own background with an outline (a grey fill made
+		// them look disabled) and the full height of the START/STOP buttons.
+		.schedule-time {
+			align-self: stretch;
+			margin: 0;
+
+			& > #edit {
+				border: 1px solid var(--muted);
+				border-radius: var(--radius);
+				padding: 0 0.4rem;
+
+				&:focus-within {
+					border-color: var(--accent);
+				}
+			}
+
+			input {
+				width: 6.5rem;
+				height: 100%;
+				background: transparent;
+				color: var(--text);
+			}
+		}
+
+		.schedule-chips {
+			justify-content: center;
+			gap: 0.5rem;
+			min-width: 0;
+		}
+
+		.schedule-chip {
+			align-items: center;
+			gap: 0.3rem;
+			white-space: nowrap;
+			font-size: 1rem;
+
+			&.start, &.start .schedule-text { color: var(--green); }
+			&.stop,  &.stop .schedule-text  { color: var(--red); }
+
+			// Larger than the buttons' 14px on purpose: digits and lower case look
+			// smaller than START/STOP's capitals at the same size.
+			.schedule-text {
+				font-weight: 700;
+				font-size: 1.2rem;
+			}
+
+			.schedule-cancel {
+				padding: 0 0.35rem;
+				min-width: 0;
+				border: none;
+				background: transparent;
+				color: inherit;
+			}
+		}
+
+		.tz-toggle {
+			font-size: 0.8rem;
+			min-width: 3.5rem;
+		}
 	}
 
 	.panel.obs {
