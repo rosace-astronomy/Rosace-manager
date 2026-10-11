@@ -53,6 +53,10 @@ COPY --from=gui-builder /gui/bin /app/rosace/rosace/gui/bin
 COPY docker/config.demo.yaml docker/seed_demo_data.py docker/entrypoint.sh /app/docker/
 RUN chmod +x /app/docker/entrypoint.sh
 
+# Real sample images shown in the GUI's image panels (copied to /data by
+# seed_demo_data.py on first start).
+COPY docker/preview /app/docker/preview
+
 # seed_demo_data.py seeds targets.db programs named "Be_stars"/"PN" (a
 # realistic catalogue) — pipeline_loader.py resolves a program name directly
 # to a programs/<name>.yaml file, which must be backend-agnostic since this

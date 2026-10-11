@@ -61,6 +61,11 @@ real installation exposed on a network. A small star catalogue (seeded
 from `docker/seed_demo_data.py`) is already ready: clicking START in the
 interface directly launches a simulated observation session.
 
+The three image panels show real sample data from one observation (16 Peg,
+2026-09-25: guide image, raw 2D frame, final 1D spectrum — `docker/preview/`).
+They stay the same during the session: the simulated acquisitions produce
+empty placeholder files, which are never displayed.
+
 ## Useful commands
 
 | Action | Command |

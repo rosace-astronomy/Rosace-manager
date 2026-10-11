@@ -14,12 +14,21 @@ The rosace/rosace credential is a deliberate demo-only convenience — this
 image is for evaluation, not a real deployment (see Dockerfile) — so a
 predictable login beats a --create-admin step someone has to run by hand
 before they can even open the GUI. Never do this for a real installation.
+
+Also copies real sample images (docker/preview/: a guide image, a raw 2D
+frame and the final 1D spectrum of one real observation, 16 Peg on
+2026-09-25) into the GUI's preview directory, so the three image panels are
+not empty: the internal backend's simulated frames are empty placeholders
+that are never shown. A panel file that already exists is never overwritten.
 """
 
 import asyncio
+import gzip
 import logging
+import shutil
 from pathlib import Path
 
+from rosace.config import GUI_PREVIEW_DIR
 from rosace.database import db_init
 from rosace.plugins.schedulers.scheduler_rosace_2026.scheduler import OBSERVATION_LIST_PATH
 from rosace.auth import auth_db_init, ensure_first_admin
@@ -31,6 +40,8 @@ from rosace.targets import (
 
 DEMO_ADMIN_USERNAME = "rosace"
 DEMO_ADMIN_PASSWORD = "rosace"
+
+PREVIEW_SOURCE_DIR = Path(__file__).parent / "preview"
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("seed_demo_data")
@@ -80,11 +91,26 @@ async def _seed_admin() -> None:
         log.info("An account already exists — skipping demo admin bootstrap.")
 
 
+def _seed_preview_images() -> None:
+    GUI_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    for source in sorted(PREVIEW_SOURCE_DIR.iterdir()):
+        target = GUI_PREVIEW_DIR / source.name.removesuffix(".gz")
+        if target.exists():
+            continue
+        if source.suffix == ".gz":
+            with gzip.open(source, "rb") as src, open(target, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+        else:
+            shutil.copyfile(source, target)
+        log.info(f"Sample preview image copied: {target}")
+
+
 async def main() -> None:
     await db_init()
     await targets_db_init()
 
     await _seed_admin()
+    _seed_preview_images()
 
     if await program_list():
         log.info("targets.db already populated — skipping demo seed.")
