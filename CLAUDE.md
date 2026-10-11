@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This file describes the project **as it is today**: conventions, architecture, how things work. For the story of *how* it got this way — bug postmortems, dates, rejected alternatives, design deliberations — see [HISTORY.md](HISTORY.md). When a design choice here is non-obvious, a pointer to the relevant HISTORY.md entry is given so you can find the reasoning if you need it.
 
+The user-facing documentation (Sphinx) lives outside this repository, published at <https://rosace-astronomy.github.io/rosace-docs/>.
+
 ## Language policy
 
 All code artifacts must be in English: variable names, function names, comments, docstrings, log messages, and any text written to files. This applies even though the user communicates with Claude in French. Conversations happen in French; code is written in English.
