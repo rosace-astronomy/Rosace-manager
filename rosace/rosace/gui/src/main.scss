@@ -183,7 +183,8 @@ body {
 	}
 }
 
-// Footer — UTC clock (left) / browser-local clock (right), same height and
+// Footer — UTC clock (left) / local sidereal time (centre, by space-between) /
+// browser-local clock (right), same height and
 // clock font-size as .appheader's own #title, for visual consistency top/bottom.
 .app-footer {
 	height: 66px;
@@ -308,11 +309,6 @@ body {
 				background: transparent;
 				color: inherit;
 			}
-		}
-
-		.tz-toggle {
-			font-size: 0.8rem;
-			min-width: 3.5rem;
 		}
 	}
 

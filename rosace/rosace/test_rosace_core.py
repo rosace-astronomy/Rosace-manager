@@ -2132,7 +2132,7 @@ class TestApiEndpoints:
         data = res.json()
         assert set(data.keys()) == {
             "stage", "is_running", "session_active", "completed_count", "pending_post_obs_count",
-            "scheduled_start", "scheduled_stop",
+            "scheduled_start", "scheduled_stop", "site_longitude_deg",
         }
 
     def test_control_start_when_idle(self, monkeypatch):
@@ -2189,17 +2189,18 @@ class TestApiEndpoints:
     def test_schedule_start_put_and_status(self):
         from datetime import datetime, timezone
         with self._client() as client:
-            res = client.put("/control/schedule/start", json={"time": "21:20", "tz": "utc"})
+            res = client.put("/control/schedule/start", json={"time": "21:20"})
             status = client.get("/status").json()
         assert res.status_code == 200
         instant = datetime.fromisoformat(res.json()["scheduled_start"])
-        assert (instant.hour, instant.minute) == (21, 20)
+        assert instant.utcoffset().total_seconds() == 0
+        assert instant.astimezone().strftime("%H:%M") == "21:20"   # typed as a local time
         assert instant > datetime.now(timezone.utc)
         assert status["scheduled_start"] == res.json()["scheduled_start"]
         assert status["scheduled_stop"] is None
 
     @pytest.mark.parametrize("body", [
-        {"time": "25:00", "tz": "utc"}, {"time": "9h30"}, {"time": "21:20", "tz": "paris"},
+        {"time": "25:00"}, {"time": "9h30"}, {},
     ])
     def test_schedule_invalid_request_is_422(self, body):
         with self._client() as client:
@@ -2210,12 +2211,12 @@ class TestApiEndpoints:
         """A stop time earlier in the day than the start belongs to the day after the start."""
         from datetime import datetime
         with self._client() as client:
-            start = client.put("/control/schedule/start", json={"time": "21:00", "tz": "utc"}).json()
-            stop = client.put("/control/schedule/stop", json={"time": "20:00", "tz": "utc"}).json()
+            start = client.put("/control/schedule/start", json={"time": "21:00"}).json()
+            stop = client.put("/control/schedule/stop", json={"time": "20:00"}).json()
         start_at = datetime.fromisoformat(start["scheduled_start"])
         stop_at = datetime.fromisoformat(stop["scheduled_stop"])
         assert start_at < stop_at
-        assert (stop_at - start_at).total_seconds() == 23 * 3600
+        assert 22 * 3600 <= (stop_at - start_at).total_seconds() <= 24 * 3600   # 23 h, ±1 h on a daylight-saving day
 
     def test_schedule_delete_is_idempotent(self):
         import rosace.main as main_mod

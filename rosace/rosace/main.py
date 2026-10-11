@@ -34,7 +34,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Optional
 
 from contextlib import asynccontextmanager
 
@@ -47,7 +47,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .config     import GUI_PREVIEW_DIR, SITE_NAME, SCHEDULER_RETRY_SECONDS, SESSION_COOKIE_SECURE, SESSION_TTL_HOURS, IS_DEMO_MODE
+from .config     import GUI_PREVIEW_DIR, SITE_NAME, SITE_LONGITUDE_DEG, SCHEDULER_RETRY_SECONDS, SESSION_COOKIE_SECURE, SESSION_TTL_HOURS, IS_DEMO_MODE
 from .log_config import configure_logging
 
 configure_logging()
@@ -386,6 +386,7 @@ async def get_status():
         "pending_post_obs_count": state.pending_post_obs,
         "scheduled_start": _iso(state.scheduled_start),
         "scheduled_stop": _iso(state.scheduled_stop),
+        "site_longitude_deg": SITE_LONGITUDE_DEG,   # for the GUI's sidereal clock
     }
 
 @protected.get("/observations/completed")
@@ -501,13 +502,12 @@ async def stop_session():
 
 
 class ScheduleRequest(BaseModel):
-    time: str                          # "HH:MM", 24-hour
-    tz: Literal["local", "utc"] = "local"
+    time: str                          # "HH:MM", 24-hour, local time
 
 
 def _resolve(request: ScheduleRequest, after: datetime) -> datetime:
     try:
-        return next_occurrence(request.time, request.tz, after)
+        return next_occurrence(request.time, after)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 

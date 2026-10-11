@@ -84,10 +84,10 @@ interface ApiStatus {
     pending_post_obs_count: number;
     scheduled_start: string | null;		// ISO UTC instant, null when nothing is scheduled
     scheduled_stop: string | null;
+    site_longitude_deg: number | null;	// east positive, from the configuration (sidereal clock)
 }
 
 type ScheduleKind = "start" | "stop";
-type TimeZoneMode = "local" | "utc";
 
 /**
  * application data
@@ -106,7 +106,7 @@ interface AppData {
 
 const app_data = makeState<AppData>( {
 	status: { stage: "idle", is_running: false, session_active: false, completed_count: 0, pending_post_obs_count: 0,
-		scheduled_start: null, scheduled_stop: null },
+		scheduled_start: null, scheduled_stop: null, site_longitude_deg: null },
 	connected: false,
 	observations: [],
 	step_progress: {},
@@ -138,6 +138,7 @@ const FAKE_STATUS: ApiStatus = {
 	stage: "idle",
 	scheduled_start: null,
 	scheduled_stop: null,
+	site_longitude_deg: null,
 }
 
 
@@ -149,9 +150,6 @@ const API = "";
 const OBS_FETCH_TIME = 3000;
 const STATUS_FETCH_TIME = 5000;
 const WS_RETRY_DELAY = 5000;
-
-// Local/UTC choice for the scheduled start/stop times, remembered by the browser.
-const TZ_MODE_STORAGE_KEY = "rosace.schedule_tz";
 
 // Height of the "Spectre 1D" panel set with its divider, remembered by the browser.
 const SPECTRUM_HEIGHT_STORAGE_KEY = "rosace.spectrum_height";
@@ -239,12 +237,31 @@ class AppHeader extends HBox {
 }
 
 /**
- * Application Footer — UTC clock on the left, browser-local clock on the right,
- * both ticking every second. Both sides deliberately share the exact same
- * formatting rule (24h, no AM/PM) as the rest of the app's time displays
- * (see logMany()/renderObs() above) — the whole point of showing both side by
- * side is to let the observer compare them at a glance, which only works if
- * they're in the same format.
+ * Local sidereal time ("18:42:07") at a longitude (degrees, east positive) —
+ * same low-precision Meeus GMST polynomial as astro_math.py's
+ * _greenwich_mean_sidereal_time_deg(), a display only (accurate to well under
+ * a second).
+ */
+
+function formatSiderealTime( now: Date, longitude_deg: number ) {
+	const d = now.getTime( ) / 86400000 + 2440587.5 - 2451545.0;	// days since J2000.0
+	const t = d / 36525;
+	const gmst = 280.46061837 + 360.98564736629 * d + 0.000387933 * t * t - t * t * t / 38710000;
+	const lst_deg = ( ( gmst + longitude_deg ) % 360 + 360 ) % 360;
+	const total = Math.floor( lst_deg / 15 * 3600 );
+	const two = ( n: number ) => String( n ).padStart( 2, "0" );
+	return `${two( Math.floor( total / 3600 ) )}:${two( Math.floor( total / 60 ) % 60 )}:${two( total % 60 )}`;
+}
+
+/**
+ * Application Footer — UTC clock on the left, local sidereal time in the
+ * middle, browser-local clock on the right, all ticking every second. All three
+ * deliberately share the exact same formatting rule (24h, no AM/PM) as the rest
+ * of the app's time displays (see logMany()/renderObs() above) — the whole
+ * point of showing them side by side is to let the observer compare them at a
+ * glance, which only works if they're in the same format. The sidereal time
+ * needs the site's longitude, read from /status (the configuration's): until
+ * the first /status answer it shows "--:--:--".
  */
 
 class AppFooter extends HBox {
@@ -253,11 +270,16 @@ class AppFooter extends HBox {
 		super( { cls: "app-footer", ...props } );
 
 		const formatUtc   = ( now: Date ) => "UTC   " + now.toLocaleTimeString( undefined, { timeZone: "UTC", hour12: false } );
-		const formatLocal = ( now: Date ) => "Local " + now.toLocaleTimeString( undefined, { hour12: false } );
+		const formatLocal = ( now: Date ) => "Heure locale " + now.toLocaleTimeString( undefined, { hour12: false } );
+		const formatLst   = ( now: Date ) => {
+			const longitude = app_data.status.site_longitude_deg;
+			return "Heure sidérale locale (TSL) " + ( longitude === null || longitude === undefined ? "--:--:--" : formatSiderealTime( now, longitude ) );
+		};
 
 		const utcLabel   = new Label( { cls: "clock utc-clock",   text: formatUtc( new Date( ) ) } );
+		const lstLabel   = new Label( { cls: "clock lst-clock",   text: formatLst( new Date( ) ) } );
 		const localLabel = new Label( { cls: "clock local-clock", text: formatLocal( new Date( ) ) } );
-		this.setContent( [ utcLabel, localLabel ] );
+		this.setContent( [ utcLabel, lstLabel, localLabel ] );
 
 		// named/repeating timer (x4js CoreElement) — same idiom as fetchStatus()/
 		// fetchObs()'s own polling below; holds only a WeakRef on this component,
@@ -266,6 +288,7 @@ class AppFooter extends HBox {
 		this.setInterval( "clock", 1000, ( ) => {
 			const now = new Date( );
 			utcLabel.setText( formatUtc( now ) );
+			lstLabel.setText( formatLst( now ) );
 			localLabel.setText( formatLocal( now ) );
 		} );
 	}
@@ -289,13 +312,13 @@ class MainView extends VBox {
 	private autoStretched: Record<string, boolean> = {};
 
 	// Scheduled start/stop (controls bar): one time field per button, one chip per
-	// scheduled instant (shown only while something is scheduled), Local/UTC toggle.
+	// scheduled instant (shown only while something is scheduled). Times are typed
+	// in local time (what the browser's time picker offers); the server converts
+	// them to UTC.
 	private start_button: Button;
 	private stop_button: Button;
 	private start_time: TextEdit;
 	private stop_time: TextEdit;
-	private tz_button: Button;
-	private tz_mode: TimeZoneMode = "local";
 	private schedule_chips = {} as Record<ScheduleKind, { box: HBox, label: Label }>;
 
 	constructor( props: BoxProps ) {
@@ -320,8 +343,6 @@ class MainView extends VBox {
 						this.stop_time = new TextEdit({ cls: "schedule-time", label: "", type: "time", value: "",
 							tooltip: "Heure d'arrêt (vide : arrêt immédiat)", change: () => this.updateControls() }),
 						this.stop_button = new Button({ label: "STOP", icon: stop_icon, id: "stop",  click: () => this.controlStop() }),
-						this.tz_button = new Button({ cls: "tz-toggle", label: "Local", tooltip: "Heures en heure locale ou en UTC",
-							click: () => this.toggleTimeZoneMode() }),
 					]} ),
 					//<todo: use x4panel
 					new VBox({ cls: "panel obs", flex: 1, content: [
@@ -362,14 +383,6 @@ class MainView extends VBox {
 
 		this.log( "application started" )
 
-		let savedMode: string | null = null;
-		try {
-			savedMode = localStorage.getItem( TZ_MODE_STORAGE_KEY );
-		}
-		catch( e ) {
-			// storage unavailable: default to local time
-		}
-		this.setTimeZoneMode( savedMode === "utc" ? "utc" : "local" );
 		this.setInterval( "schedule", 1000, ( ) => this.renderScheduleChips( ) );
 
 		// backend log records, pushed over the WebSocket log channel in periodic batches
@@ -881,7 +894,7 @@ class MainView extends VBox {
 			const res = await fetch( `${API}/control/schedule/${kind}`, {
 				method: "PUT",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify( { time, tz: this.tz_mode } ),
+				body: JSON.stringify( { time } ),
 				signal: AbortSignal.timeout( 5000 ),
 			} );
 			if( res.ok ) {
@@ -948,13 +961,11 @@ class MainView extends VBox {
 		}
 	}
 
-	/** "21:20", "dim. 05:30" when not today, with " UTC" in UTC mode. */
+	/** "21:20", "dim. 05:30" when not today — local time. */
 	private formatScheduleTime( at: Date ) {
-		const timeZone = this.tz_mode === "utc" ? "UTC" : undefined;
-		const time = at.toLocaleTimeString( undefined, { timeZone, hour: "2-digit", minute: "2-digit", hour12: false } );
-		const day = ( d: Date ) => d.toLocaleDateString( undefined, { timeZone } );
-		const prefix = day( at ) === day( new Date( ) ) ? "" : at.toLocaleDateString( undefined, { timeZone, weekday: "short" } ) + " ";
-		return prefix + time + ( this.tz_mode === "utc" ? " UTC" : "" );
+		const time = at.toLocaleTimeString( undefined, { hour: "2-digit", minute: "2-digit", hour12: false } );
+		const prefix = at.toDateString( ) === new Date( ).toDateString( ) ? "" : at.toLocaleDateString( undefined, { weekday: "short" } ) + " ";
+		return prefix + time;
 	}
 
 	/** "2 h 14", "12 min", "45 s" (seconds only in the last minute). */
@@ -968,22 +979,6 @@ class MainView extends VBox {
 			return `${minutes} min`;
 		}
 		return `${Math.floor( minutes / 60 )} h ${String( minutes % 60 ).padStart( 2, "0" )}`;
-	}
-
-	private toggleTimeZoneMode( ) {
-		this.setTimeZoneMode( this.tz_mode === "local" ? "utc" : "local" );
-		try {
-			localStorage.setItem( TZ_MODE_STORAGE_KEY, this.tz_mode );
-		}
-		catch( e ) {
-			// storage unavailable (private window...): the choice just isn't remembered
-		}
-	}
-
-	private setTimeZoneMode( mode: TimeZoneMode ) {
-		this.tz_mode = mode;
-		this.tz_button.setText( mode === "utc" ? "UTC" : "Local" );
-		this.renderScheduleChips( );
 	}
 
 	private showMsg( title: string, text: string) {
