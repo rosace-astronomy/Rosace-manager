@@ -26,6 +26,10 @@ Claude peut le suggérer, jamais le faire lui-même.
       driver, ou une pause de stabilisation comme `light_settle_seconds`
 - [ ] GUI : bug dans le sélecteur d'heure du démarrage / arrêt différé
       (signalé 2026-10-11, symptôme à préciser)
+- [ ] Redémarrage du serveur INDI (KStars relancé) en pleine session : les
+      devices de la session restent perdus jusqu'à la session suivante (un
+      client INDI neuf n'est créé qu'au démarrage d'une session ou d'un test
+      matériel) (2026-10-13)
 
 ## Chantiers proposés
 

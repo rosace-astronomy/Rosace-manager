@@ -85,6 +85,26 @@ class SingletonIndiClientHolder:
             cls._instances[key] = object.__new__(cls)
         return cls._instances[key]
 
+
+def reset_shared_clients() -> None:
+    """Closes every shared client's connection to its INDI server and forgets
+    it, so the next IndiClient(config) is a brand-new object that connects
+    from scratch. Called before every full hardware connection (session start,
+    hardware test), when no device is in use. The client's own state is not
+    trusted: after an INDI server restart (e.g. KStars relaunched) a client
+    received serverDisconnected() yet isServerConnected() kept answering True,
+    so it never reconnected. disconnectServer() only closes this process's
+    own link to the server: the drivers stay connected to their hardware, and
+    the other clients (KStars/Ekos, PHD2) are not affected. Best effort: a
+    failure is logged and the client is forgotten anyway."""
+    for key, client in list(SingletonIndiClientHolder._instances.items()):
+        try:
+            client.disconnectServer()
+            logger.info(f"Closed the INDI client of {key} — a new one will connect")
+        except Exception as e:
+            logger.warning(f"Could not close the INDI client of {key}: {e} — forgotten anyway")
+    SingletonIndiClientHolder._instances.clear()
+
 # First inheritance is SingletonIndiClientHolder to ensure call of __new__
 class IndiClient(SingletonIndiClientHolder, PyIndi.BaseClient, Base):
     '''

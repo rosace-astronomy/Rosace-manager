@@ -85,6 +85,8 @@ interface ApiStatus {
     scheduled_start: string | null;		// ISO UTC instant, null when nothing is scheduled
     scheduled_stop: string | null;
     site_longitude_deg: number | null;	// east positive, from the configuration (sidereal clock)
+    hardware_test_running: boolean;		// the hardware test (POST /control/hardware-test) is running
+    hardware_test_available: boolean;	// false in simulation (no hardware to test)
 }
 
 type ScheduleKind = "start" | "stop";
@@ -106,7 +108,8 @@ interface AppData {
 
 const app_data = makeState<AppData>( {
 	status: { stage: "idle", is_running: false, session_active: false, completed_count: 0, pending_post_obs_count: 0,
-		scheduled_start: null, scheduled_stop: null, site_longitude_deg: null },
+		scheduled_start: null, scheduled_stop: null, site_longitude_deg: null,
+		hardware_test_running: false, hardware_test_available: false },
 	connected: false,
 	observations: [],
 	step_progress: {},
@@ -139,6 +142,8 @@ const FAKE_STATUS: ApiStatus = {
 	scheduled_start: null,
 	scheduled_stop: null,
 	site_longitude_deg: null,
+	hardware_test_running: false,
+	hardware_test_available: true,
 }
 
 
@@ -162,6 +167,11 @@ const SPECTRUM_PANEL = "spectre1d";
 // (ARCHIVE's own done_at) -- purely a display grace period, not tied to
 // anything server-side; step_progress.py itself never expires an entry.
 const STEP_PROGRESS_HOLD_SECONDS = 10;
+
+// Hardware test: how long the button stays green or red, and the longest the
+// test may take (devices are connected one at a time, ~5 s each, plus 3 s held).
+const HW_TEST_RESULT_MS = 5000;
+const HW_TEST_TIMEOUT_MS = 120000;
 
 // In-browser Journal history cap -- not a real retention limit, rosace.log keeps everything.
 const MAX_JOURNAL_LINES = 1000;
@@ -204,7 +214,11 @@ const PIPELINE_LABEL: Record<typeof PIPELINE_STAGES[number], string> = {	//allow
  */
 
 class AppHeader extends HBox {
-	
+
+	private hwtest: Button;
+	private hw_busy = false;				// this page's own test is running
+	private hw_showing_result = false;		// green or red, for HW_TEST_RESULT_MS
+
 	constructor( props: BoxProps ) {
 		super( props );
 
@@ -224,6 +238,7 @@ class AppHeader extends HBox {
 				] }),
                 new HBox({ cls: "pipeline-bar", content: chips }),
                 label = new Label({ cls: "obs-count-badge", text: "0 obs" }),
+				this.hwtest = new Button( { id: "hwtest", label: "Test", click: ( ) => this.runHardwareTest( ) } ),
 				new Button( { id: "darkmode", icon: moon_icon, tooltip: "Réglages", menu: [
 					{ text: "Dark mode", checked: ( ) => app_data.settings.darkMode, click: ( ) => { app_data.settings.darkMode = !app_data.settings.darkMode; } },
 				]} ),
@@ -233,6 +248,73 @@ class AppHeader extends HBox {
 		app_data.watch( "status.completed_count", e => {
 			label.setText( `${e.value} obs` );	// update label
 		})
+		app_data.watch( "status", ( ) => this.refreshHardwareTest( ) );
+		this.refreshHardwareTest( );
+	}
+
+	/**
+	 * Greyed during a session, in simulation and while a test runs (this page's
+	 * or another one's); left alone while the green/red result is shown.
+	 */
+	private refreshHardwareTest( ) {
+		if( this.hw_showing_result ) {
+			return;
+		}
+		const status = app_data.status;
+		const running = this.hw_busy || status.hardware_test_running;
+		let tip = "Tester la connexion au matériel (INDI, PHD2)";
+		if( !status.hardware_test_available ) {
+			tip = "Pas de matériel à tester (simulation)";
+		}
+		else if( status.session_active ) {
+			tip = "Session en cours";
+		}
+		this.hwtest.setText( running ? "Test…" : "Test" );
+		this.hwtest.setAttribute( "tooltip", tip );
+		this.hwtest.enable( status.hardware_test_available && !status.session_active && !running );
+	}
+
+	/**
+	 * Connects to every device and PHD2 (server side), then shows the result:
+	 * green or red for HW_TEST_RESULT_MS, the failures in the tooltip. The
+	 * details also reach the Journal, as [HW_TEST] log lines.
+	 */
+	private async runHardwareTest( ) {
+		this.hw_busy = true;
+		this.refreshHardwareTest( );
+		let ok = false;
+		let tip: string;
+		try {
+			const res = await fetch( `${API}/control/hardware-test`, { method: "POST", signal: AbortSignal.timeout( HW_TEST_TIMEOUT_MS ) } );
+			if( res.status === 401 ) {
+				this.hw_busy = false;
+				Application.fireGlobal( AUTH_LOGOUT_MSG );
+				return;
+			}
+			const data = await res.json( );
+			if( res.ok ) {
+				ok = data.ok;
+				tip = ok ? "Matériel OK" : ( data.errors as string[] ).join( "\n" );
+			}
+			else {
+				tip = data.detail ?? res.statusText;
+			}
+		}
+		catch( e ) {
+			tip = `Erreur : ${e}`;
+		}
+		this.hw_busy = false;
+		this.hw_showing_result = true;
+		const cls = ok ? "ok" : "fail";
+		this.hwtest.addClass( cls );
+		this.hwtest.setText( "Test" );
+		this.hwtest.setAttribute( "tooltip", tip );
+		this.hwtest.disable( );
+		this.setTimeout( "hwtest", HW_TEST_RESULT_MS, ( ) => {
+			this.hwtest.removeClass( cls );
+			this.hw_showing_result = false;
+			this.refreshHardwareTest( );
+		} );
 	}
 }
 
@@ -883,7 +965,7 @@ class MainView extends VBox {
 		const stop = this.stop_time.getValue( );
 		this.start_button.setText( start ? `START ${start}` : "START" );
 		this.stop_button.setText( stop ? `STOP ${stop}` : "STOP" );
-		this.start_button.enable( !status.session_active || !!start );
+		this.start_button.enable( ( !status.session_active && !status.hardware_test_running ) || !!start );
 		this.stop_button.enable( status.is_running || !!stop );
 	}
 

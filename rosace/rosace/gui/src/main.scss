@@ -158,6 +158,38 @@ body {
 		color: var(--green);
 	}
 
+	// Hardware test button: discreet until it shows a result (green or red,
+	// a few seconds), dimmed while disabled (session, simulation, test running).
+	#hwtest {
+		color: var(--muted);
+		background: transparent;
+		border: 1px solid var(--muted);
+		// Same height as #darkmode/#logout (below); a fixed width wide enough
+		// for "Test…", so the button keeps its size when its text changes.
+		box-sizing: border-box;
+		height: 2.4em;
+		width: 6.5em;
+		padding: 0;
+		justify-content: center;
+		margin-right: 0.5rem;
+
+		&[disabled]:not(.ok):not(.fail) {
+			opacity: 0.5;
+		}
+
+		&.ok {
+			color: white;
+			background: var(--green);
+			border-color: var(--green);
+		}
+
+		&.fail {
+			color: white;
+			background: var(--red);
+			border-color: var(--red);
+		}
+	}
+
 	#logout, #darkmode {
 		color: white;
 

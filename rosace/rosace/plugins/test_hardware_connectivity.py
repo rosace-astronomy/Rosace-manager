@@ -1,5 +1,6 @@
 """
-Tests for hardware connectivity for INIT_SESSION (sequencer_backend=indi).
+Tests for hardware connectivity for INIT_SESSION and the GUI's hardware test
+(sequencer_backend=indi).
 Run: pytest plugins/test_hardware_connectivity.py -v
 """
 
@@ -15,6 +16,14 @@ from rosace.plugins import hardware_connectivity as hc
 
 _CONF_DIR = Path(__file__).parent.parent / "conf"
 _HARDWARE_YAML_FILES = sorted(_CONF_DIR.glob("hardware_indi_*.yaml"))
+
+
+@pytest.fixture(autouse=True)
+def no_real_client_reset(monkeypatch):
+    """No real INDI client exists in these tests: records the calls instead."""
+    calls = []
+    monkeypatch.setattr(hc, "reset_shared_clients", lambda: calls.append("reset"))
+    return calls
 
 
 @pytest.fixture
@@ -130,7 +139,7 @@ class TestConnectSessionHardware:
             "INDI_drivers": {"mount": MOUNT_DRIVER, "focuser": FOCUSER_DRIVER},
             "PHD2_config": {"host": "127.0.0.1", "port": 4400, "settle": {"pixels": 1.5, "time": 3, "timeout": 30}},
         })
-        monkeypatch.setattr(hc, "_connect_device_sync", MagicMock(return_value=MagicMock()))
+        monkeypatch.setattr(hc, "_connect_device_sync", MagicMock(return_value=(MagicMock(), False)))
         fake_phd2_client = MagicMock()
         fake_phd2_client.connect = AsyncMock(return_value=None)
         monkeypatch.setattr(hc, "Phd2Client", MagicMock(return_value=fake_phd2_client))
@@ -152,7 +161,7 @@ class TestConnectSessionHardware:
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
             "INDI_drivers": {"some_device": UNREGISTERED_ROLE_DRIVER},
         })
-        monkeypatch.setattr(hc, "_connect_device_sync", MagicMock(return_value=MagicMock()))
+        monkeypatch.setattr(hc, "_connect_device_sync", MagicMock(return_value=(MagicMock(), False)))
 
         result = await hc.connect_session_hardware()  # must not raise
 
@@ -163,7 +172,7 @@ class TestConnectSessionHardware:
         monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
             "INDI_drivers": {"spectroscope": SPECTROSCOPE_DRIVER},
         })
-        monkeypatch.setattr(hc, "_connect_device_sync", MagicMock(return_value=MagicMock()))
+        monkeypatch.setattr(hc, "_connect_device_sync", MagicMock(return_value=(MagicMock(), False)))
 
         result = await hc.connect_session_hardware()
 
@@ -237,13 +246,151 @@ class TestConnectSessionHardware:
             max_concurrent = max(max_concurrent, concurrent_count)
             time.sleep(0.05)
             concurrent_count -= 1
-            return MagicMock()
+            return MagicMock(), False
 
         monkeypatch.setattr(hc, "_connect_device_sync", tracking_connect)
 
         await hc.connect_session_hardware()
 
         assert max_concurrent == 1
+
+
+PHD2_CONFIG = {"host": "127.0.0.1", "port": 4400, "settle": {"pixels": 1.5, "time": 3, "timeout": 30}}
+
+
+def _fake_phd2(monkeypatch, fail=False):
+    client = MagicMock()
+    client.connect = AsyncMock(side_effect=ConnectionRefusedError("refused") if fail else None)
+    client.disconnect = AsyncMock()
+    monkeypatch.setattr(hc, "Phd2Client", MagicMock(return_value=client))
+    return client
+
+
+class TestTestHardware:
+    """test_hardware(): connect everything, hold, disconnect what the test connected."""
+
+    def _devices(self, monkeypatch, already_connected=(), failing=()):
+        """Mocks _connect_device_sync: one fake device per driver, keyed by indi_name."""
+        devices = {}
+
+        def connect(device_cfg, timeout):
+            name = device_cfg["indi_name"]
+            if name in failing:
+                raise RuntimeError(f"{name} unreachable")
+            devices[name] = MagicMock()
+            return devices[name], name in already_connected
+
+        monkeypatch.setattr(hc, "_connect_device_sync", connect)
+        return devices
+
+    async def test_success_disconnects_everything_it_connected(self, monkeypatch, short_timeout):
+        monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
+            "INDI_drivers": {"mount": MOUNT_DRIVER, "focuser": FOCUSER_DRIVER}, "PHD2_config": PHD2_CONFIG,
+        })
+        devices = self._devices(monkeypatch)
+        phd2 = _fake_phd2(monkeypatch)
+
+        result = await hc.test_hardware(hold_seconds=0)
+
+        assert result == {"ok": True, "connected": ["focuser", "mount", "phd2"], "errors": []}
+        devices["Test Mount"].disconnect.assert_called_once()
+        devices["Test Focuser"].disconnect.assert_called_once()
+        phd2.disconnect.assert_awaited_once()
+
+    async def test_device_already_connected_by_another_client_stays_connected(self, monkeypatch, short_timeout):
+        monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
+            "INDI_drivers": {"mount": MOUNT_DRIVER, "focuser": FOCUSER_DRIVER},
+        })
+        devices = self._devices(monkeypatch, already_connected={"Test Mount"})
+
+        result = await hc.test_hardware(hold_seconds=0)
+
+        assert result["ok"]
+        devices["Test Mount"].disconnect.assert_not_called()
+        devices["Test Focuser"].disconnect.assert_called_once()
+
+    async def test_failure_names_the_device_and_still_disconnects_the_others(self, monkeypatch, short_timeout):
+        monkeypatch.setattr(hc, "_load_hardware_config", lambda: {
+            "INDI_drivers": {"mount": MOUNT_DRIVER, "focuser": FOCUSER_DRIVER}, "PHD2_config": PHD2_CONFIG,
+        })
+        devices = self._devices(monkeypatch, failing={"Test Focuser"})
+        phd2 = _fake_phd2(monkeypatch)
+
+        result = await hc.test_hardware(hold_seconds=0)
+
+        assert not result["ok"]
+        assert any("focuser" in e for e in result["errors"])
+        devices["Test Mount"].disconnect.assert_called_once()
+        phd2.disconnect.assert_awaited_once()
+
+    async def test_phd2_failure_closes_its_connection(self, monkeypatch, short_timeout):
+        monkeypatch.setattr(hc, "_load_hardware_config", lambda: {"INDI_drivers": {}, "PHD2_config": PHD2_CONFIG})
+        phd2 = _fake_phd2(monkeypatch, fail=True)
+
+        result = await hc.test_hardware(hold_seconds=0)
+
+        assert not result["ok"] and any("PHD2" in e for e in result["errors"])
+        phd2.disconnect.assert_awaited_once()
+
+    async def test_two_tests_in_a_row_run_the_whole_sequence_twice(self, monkeypatch, short_timeout):
+        monkeypatch.setattr(hc, "_load_hardware_config", lambda: {"INDI_drivers": {"mount": MOUNT_DRIVER}})
+        connections = []
+
+        def connect(device_cfg, timeout):
+            device = MagicMock()
+            connections.append(device)
+            return device, False
+
+        monkeypatch.setattr(hc, "_connect_device_sync", connect)
+
+        assert (await hc.test_hardware(hold_seconds=0))["ok"]
+        assert (await hc.test_hardware(hold_seconds=0))["ok"]
+        assert len(connections) == 2
+        assert all(d.disconnect.call_count == 1 for d in connections)
+
+
+class TestFreshIndiClient:
+    """Every full connection starts with a brand-new INDI client."""
+
+    async def _run(self, monkeypatch, no_real_client_reset, call):
+        monkeypatch.setattr(hc, "_load_hardware_config", lambda: {"INDI_drivers": {"mount": MOUNT_DRIVER}})
+
+        def connect(device_cfg, timeout):
+            no_real_client_reset.append("connect")
+            return MagicMock(), False
+
+        monkeypatch.setattr(hc, "_connect_device_sync", connect)
+        await call()
+        assert no_real_client_reset == ["reset", "connect"]
+
+    async def test_hardware_test_resets_the_client_first(self, monkeypatch, no_real_client_reset, short_timeout):
+        await self._run(monkeypatch, no_real_client_reset, lambda: hc.test_hardware(hold_seconds=0))
+
+    async def test_session_start_resets_the_client_first(self, monkeypatch, no_real_client_reset, short_timeout):
+        await self._run(monkeypatch, no_real_client_reset, hc.connect_session_hardware)
+
+
+class TestConnectDeviceSync:
+
+    def test_reports_whether_an_indi_device_was_already_connected(self, monkeypatch):
+        device = MagicMock()
+        device.device.isConnected.return_value = True
+        monkeypatch.setattr(hc, "_load_device_class", lambda *a: MagicMock(return_value=device))
+
+        returned, was_connected = hc._connect_device_sync(MOUNT_DRIVER, 1.0)
+
+        assert returned is device and was_connected
+        assert device.connect.call_args_list[0].kwargs == {"connect_device": False}
+        assert device.connect.call_args_list[-1].kwargs == {}
+
+    def test_device_without_two_step_connect_is_reported_not_connected(self, monkeypatch):
+        device = MagicMock(spec=["connect", "disconnect", "timeout"])
+        monkeypatch.setattr(hc, "_load_device_class", lambda *a: MagicMock(return_value=device))
+
+        _, was_connected = hc._connect_device_sync(SPECTROSCOPE_DRIVER, 1.0)
+
+        assert not was_connected
+        device.connect.assert_called_once_with()
 
 
 class TestRealHardwareYamlFiles:

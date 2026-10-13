@@ -1,5 +1,6 @@
 """
-Hardware connectivity for INIT_SESSION (SEQUENCER_BACKEND=indi only).
+Hardware connectivity for INIT_SESSION, and the GUI's hardware test
+(SEQUENCER_BACKEND=indi only).
 
 connect_session_hardware() reads the active hardware profile
 (conf/hardware_<variant>.yaml, resolved as HARDWARE_CONFIG_PATH) into a
@@ -28,10 +29,28 @@ the connected client is returned under the "phd2" key alongside the INDI
 device adapters (no hardware/ Protocol/adapter split for it — see
 phd2/__init__.py for why).
 
-Known simplification: if one device fails partway through, devices already
-connected before it are left connected (not explicitly disconnected here)
-since INIT_SESSION failure already stops the session as a critical error —
-acceptable for now, revisit if leaked connections become a real problem.
+Known simplification: if one device fails partway through INIT_SESSION,
+devices already connected before it are left connected (not explicitly
+disconnected here) since INIT_SESSION failure already stops the session as a
+critical error — acceptable for now, revisit if leaked connections become a
+real problem.
+
+test_hardware() runs the same connection sequence on its own, outside any
+session (POST /control/hardware-test): connect everything, stay connected
+hold_seconds, then disconnect, whatever the outcome. It leaves the hardware
+as it found it: an INDI connection belongs to the driver and is shared by
+every client (Ekos/KStars, PHD2), so only the devices the test connected
+itself are disconnected -- one already connected by another client stays
+connected. PHD2: only the test's own TCP connection is closed.
+
+Every full connection (session start and hardware test alike, through
+_connect_all()) first closes and forgets the shared INDI client
+(reset_shared_clients()), so it always starts from a brand-new connection to
+the INDI server -- the client's own state cannot be trusted after the server
+was restarted (KStars relaunched): it kept reporting itself connected and
+never reconnected. Only Rosace's own link to the server is closed: the
+drivers stay connected to the hardware, KStars/Ekos and PHD2 are untouched.
+An INDI server restart in the middle of a session is not handled.
 
 Each device's YAML entry is also split, implicitly, into two halves: a
 closed set of "plumbing" fields this module and every device class need to
@@ -61,6 +80,7 @@ from ..hardware_indi.adapters.filter_wheel import FilterWheelAdapter
 from ..hardware_indi.adapters.focuser import FocuserAdapter
 from ..hardware_indi.adapters.mount import MountAdapter
 from ..hardware_indi.adapters.spectroscope import SpectroscopeAdapter
+from ..hardware_indi.wrapper.indi_client import reset_shared_clients
 from ..phd2.phd2_client import Phd2Client
 
 log = logging.getLogger("spectro.plugin.hardware_connectivity")
@@ -106,13 +126,23 @@ def _load_device_class(module_dir: str, module: str, class_name: str):
     return getattr(mod, class_name)
 
 
-def _connect_device_sync(device_cfg: dict, timeout: float):
-    """Blocking: instantiate the device's driver class and connect it (left open). Runs in a worker thread."""
+def _connect_device_sync(device_cfg: dict, timeout: float) -> tuple[Any, bool]:
+    """Blocking: instantiate the device's driver class and connect it (left
+    open). Runs in a worker thread. Returns the device and whether it was
+    already connected (by another INDI client) before this call: an INDI
+    device first gets the client and the device handle without connecting
+    (connect(connect_device=False)), its state is read, then it is connected.
+    A device class without that two-step connect (SpectroscopePlaceholder) is
+    reported as not connected before."""
     cls = _load_device_class(device_cfg["module_dir"], device_cfg["module"], device_cfg["class_name"])
     device = cls(config=device_cfg, connect_on_create=False)
     device.timeout = timeout
+    was_connected = False
+    if hasattr(device, "connect_device"):
+        device.connect(connect_device=False)
+        was_connected = bool(device.device is not None and device.device.isConnected())
     device.connect()
-    return device
+    return device, was_connected
 
 
 def _extract_device_params(device_name: str, device_cfg: dict) -> dict:
@@ -129,14 +159,19 @@ def _extract_device_params(device_name: str, device_cfg: dict) -> dict:
     return {k: v for k, v in device_cfg.items() if k not in _PLUMBING_KEYS}
 
 
-async def _connect_devices(devices: dict[str, dict], timeout: float) -> tuple[dict[str, object], dict[str, dict], list[str]]:
+async def _connect_devices(
+    devices: dict[str, dict], timeout: float, tag: str,
+) -> tuple[dict[str, object], dict[str, dict], list[str], set[str]]:
     """Connects every device one at a time (they may share a single, non-thread-safe
     IndiClient behind the scenes), wraps each in its role's adapter, and extracts
     its params. Returns (adapters by device name, params by device name,
-    failure messages) -- the two dicts share the same keys."""
+    failure messages, names of the adapters this call connected itself -- not
+    already connected by another client) -- the two dicts share the same keys.
+    `tag` prefixes the log lines (INIT_SESSION, HW_TEST)."""
     adapters: dict[str, object] = {}
     hardware_config: dict[str, dict] = {}
     failures = []
+    connected_here: set[str] = set()
     for device_name, device_cfg in devices.items():
         try:
             device_params = _extract_device_params(device_name, device_cfg)
@@ -145,7 +180,7 @@ async def _connect_devices(devices: dict[str, dict], timeout: float) -> tuple[di
             continue
 
         try:
-            device = await asyncio.wait_for(
+            device, was_connected = await asyncio.wait_for(
                 asyncio.to_thread(_connect_device_sync, device_cfg, timeout),
                 timeout=timeout,
             )
@@ -157,15 +192,18 @@ async def _connect_devices(devices: dict[str, dict], timeout: float) -> tuple[di
         adapter_cls = _ADAPTERS_BY_ROLE.get(role)
         if adapter_cls is None:
             log.warning(
-                f"[INIT_SESSION] Device '{device_name}' (role={role!r}) connected, "
+                f"[{tag}] Device '{device_name}' (role={role!r}) connected, "
                 f"no adapter registered for this role yet — not usable from hardware/"
             )
             continue
         adapters[device_name] = adapter_cls(device)
         hardware_config[device_name] = device_params
-        log.info(f"[INIT_SESSION] Device '{device_name}' connected")
+        if not was_connected:
+            connected_here.add(device_name)
+        log.info(f"[{tag}] Device '{device_name}' connected"
+                 + (" (already connected by another client)" if was_connected else ""))
 
-    return adapters, hardware_config, failures
+    return adapters, hardware_config, failures, connected_here
 
 
 async def _connect_phd2(phd2_cfg: dict, timeout: float) -> Phd2Client:
@@ -176,8 +214,44 @@ async def _connect_phd2(phd2_cfg: dict, timeout: float) -> Phd2Client:
         phd2_cfg["host"], phd2_cfg["port"],
         settle=phd2_cfg["settle"], do_calibration=phd2_cfg.get("do_calibration", False),
     )
-    await asyncio.wait_for(client.connect(profile_name=phd2_cfg.get("profile_name")), timeout=timeout)
+    try:
+        await asyncio.wait_for(client.connect(profile_name=phd2_cfg.get("profile_name")), timeout=timeout)
+    except BaseException:
+        try:
+            await client.disconnect()   # never leave the TCP connection open after a failure
+        except Exception:
+            pass
+        raise
     return client
+
+
+async def _connect_all(tag: str) -> tuple[dict[str, Any], dict[str, dict], list[str], set[str]]:
+    """Connects every declared INDI device (one at a time) and PHD2 (at the
+    same time). Returns (adapters plus "phd2", params, failure messages,
+    names of the adapters this call connected itself) -- never raises for a
+    device or PHD2 failure, the caller decides. Starts with a brand-new INDI
+    client (reset_shared_clients())."""
+    await asyncio.to_thread(reset_shared_clients)
+    hw_config = _load_hardware_config()
+    timeout = HARDWARE_CONNECT_TIMEOUT_SECONDS
+
+    devices_task = asyncio.create_task(_connect_devices(hw_config.get("INDI_drivers", {}), timeout, tag))
+    phd2_task = (
+        asyncio.create_task(_connect_phd2(hw_config["PHD2_config"], timeout))
+        if "PHD2_config" in hw_config
+        else None
+    )
+
+    adapters, hardware_config, failures, connected_here = await devices_task
+
+    if phd2_task is not None:
+        try:
+            adapters["phd2"] = await phd2_task
+            log.info(f"[{tag}] PHD2 connected")
+        except Exception as e:
+            failures.append(f"PHD2: {e}")
+
+    return adapters, hardware_config, failures, connected_here
 
 
 async def connect_session_hardware() -> ConnectedHardware:
@@ -190,26 +264,36 @@ async def connect_session_hardware() -> ConnectedHardware:
     device's own params (SessionContext.hardware_config / Observation.
     hardware_config; PHD2 has no entry there, its own config shape doesn't
     match the per-INDI-device one)."""
-    hw_config = _load_hardware_config()
-    timeout = HARDWARE_CONNECT_TIMEOUT_SECONDS
-
-    devices_task = asyncio.create_task(_connect_devices(hw_config.get("INDI_drivers", {}), timeout))
-    phd2_task = (
-        asyncio.create_task(_connect_phd2(hw_config["PHD2_config"], timeout))
-        if "PHD2_config" in hw_config
-        else None
-    )
-
-    adapters, hardware_config, failures = await devices_task
-
-    if phd2_task is not None:
-        try:
-            adapters["phd2"] = await phd2_task
-            log.info("[INIT_SESSION] PHD2 connected")
-        except Exception as e:
-            failures.append(f"PHD2: {e}")
-
+    adapters, hardware_config, failures, _ = await _connect_all("INIT_SESSION")
     if failures:
         raise RuntimeError(f"Hardware connectivity check failed: {'; '.join(failures)}")
-
     return ConnectedHardware(adapters=adapters, hardware_config=hardware_config)
+
+
+async def test_hardware(hold_seconds: float = 3.0) -> dict[str, Any]:
+    """The GUI's hardware test: connects every declared INDI device and PHD2
+    (same sequence as INIT_SESSION), stays connected hold_seconds, then
+    disconnects what the test itself connected -- a device already connected
+    by another client stays connected, and PHD2 only loses this test's TCP
+    connection (its own equipment stays connected). No unpark, no cooling,
+    no image. Returns {"ok", "connected": device names, "errors": messages}."""
+    adapters, _, failures, connected_here = await _connect_all("HW_TEST")
+    for failure in failures:
+        log.error(f"[HW_TEST] {failure}")
+    try:
+        await asyncio.sleep(hold_seconds)
+    finally:
+        for name, adapter in adapters.items():
+            if name != "phd2" and name not in connected_here:
+                continue
+            try:
+                await adapter.disconnect()
+            except Exception as e:
+                log.error(f"[HW_TEST] Failed to disconnect '{name}': {e}")
+    devices = sorted(name for name in adapters if name != "phd2")
+    if failures:
+        log.error(f"[HW_TEST] Failed: {'; '.join(failures)}")
+    else:
+        log.info(f"[HW_TEST] All {len(devices)} devices" + (" and PHD2" if "phd2" in adapters else "")
+                 + " answered — disconnected again")
+    return {"ok": not failures, "connected": sorted(adapters), "errors": failures}

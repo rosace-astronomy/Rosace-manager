@@ -47,7 +47,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .config     import GUI_PREVIEW_DIR, SITE_NAME, SITE_LONGITUDE_DEG, SCHEDULER_RETRY_SECONDS, SESSION_COOKIE_SECURE, SESSION_TTL_HOURS, IS_DEMO_MODE
+from .config     import GUI_PREVIEW_DIR, SITE_NAME, SITE_LONGITUDE_DEG, SCHEDULER_RETRY_SECONDS, SEQUENCER_BACKEND, SESSION_COOKIE_SECURE, SESSION_TTL_HOURS, IS_DEMO_MODE
 from .log_config import configure_logging
 
 configure_logging()
@@ -76,6 +76,7 @@ from .errors import SessionFatalError
 from .observation_file import create_observation_file, write_observation_file
 from .plugins  import plugins
 from .plugins.pipeline_loader import get_display_names
+from .plugins.hardware_connectivity import test_hardware
 from . import step_progress
 from .simbad   import simbad_search, SimbadNotFoundError, SimbadQueryError
 from .targets  import (
@@ -146,6 +147,9 @@ class SystemState:
         # nothing is scheduled) -- in memory only, lost on a server restart.
         self.scheduled_start: datetime | None = None
         self.scheduled_stop: datetime | None = None
+        # True while the GUI's hardware test runs: no session may start then
+        # (both would connect the same devices at the same time).
+        self.hardware_test_running: bool = False
 
 state = SystemState()
 
@@ -387,6 +391,8 @@ async def get_status():
         "scheduled_start": _iso(state.scheduled_start),
         "scheduled_stop": _iso(state.scheduled_stop),
         "site_longitude_deg": SITE_LONGITUDE_DEG,   # for the GUI's sidereal clock
+        "hardware_test_running": state.hardware_test_running,
+        "hardware_test_available": SEQUENCER_BACKEND == "indi",
     }
 
 @protected.get("/observations/completed")
@@ -431,8 +437,9 @@ def _request_start() -> bool:
     """Starts a new observation session, unless one is still active. Refuses as long
     as a previous session hasn't fully finished stopping (session_active), not just
     while a stop has been requested (is_running) — otherwise a second session could
-    start while the first one is still finishing its cleanup."""
-    if state.session_active:
+    start while the first one is still finishing its cleanup. Also refused while
+    the hardware test runs."""
+    if state.session_active or state.hardware_test_running:
         return False
     state.is_running = True
     task = asyncio.create_task(session_runner())
@@ -453,8 +460,9 @@ def _describe(instant: datetime) -> str:
 
 
 def _check_control_schedule(now: datetime) -> None:
-    """One tick of the scheduled start/stop: acts on whatever is due at `now`."""
-    if state.scheduled_start and state.scheduled_start <= now:
+    """One tick of the scheduled start/stop: acts on whatever is due at `now`. A
+    start due while the hardware test runs waits for its end (next ticks)."""
+    if state.scheduled_start and state.scheduled_start <= now and not state.hardware_test_running:
         state.scheduled_start = None
         if _request_start():
             log.info("[ORCHESTRATOR] Scheduled start reached — session started")
@@ -487,6 +495,8 @@ async def start_session():
     if state.scheduled_start:
         state.scheduled_start = None
         log.info("[ORCHESTRATOR] Scheduled start cancelled by a manual start")
+    if state.hardware_test_running and not state.session_active:
+        return {"message": "Test matériel en cours — démarrage refusé"}
     if not _request_start():
         return {"message": "Session déjà en cours"}
     return {"message": "Session démarrée"}
@@ -499,6 +509,27 @@ async def stop_session():
         log.info("[ORCHESTRATOR] Scheduled stop cancelled by a manual stop")
     _request_stop()
     return {"message": "Arrêt demandé — CLOSE_SESSION sera exécuté en fin de cycle"}
+
+
+@protected.post("/control/hardware-test")
+async def hardware_test():
+    """Connects every device of the active hardware profile and PHD2, stays
+    connected a few seconds, then disconnects what the test connected — no
+    session, no image (plugins/hardware_connectivity.py::test_hardware()).
+    Returns {"ok", "connected", "errors"}; 409 in simulation, during a session
+    or while another test runs."""
+    if SEQUENCER_BACKEND != "indi":
+        raise HTTPException(status_code=409, detail="Pas de matériel à tester (simulation)")
+    if state.session_active:
+        raise HTTPException(status_code=409, detail="Session en cours")
+    if state.hardware_test_running:
+        raise HTTPException(status_code=409, detail="Test déjà en cours")
+    state.hardware_test_running = True
+    try:
+        log.info("[HW_TEST] Hardware test started")
+        return await test_hardware()
+    finally:
+        state.hardware_test_running = False
 
 
 class ScheduleRequest(BaseModel):

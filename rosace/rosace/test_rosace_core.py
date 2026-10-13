@@ -2079,12 +2079,14 @@ class TestApiEndpoints:
         main_mod.state.stage = OrchestratorStage.IDLE
         main_mod.state.scheduled_start = None
         main_mod.state.scheduled_stop = None
+        main_mod.state.hardware_test_running = False
         yield
         main_mod.state.is_running = False
         main_mod.state.session_active = False
         main_mod.state.stage = OrchestratorStage.IDLE
         main_mod.state.scheduled_start = None
         main_mod.state.scheduled_stop = None
+        main_mod.state.hardware_test_running = False
 
     _TEST_ADMIN_USER = "pytest_admin"
     _TEST_ADMIN_PASS = "pytest_password"
@@ -2133,7 +2135,59 @@ class TestApiEndpoints:
         assert set(data.keys()) == {
             "stage", "is_running", "session_active", "completed_count", "pending_post_obs_count",
             "scheduled_start", "scheduled_stop", "site_longitude_deg",
+            "hardware_test_running", "hardware_test_available",
         }
+
+    def test_hardware_test_refused_in_simulation(self, monkeypatch):
+        import rosace.main as main_mod
+        monkeypatch.setattr(main_mod, "SEQUENCER_BACKEND", "internal")
+        with self._client() as client:
+            res = client.post("/control/hardware-test")
+        assert res.status_code == 409
+        assert "simulation" in res.json()["detail"]
+
+    def test_hardware_test_refused_during_a_session(self, monkeypatch):
+        import rosace.main as main_mod
+        monkeypatch.setattr(main_mod, "SEQUENCER_BACKEND", "indi")
+        with self._client() as client:
+            main_mod.state.session_active = True
+            res = client.post("/control/hardware-test")
+        assert res.status_code == 409
+
+    def test_hardware_test_refused_while_another_test_runs(self, monkeypatch):
+        import rosace.main as main_mod
+        monkeypatch.setattr(main_mod, "SEQUENCER_BACKEND", "indi")
+        with self._client() as client:
+            main_mod.state.hardware_test_running = True
+            res = client.post("/control/hardware-test")
+        assert res.status_code == 409
+        assert "déjà" in res.json()["detail"]
+
+    def test_hardware_test_returns_the_result_and_releases_the_lock(self, monkeypatch):
+        import rosace.main as main_mod
+        monkeypatch.setattr(main_mod, "SEQUENCER_BACKEND", "indi")
+        seen = []
+
+        async def fake_test():
+            seen.append(main_mod.state.hardware_test_running)
+            return {"ok": False, "connected": ["mount"], "errors": ["PHD2: refused"]}
+
+        monkeypatch.setattr(main_mod, "test_hardware", fake_test)
+        with self._client() as client:
+            res = client.post("/control/hardware-test")
+        assert res.status_code == 200
+        assert res.json() == {"ok": False, "connected": ["mount"], "errors": ["PHD2: refused"]}
+        assert seen == [True]
+        assert main_mod.state.hardware_test_running is False
+
+    def test_control_start_refused_during_hardware_test(self, monkeypatch):
+        import rosace.main as main_mod
+        with self._client() as client:
+            main_mod.state.hardware_test_running = True
+            res = client.post("/control/start")
+        assert res.status_code == 200
+        assert "test matériel" in res.json()["message"].lower()
+        assert main_mod.state.is_running is False
 
     def test_control_start_when_idle(self, monkeypatch):
         """Starts the session; session_runner is mocked so it doesn't loop forever."""
@@ -2763,11 +2817,13 @@ class TestControlScheduleTick:
 
         monkeypatch.setattr(main_mod, "session_runner", fake_runner)
         for attr, value in (("is_running", False), ("session_active", False),
-                            ("scheduled_start", None), ("scheduled_stop", None)):
+                            ("scheduled_start", None), ("scheduled_stop", None),
+                            ("hardware_test_running", False)):
             setattr(main_mod.state, attr, value)
         yield
         for attr, value in (("is_running", False), ("session_active", False),
-                            ("scheduled_start", None), ("scheduled_stop", None)):
+                            ("scheduled_start", None), ("scheduled_stop", None),
+                            ("hardware_test_running", False)):
             setattr(main_mod.state, attr, value)
 
     def _tick(self, now):
@@ -2784,6 +2840,18 @@ class TestControlScheduleTick:
         main_mod.state.scheduled_start = self.NOW
         self._tick(self.NOW)
         assert main_mod.state.is_running is True
+        assert self.started == [True]
+        assert main_mod.state.scheduled_start is None
+
+    def test_due_start_waits_for_the_end_of_a_hardware_test(self):
+        import rosace.main as main_mod
+        main_mod.state.hardware_test_running = True
+        main_mod.state.scheduled_start = self.NOW
+        self._tick(self.NOW)
+        assert self.started == []
+        assert main_mod.state.scheduled_start == self.NOW     # still scheduled
+        main_mod.state.hardware_test_running = False
+        self._tick(self.NOW)
         assert self.started == [True]
         assert main_mod.state.scheduled_start is None
 
