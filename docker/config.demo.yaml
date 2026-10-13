@@ -8,7 +8,7 @@
 #     catalogue/observations survive a restart)
 #   - sequencer_backend is "internal" (simulation — no INDI/PHD2 server to
 #     connect to inside the container)
-#   - subplugin_params.scheduler_rosace_2026.observation_list_path lives on
+#   - subplugin_params.observation_list_path lives on
 #     that same volume, so someone poking at the running demo can open/edit
 #     it (add a target line) without a shell into the container's image layer
 # ─────────────────────────────────────────────────────────────
@@ -48,6 +48,10 @@ subplugin_params:
   exposure_time_mag0_seconds: 1.0
   max_exposure_time_seconds: 300
 
+  # Text file (CSV with a header) listing the observations asked by hand, read
+  # on every call by both scheduler_rosace_2026 and the selector's manual_list
+  # planner (one file, one setting). Full path, any location.
+  observation_list_path: /data/ObservationList.txt
+
   scheduler_rosace_2026:
-    observation_list_path: /data/ObservationList.txt
     min_target_altitude_deg: 10

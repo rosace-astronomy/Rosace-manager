@@ -10,7 +10,7 @@ lifespan(). Skipped once anything already exists, so restarting the server
 never overwrites manual edits made through the GUI.
 
 The observation plan is written where the demo config's
-observation_list_path key says (subplugin_params.scheduler_rosace_2026) —
+observation_list_path key says (at the root of subplugin_params) —
 read from the configuration, never imported from the scheduler's code.
 
 The program is deliberately named "demo" — the one program YAML
@@ -96,9 +96,7 @@ async def seed_demo_data() -> None:
 
     # Same key the demo's scheduler (scheduler_rosace_2026) reads its plan
     # from, declared by conf/config_demo.yaml.
-    list_path = Path(
-        SUBPLUGIN_PARAMS["scheduler_rosace_2026"]["observation_list_path"]
-    ).expanduser()
+    list_path = Path(SUBPLUGIN_PARAMS["observation_list_path"]).expanduser()
     list_path.parent.mkdir(parents=True, exist_ok=True)
     list_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

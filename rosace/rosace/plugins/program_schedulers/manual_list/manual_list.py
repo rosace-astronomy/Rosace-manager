@@ -1,6 +1,8 @@
 """
 Manual list planner: proposes the observations an observer listed by hand in
-ObservationList.txt. manual_list is the minimal program, always present
+the file named by observation_list_path, at the root of the configuration's
+subplugin_params (an installation setting, shared with scheduler_rosace_2026,
+not a program parameter). manual_list is the minimal program, always present
 (programs/manual_list.yaml).
 
 File format (CSV with a header; `none` or an empty field = not given):
@@ -63,6 +65,7 @@ from typing import Optional
 
 from pydantic import ValidationError
 
+from ....config import SUBPLUGIN_PARAMS
 from ....database import db_count_trailing_failures, db_get_recent_observations, db_get_successes_for_target
 from ....models import ExposureConfig
 from ....targets import program_get_by_name, program_get_stars, star_get_by_name
@@ -74,7 +77,9 @@ from ..checks import (
 
 log = logging.getLogger("spectro.plugin.planner.manual_list")
 
-DEFAULT_OBSERVATION_LIST_PATH = "~/.rosace/targets/ObservationList.txt"
+OBSERVATION_LIST_PATH = Path(
+    SUBPLUGIN_PARAMS.get("observation_list_path", "~/.rosace/targets/ObservationList.txt")
+).expanduser()
 DEFAULT_MAX_SERIES_FAILURES = 3
 _VALID_PRIORITIES = (0, 2, 3, 4)
 
@@ -133,7 +138,7 @@ def _read_observation_list(path: Path, now: datetime, errors: list[str]) -> list
         f = open(path, encoding="utf-8", newline="")
     except OSError as e:
         errors.append(f"Observation list unreadable: {path} — {e} "
-                      f"(see observation_list_path in programs/manual_list.yaml)")
+                      f"(see subplugin_params.observation_list_path in the configuration)")
         return []
 
     with f:
@@ -186,7 +191,7 @@ class ManualListScheduler:
     a series element in progress, or a booked line."""
 
     async def propose(self, ctx: SchedulingContext) -> Candidate | None:
-        path = Path(ctx.params.get("observation_list_path", DEFAULT_OBSERVATION_LIST_PATH)).expanduser()
+        path = OBSERVATION_LIST_PATH
         errors: list[str] = []
         try:
             return await self._propose(ctx, path, errors)

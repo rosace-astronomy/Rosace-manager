@@ -15,8 +15,10 @@ from .. import SchedulerFatalError
 log = logging.getLogger("spectro.plugin.scheduler")
 
 _params = SUBPLUGIN_PARAMS.get("scheduler_rosace_2026", {})
+# At the root of subplugin_params: the same file is read by the selector's
+# manual_list planner.
 OBSERVATION_LIST_PATH = Path(
-    _params.get("observation_list_path", "~/.rosace/targets/ObservationList.txt")
+    SUBPLUGIN_PARAMS.get("observation_list_path", "~/.rosace/targets/ObservationList.txt")
 ).expanduser()
 MIN_TARGET_ALTITUDE_DEG = _params.get("min_target_altitude_deg", 10)
 # Hour-angle window (degrees, each side of the meridian) inside which a target is
@@ -56,7 +58,7 @@ def _read_observation_list(path) -> list[dict]:
     except FileNotFoundError as e:
         raise SchedulerFatalError(
             f"Observation plan file not found: {path} "
-            f"(see observation_list_path in conf/config.yaml)"
+            f"(see subplugin_params.observation_list_path in the configuration)"
         ) from e
 
     with f:
@@ -90,7 +92,8 @@ class SchedulerPlugin:
     it's the orchestrator's job to decide the delay before asking again
     (see SCHEDULER_RETRY_SECONDS in config.py).
 
-    Reads OBSERVATION_LIST_PATH (conf/config.yaml) on every call — a
+    Reads OBSERVATION_LIST_PATH (observation_list_path, at the root of the
+    configuration's subplugin_params) on every call — a
     read-only text file, never modified by this plugin. Each line (priority,
     program, star) is resolved against targets.db; invalid lines (unknown
     program/star, or a star not linked to the program) are skipped with a

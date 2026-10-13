@@ -68,8 +68,12 @@ subplugin_params:
   # compute_exposure_time_and_count() call as the two keys above.
   min_exposure_count: 3
 
+  # Text file (CSV with a header) listing the observations asked by hand, read
+  # on every call by both scheduler_rosace_2026 and the selector's manual_list
+  # planner (one file, one setting). Full path, any location.
+  # Seeded by demo_seed.py on first run, alongside the demo stars — lives
+  # under this config's own base_data_dir, not the real one.
+  observation_list_path: ~/.rosace-demo/targets/ObservationList.txt
+
   scheduler_rosace_2026:
-    # Seeded by demo_seed.py on first run, alongside the two demo stars —
-    # lives under this config's own base_data_dir, not the real one.
-    observation_list_path: ~/.rosace-demo/targets/ObservationList.txt
     min_target_altitude_deg: 10

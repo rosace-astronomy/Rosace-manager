@@ -45,6 +45,8 @@ def _installation(monkeypatch):
     monkeypatch.setattr(checks, "MERIDIAN_TOLERANCE_DEG", None)
     monkeypatch.setattr(checks, "HORIZON_FILE", None)
     monkeypatch.setattr(manual_list_mod, "_previously_reported", set())
+    # Restored after each test; _ctx() points it at the test's own file.
+    monkeypatch.setattr(manual_list_mod, "OBSERVATION_LIST_PATH", manual_list_mod.OBSERVATION_LIST_PATH)
 
 
 async def _program_with_stars(*star_names, exposure_time=60.0):
@@ -60,11 +62,14 @@ async def _program_with_stars(*star_names, exposure_time=60.0):
 
 
 def _ctx(path, **params) -> SchedulingContext:
+    """Context for one call; the observation list path is a configuration
+    setting (a module constant), set here to the test's own file."""
+    manual_list_mod.OBSERVATION_LIST_PATH = path
     return SchedulingContext(
         now=datetime.now(timezone.utc),
         site=Site(latitude_deg=45.0, longitude_deg=5.0, elevation_m=950),
         program=None,
-        params={"observation_list_path": str(path), **params},
+        params=params,
     )
 
 

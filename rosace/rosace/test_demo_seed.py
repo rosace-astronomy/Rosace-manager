@@ -63,8 +63,7 @@ camera_cooldown_timeout_seconds: 300
 session_ttl_hours: 336
 session_cookie_secure: false
 subplugin_params:
-  scheduler_rosace_2026:
-    observation_list_path: {obs_list_path}
+  observation_list_path: {obs_list_path}
 """)
         return config_path
 

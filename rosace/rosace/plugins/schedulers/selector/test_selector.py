@@ -59,8 +59,8 @@ def _installation(monkeypatch):
 
 @pytest.fixture
 def programs_dir(tmp_path, monkeypatch):
-    """A temporary programs/ directory holding manual_list.yaml, reading an
-    initially empty observation list (tmp_path/ObservationList.txt)."""
+    """A temporary programs/ directory holding manual_list.yaml, the planner
+    reading an initially empty observation list (tmp_path/ObservationList.txt)."""
     directory = tmp_path / "programs"
     directory.mkdir()
     (tmp_path / "ObservationList.txt").write_text(HEADER)
@@ -68,10 +68,9 @@ def programs_dir(tmp_path, monkeypatch):
         "program: manual_list\n"
         "scheduler:\n"
         "  name: manual_list\n"
-        "  params:\n"
-        f"    observation_list_path: {tmp_path / 'ObservationList.txt'}\n"
     )
     monkeypatch.setattr(pipeline_loader, "PROGRAMS_DIR", directory)
+    monkeypatch.setattr(manual_list_mod, "OBSERVATION_LIST_PATH", tmp_path / "ObservationList.txt")
     return directory
 
 

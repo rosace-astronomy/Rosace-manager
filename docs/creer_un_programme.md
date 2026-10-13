@@ -74,8 +74,10 @@ une étoile observée récemment mais disponible, le niveau 4.
 ### 2.3 Le programme minimal : la liste manuelle
 
 `programs/manual_list.yaml` est toujours présent (sans lui le sélecteur arrête la
-session). Son planificateur lit un fichier texte écrit à la main
-(`observation_list_path`, relu à chaque appel, modifiable pendant la nuit) :
+session). Son planificateur lit un fichier texte écrit à la main, relu à chaque appel et
+modifiable pendant la nuit. Son chemin se règle dans la configuration
+(`subplugin_params.observation_list_path`), pas dans `manual_list.yaml` : c'est la même
+clé, donc le même fichier, que pour l'ancien planificateur `scheduler_rosace_2026`. Format :
 
 ```
 Priority, Program, Star, Start_after, End_before, Series, comment

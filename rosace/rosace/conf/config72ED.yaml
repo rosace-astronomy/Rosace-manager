@@ -186,11 +186,12 @@ subplugin_params:
     # +0.15 / +0.16 px.
     offset_y: 0.15
 
+  # Text file (CSV with a header) listing the observations asked by hand, read
+  # on every call by both scheduler_rosace_2026 and the selector's manual_list
+  # planner (one file, one setting). Full path, any location.
+  observation_list_path: ~/.rosace/targets/ManualList.txt
+
   scheduler_rosace_2026:
-    # Full path (any location, not necessarily under base_data_dir) to the
-    # text file SCHEDULER reads to pick the next target.
-    # observation_list_path: ~/.rosace/targets/ObservationList.txt
-    observation_list_path: ~/.rosace/targets/ManualList.txt
     # Minimum altitude (degrees) for a target to be considered observable.
     min_target_altitude_deg: 10
     # Hour-angle window (degrees, each side of the meridian) inside which a
