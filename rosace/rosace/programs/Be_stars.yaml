@@ -14,6 +14,7 @@ scheduler:
   params:
     limit_magnitude: 7         # only Be stars at most this bright (magnitude_v in targets.db)
     period_days: 30            # wanted period between two observations (BeSS may ask for less)
+    min_period_days: 10        # never a shorter period, even when BeSS asks for one (nightly stars)
     max_duration_minutes: 90   # guard: a star with a longer estimated observation is skipped (WARNING)
 
 sequencer:

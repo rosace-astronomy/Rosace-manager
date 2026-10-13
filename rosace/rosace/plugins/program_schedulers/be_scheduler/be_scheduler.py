@@ -12,7 +12,9 @@ At every call, at most one star of the program (targets.db) with magnitude_v
   observation of the program in rosace.db, any night). BeSS validation can
   take weeks, so both count the same.
 - period = period_days (params), or the BeSS period (Obs_Period column) when
-  BeSS asks for a shorter one.
+  BeSS asks for a shorter one, but never shorter than min_period_days: a star
+  BeSS wants every night would otherwise come back every night and fill the
+  telescope time.
 - level: overdue (never observed, or last observation at least one period
   ago) and BeSS asks for a shorter period than period_days -> 2 (high);
   overdue otherwise -> 3 (ordinary); not overdue -> 4 (filler, leaving the
@@ -41,7 +43,7 @@ Rosace's own history only. Robot lines are matched to targets.db stars by
 the "HD n" alias or the BeSS name (canonical name or alias).
 
 Params (programs/Be_stars.yaml, scheduler.params): limit_magnitude (7),
-period_days (30), max_duration_minutes (90), min_altitude_deg (none: the
+period_days (30), min_period_days (0: no floor), max_duration_minutes (90), min_altitude_deg (none: the
 installation floor only), robot_url, robot_path (~/.rosace/be/ObsC2A_15.txt),
 robot_max_age_hours (12).
 """
@@ -68,6 +70,7 @@ log = logging.getLogger("spectro.plugin.planner.be_scheduler")
 
 DEFAULT_LIMIT_MAGNITUDE = 7.0
 DEFAULT_PERIOD_DAYS = 30.0
+DEFAULT_MIN_PERIOD_DAYS = 0.0
 DEFAULT_MAX_DURATION_MINUTES = 90.0
 DEFAULT_ROBOT_URL = "http://arasbeam.free.fr/robot/ObsC2A_15.txt"
 DEFAULT_ROBOT_PATH = "~/.rosace/be/ObsC2A_15.txt"
@@ -199,6 +202,7 @@ class BeSchedulerScheduler:
         params = ctx.params
         limit_magnitude = float(params.get("limit_magnitude", DEFAULT_LIMIT_MAGNITUDE))
         period_param = float(params.get("period_days", DEFAULT_PERIOD_DAYS))
+        min_period = float(params.get("min_period_days", DEFAULT_MIN_PERIOD_DAYS))
         max_duration_s = 60 * float(params.get("max_duration_minutes", DEFAULT_MAX_DURATION_MINUTES))
         min_altitude_deg = params.get("min_altitude_deg")
         robot_path = Path(params.get("robot_path", DEFAULT_ROBOT_PATH)).expanduser()
@@ -221,7 +225,7 @@ class BeSchedulerScheduler:
                 continue   # already observed successfully tonight
             entry = next((bess[n.lower()] for n in [star.name, *aliases.get(star.id, [])]
                           if n.lower() in bess), None)
-            ranked_star = self._rank(star, ctx, entry, rosace, period_param)
+            ranked_star = self._rank(star, ctx, entry, rosace, period_param, min_period)
             if ranked_star is not None:
                 ranked.append(ranked_star)
         ranked.sort(key=lambda r: r.sort_key)
@@ -255,12 +259,12 @@ class BeSchedulerScheduler:
 
     @staticmethod
     def _rank(star: StarInProgram, ctx: SchedulingContext, entry: Optional[BessEntry],
-              rosace: Optional[datetime], period_param: float) -> Optional[_Ranked]:
+              rosace: Optional[datetime], period_param: float, min_period: float) -> Optional[_Ranked]:
         bess_last = entry.last_obs if entry else None
         bess_period = entry.period_days if entry else None
         known = [d for d in (bess_last, rosace) if d is not None]
         last = max(known) if known else None
-        period = min(period_param, bess_period) if bess_period else period_param
+        period = max(min_period, min(period_param, bess_period) if bess_period else period_param)
 
         if last is None:
             lateness = math.inf

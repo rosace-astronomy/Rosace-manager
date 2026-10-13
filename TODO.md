@@ -18,7 +18,14 @@ Claude peut le suggérer, jamais le faire lui-même.
       après le changement de position du spectro : `set_switch(sync=True)`
       n'attend que le retour à IDLE/OK du *vecteur* de propriété, qui peut
       déjà être dans cet état avant l'envoi (rien ne le repasse à BUSY
-      localement tant que le driver n'a pas confirmé)
+      localement tant que le driver n'a pas confirmé). Revu le 2026-10-12
+      (Vega, DARK 5×180 s) : trace de Vega dans la 1re pose ; passage du
+      spectro sur DARK et lancement de la pose dans la même seconde
+      (18:36:53 UTC). Une fraction de seconde de lumière suffit sur une
+      étoile brillante (4 s de pose science) — attendre la confirmation du
+      driver, ou une pause de stabilisation comme `light_settle_seconds`
+- [ ] GUI : bug dans le sélecteur d'heure du démarrage / arrêt différé
+      (signalé 2026-10-11, symptôme à préciser)
 
 ## Chantiers proposés
 
@@ -27,6 +34,14 @@ Claude peut le suggérer, jamais le faire lui-même.
       mesurées / saturées), calculé par `calculate_flux` et recopié via
       `obs.measurements` (phase B du scheduler multi-programmes) ; le détail
       pose par pose reste dans `spectrum_flux` (2026-10-02)
+- [ ] Test de connexion matériel sans lancer de session : connecter chaque
+      appareil INDI du profil actif et vérifier PHD2 (même code que
+      `connect_session_hardware()` d'INIT_SESSION), afficher OK / échec par
+      appareil, puis tout déconnecter — sans unpark, refroidissement ni
+      séquence. Bouton dans la GUI, en haut à droite avant le nombre
+      d'observations, grisé quand une session est en cours, appelant une
+      nouvelle route REST (refusée elle aussi pendant une session :
+      connexions INDI partagées) ; pas d'option CLI (2026-10-11)
 - [ ] Distance à la Lune : filtre scheduler sur la distance de la cible à la Lune (seuil à définir, probablement selon la phase) — pas urgent
 - [ ] Temps de pose des étoiles faibles : la loi `exposure_time_mag0 ×
       10^(mag/2,5)` vise l'approche de la saturation. Au-delà de
@@ -80,7 +95,21 @@ Claude peut le suggérer, jamais le faire lui-même.
       pointe sur l'application FastAPI (`rosace.main:app`), pas sur une
       fonction de lancement — `rosace --help` échoue (TypeError). La faire
       pointer sur le lancement de `cli.py` (même comportement que
-      `python -m rosace.main`), ou supprimer la déclaration (2026-10-11)
+      `python -m rosace.main`), ou supprimer la déclaration (2026-10-11).
+      Souhait de l'utilisateur : `rosace` seul démarre le serveur,
+      `rosace --help` affiche l'aide (mêmes options que `python -m
+      rosace.main`) (2026-10-11)
+- [ ] GUI : refaire l'ajustement automatique des seuils (étirement 1 %/99 %)
+      quand une nouvelle image d'un autre type que la précédente arrive sur
+      un panneau (science → dark → flat…) — aujourd'hui seule la 1re image
+      reçue est ajustée, la suite se fait à la main ; le type peut se lire
+      dans l'en-tête FITS (`IMAGETYP`) ou le préfixe du nom (2026-10-12)
+- [ ] GUI : inverser les panneaux Spectre 2D (gauche aujourd'hui) et
+      Guidage (droite) — pas urgent (2026-10-11)
+- [ ] GUI : indiquer « arrêt en cours » dans la zone start/stop, entre la
+      demande d'arrêt (manuelle ou programmée) et la fin de CLOSE_SESSION —
+      l'observation en cours va à son terme, ce qui peut prendre plus d'une
+      demi-heure (2026-10-13)
 
 - [ ] GUI web : l'affichage d'une nouvelle image (au moins panneau Spectre)
       repart en taille pleine à chaque nouvelle capture au lieu de garder

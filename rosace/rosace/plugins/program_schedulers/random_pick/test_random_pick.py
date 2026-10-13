@@ -6,7 +6,7 @@ known order.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -61,11 +61,11 @@ async def _program(*star_names, exposure_time=None):
     return program
 
 
-async def _observed(program, star, success):
+async def _observed(program, star, success, days_ago=0):
     session = SessionContext(site_name="Test")
     await db_insert_session(session)
     obs = Observation(
-        id=_uid(), created_at=datetime.now(timezone.utc), session_id=session.session_id,
+        id=_uid(), created_at=datetime.now(timezone.utc) - timedelta(days=days_ago), session_id=session.session_id,
         scheduler_data={"target": Target(name=star, ra=1.0, dec=1.0), "queried_name": star,
                         "program": program, "priority": 3},
     )
@@ -114,6 +114,20 @@ async def test_once_per_night_and_failure_backoff():
 
     await _observed(program, b, success=False)
     assert await planner.propose(_ctx(program)) is None   # a done, b failed minutes ago
+
+
+async def test_min_interval_days():
+    uid = _uid()
+    a, b = f"A_{uid}", f"B_{uid}"
+    program = await _program(a, b)
+    planner = RandomPickScheduler()
+    await _observed(program, a, success=True, days_ago=3)
+    await _observed(program, b, success=True, days_ago=6)
+
+    assert (await planner.propose(_ctx(program))).queried_name == a   # no interval: tonight only
+    candidate = await planner.propose(_ctx(program, min_interval_days=5))
+    assert candidate.queried_name == b and "last 5 d" in candidate.reason
+    assert await planner.propose(_ctx(program, min_interval_days=7)) is None
 
 
 async def test_infeasible_target_skipped(monkeypatch):

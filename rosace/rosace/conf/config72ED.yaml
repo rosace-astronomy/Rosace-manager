@@ -69,7 +69,8 @@ active_hardware: hardware_indi_72ED-LAN
 # plugins/schedulers/blank/scheduler.py for the contract a new one must
 # follow. A selector key, not a plugin setting itself — a plugin can't
 # declare its own selector. Exposed as ACTIVE_SCHEDULER in config.py.
-active_scheduler: scheduler_rosace_2026
+# active_scheduler: scheduler_rosace_2026
+active_scheduler: selector
 
 # Which SEQUENCER sub-plugin family to load: 'internal' (simulation, no
 # hardware) or 'indi' (real INDI protocol). Same reasoning as
@@ -157,6 +158,13 @@ subplugin_params:
     slit_x: 958
     slit_y: 529.3
 
+  pointing_72ed:
+    # solve-field search radius (degrees) around the corrected position, for
+    # pointing_72ed's plate solve. Must exceed the mount's first-pointing
+    # error: the search is centred on the corrected (commanded) position,
+    # which is that whole error away from where the telescope really points.
+    phase2_search_radius_deg: 5
+
   slit_xy:
     # Light source for the slit image: CALIB, FLAT or SKY (never DARK -- the
     # slit would not be visible). With a lamp the field is bright and
@@ -181,7 +189,8 @@ subplugin_params:
   scheduler_rosace_2026:
     # Full path (any location, not necessarily under base_data_dir) to the
     # text file SCHEDULER reads to pick the next target.
-    observation_list_path: ~/.rosace/targets/ObservationList.txt
+    # observation_list_path: ~/.rosace/targets/ObservationList.txt
+    observation_list_path: ~/.rosace/targets/ManualList.txt
     # Minimum altitude (degrees) for a target to be considered observable.
     min_target_altitude_deg: 10
     # Hour-angle window (degrees, each side of the meridian) inside which a

@@ -10,6 +10,8 @@ description: "Spectroscopy of planetary nebulae (e.g. M57)"
 scheduler:
   name: random_pick
   share_percent: 10
+  params:
+    min_interval_days: 5       # a target is observed successfully at most once every 5 days
 
 sequencer:
   # The active hardware profile may prepend its own steps here (equipment-specific,

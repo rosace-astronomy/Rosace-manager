@@ -235,11 +235,11 @@ pointing rule applies.
 - **Phase C (done)**: `be_scheduler`, the Be stars planner (`Be_stars`, share 80 %): Be
   stars brighter than `limit_magnitude` (7), last observation = the most recent of BeSS
   (Arasbeam robot file, downloaded by the planner each night, previous copy kept on failure)
-  and Rosace; period = `period_days` (30) or BeSS's when shorter; overdue with a shorter BeSS
+  and Rosace; period = `period_days` (30) or BeSS's when shorter, never under `min_period_days` (10); overdue with a shorter BeSS
   period → level 2, overdue → 3, not due → 4; within a level: lateness by half-period steps,
   then altitude at mid-observation, then brightness; `max_duration_minutes` (90) guard;
   mount meridian tolerance in the shared checks. `random_pick` (a target at random, once
-  per night, level 3) activates `PN` and `Cataclysmic` at 10 % each, to see the time shares
+  per night and at most every `min_interval_days` (5), level 3) activates `PN` and `Cataclysmic` at 10 % each, to see the time shares
   at work. Next: a real night with the selector.
 - **Later**: interruption, Moon, moving objects, filling before a booked
   observation with the candidates of every planner.

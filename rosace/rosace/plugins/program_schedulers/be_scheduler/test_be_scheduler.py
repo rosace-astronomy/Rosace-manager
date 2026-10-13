@@ -146,6 +146,21 @@ async def test_levels(tmp_path, no_download):
         assert (candidate.queried_name, candidate.priority) == (star, level)
 
 
+async def test_min_period_floors_a_short_bess_period(tmp_path, no_download):
+    uid = _uid()
+    recent, old = f"R{uid}", f"O{uid}"
+    robot = _write_robot(tmp_path / "robot.txt",
+                         _robot_line(recent, last=_bess_date(5), period=1),   # due on 1 d, not on 10 d
+                         _robot_line(old, last=_bess_date(12), period=1))     # due on 10 d too
+    planner = BeSchedulerScheduler()
+
+    candidate = await planner.propose(_ctx(await _program((recent, 3.0)), robot, min_period_days=10))
+    assert candidate.priority == PRIORITY_FILLER
+    candidate = await planner.propose(_ctx(await _program((old, 3.0)), robot, min_period_days=10))
+    assert candidate.priority == PRIORITY_HIGH
+    assert "period 10 d (BeSS 1 d)" in candidate.reason
+
+
 async def test_bess_period_longer_than_ours_is_level_3(tmp_path, no_download):
     star = f"S{_uid()}"
     program = await _program((star, 3.0))
