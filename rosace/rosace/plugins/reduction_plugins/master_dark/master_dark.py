@@ -7,7 +7,9 @@ copied from the dark library -- same file names either way). Output: the
 master's file name under the shared reduction_data["master_dark_image"] key
 -- no casier of its own. The bias is deliberately not subtracted: the dark is
 subtracted from an image that carries the same bias, which cancels out (see
-CLAUDE.md, "Native reduction chain"). Written to the session directory as
+CLAUDE.md, "Native reduction chain"). For now the preprocessing does not
+subtract it: it reads it, with the master bias, to find the sensor's hot
+pixels (reduction_helpers.py::hot_pixel_map()). Written to the session directory as
 "<series root>_master.fits" and reused when that file already exists (see
 reduction_helpers.py).
 """

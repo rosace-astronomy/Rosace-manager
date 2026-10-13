@@ -22,11 +22,13 @@ from rosace.plugins.reduction_plugins.reduction_helpers import (
     law_coverage,
     publish_spectrum_preview,
     flat_band,
+    hot_pixel_map,
     intermediate_dir,
     master_filename,
     minmax_mean,
     preprocess_frames,
     read_law,
+    replace_hot_pixels,
     resample_linear,
     resolve_master,
     series_root,
@@ -202,10 +204,60 @@ class TestIntermediateDir:
             intermediate_dir(_obs(tmp_path))
 
 
+class TestHotPixelMap:
+
+    def test_hot_pixel_found_over_noise(self):
+        rng = np.random.default_rng(1)
+        bias = np.full((50, 60), 300.0)
+        dark = bias + rng.normal(0.0, 10.0, bias.shape)
+        dark[20, 30] += 2000.0
+        hot, threshold = hot_pixel_map(dark, bias)
+        assert hot[20, 30]
+        assert hot.sum() == 1
+        assert 40.0 < threshold < 60.0      # about 5 x 10 ADU of noise
+
+    def test_noiseless_difference_gives_no_hot_pixel(self):
+        hot, _ = hot_pixel_map(np.full(SHAPE, 300.0), np.full(SHAPE, 300.0))
+        assert not hot.any()
+
+
+class TestReplaceHotPixels:
+
+    def test_isolated_pixel_takes_the_mean_of_its_row_neighbours(self):
+        data = np.array([[10.0, 20.0, 9999.0, 40.0, 50.0]])
+        hot = np.zeros(data.shape, bool)
+        hot[0, 2] = True
+        result = replace_hot_pixels(data, hot, np.ones(data.shape, bool))
+        assert result[0, 2] == pytest.approx(30.0)
+        assert data[0, 2] == 9999.0          # input left untouched
+
+    def test_adjacent_pixels_are_interpolated_linearly(self):
+        data = np.array([[10.0, 9999.0, 9999.0, 40.0]])
+        hot = np.array([[False, True, True, False]])
+        result = replace_hot_pixels(data, hot, np.ones(data.shape, bool))
+        assert result[0, 1:3] == pytest.approx([20.0, 30.0])
+
+    def test_edge_pixel_takes_the_nearest_healthy_value(self):
+        data = np.array([[9999.0, 20.0, 30.0]])
+        hot = np.array([[True, False, False]])
+        assert replace_hot_pixels(data, hot, np.ones(data.shape, bool))[0, 0] == pytest.approx(20.0)
+
+    def test_outside_the_good_area_nothing_changes_and_nothing_is_used(self):
+        data = np.array([[0.0, 1000.0, 9999.0, 30.0, 0.0]])
+        hot = np.array([[True, False, True, False, False]])
+        good = np.array([[False, True, True, True, False]])
+        result = replace_hot_pixels(data, hot, good)
+        assert result[0, 0] == 0.0               # hot but outside the good area: left as is
+        assert result[0, 2] == pytest.approx(515.0)
+        assert result[0, 4] == 0.0
+
+
 class TestPreprocessFrames:
 
-    def _setup(self, tmp_path, flat, raw_values=(1300.0,)):
+    def _setup(self, tmp_path, flat, raw_values=(1300.0,), dark=None):
         fits.writeto(tmp_path / "bias_m.fits", np.full(SHAPE, 300.0, dtype=np.float32))
+        dark = np.full(SHAPE, 300.0) if dark is None else dark
+        fits.writeto(tmp_path / "dark_m.fits", dark.astype(np.float32))
         fits.writeto(tmp_path / "flat_m.fits", flat.astype(np.float32))
         names = []
         for i, value in enumerate(raw_values, start=1):
@@ -214,17 +266,19 @@ class TestPreprocessFrames:
             names.append(name)
         return _obs(tmp_path, scheduler_data={"queried_name": "Vega"},
                     sequencer_data={"calib_images": names},
-                    reduction_data={"master_bias_image": "bias_m.fits", "master_flat_image": "flat_m.fits"})
+                    reduction_data={"master_bias_image": "bias_m.fits", "master_dark_image": "dark_m.fits",
+                                    "master_flat_image": "flat_m.fits"})
 
     def test_subtracts_bias_and_divides_by_flat(self, tmp_path):
         flat = np.full(SHAPE, 2.0)
         flat[0, 0] = 0.5
         obs = self._setup(tmp_path, flat, raw_values=(1300.0, 2300.0))
 
-        written, out_dir = preprocess_frames(obs, "calib_images")
+        written, out_dir, hot_count = preprocess_frames(obs, "calib_images")
 
         assert written == ["Vega_obs-master/CALIB_x-1_preproc.fits", "Vega_obs-master/CALIB_x-2_preproc.fits"]
         assert out_dir == tmp_path / "Vega_obs-master"
+        assert hot_count == 0
         first = fits.getdata(tmp_path / written[0])
         assert first[1, 1] == pytest.approx(500.0)   # (1300 - 300) / 2
         assert first[0, 0] == pytest.approx(2000.0)  # (1300 - 300) / 0.5
@@ -236,7 +290,7 @@ class TestPreprocessFrames:
         flat[0, 1] = -0.01
         obs = self._setup(tmp_path, flat)
 
-        written, _ = preprocess_frames(obs, "calib_images")
+        written, _, _ = preprocess_frames(obs, "calib_images")
 
         data = fits.getdata(tmp_path / written[0])
         assert data[0, 0] == 0.0
@@ -249,12 +303,42 @@ class TestPreprocessFrames:
         flat[2, 3] = 0.04      # dead pixel inside the band
         obs = self._setup(tmp_path, flat)
 
-        written, _ = preprocess_frames(obs, "calib_images")
+        written, _, _ = preprocess_frames(obs, "calib_images")
 
         data = fits.getdata(tmp_path / written[0])
         assert np.all(data[0] == 0.0)
         assert data[2, 3] == 0.0
         assert data[1, 1] == pytest.approx(1000.0)
+
+    def test_hot_pixel_replaced_by_its_row_neighbours(self, tmp_path):
+        rng = np.random.default_rng(2)
+        dark = 300.0 + rng.normal(0.0, 5.0, SHAPE)
+        dark[2, 3] = 5000.0
+        obs = self._setup(tmp_path, np.ones(SHAPE), dark=dark)
+        raw = np.full(SHAPE, 1300.0)
+        raw[2, 2], raw[2, 3], raw[2, 4] = 1100.0, 9000.0, 1500.0
+        fits.writeto(tmp_path / "CALIB_x-1.fits", raw.astype(np.float32), overwrite=True)
+
+        written, _, hot_count = preprocess_frames(obs, "calib_images")
+
+        assert hot_count == 1
+        data = fits.getdata(tmp_path / written[0])
+        assert data[2, 3] == pytest.approx(1000.0)   # mean of (1100 - 300) and (1500 - 300)
+        header = fits.getheader(tmp_path / written[0])
+        assert any("hot pixels replaced: 1" in c for c in header["COMMENT"])
+        assert any("dark_m.fits" in c for c in header["COMMENT"])
+
+    def test_missing_master_dark_names_the_key(self, tmp_path):
+        obs = self._setup(tmp_path, np.ones(SHAPE))
+        del obs.reduction_data["master_dark_image"]
+        with pytest.raises(Exception, match="master_dark_image"):
+            preprocess_frames(obs, "calib_images")
+
+    def test_master_dark_of_another_size_is_an_error(self, tmp_path):
+        obs = self._setup(tmp_path, np.ones(SHAPE))
+        fits.writeto(tmp_path / "dark_m.fits", np.ones((2, 2), dtype=np.float32), overwrite=True)
+        with pytest.raises(RuntimeError, match="master dark"):
+            preprocess_frames(obs, "calib_images")
 
     def test_frame_of_another_size_is_an_error(self, tmp_path):
         obs = self._setup(tmp_path, np.ones(SHAPE))

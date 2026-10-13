@@ -22,12 +22,14 @@ def _obs(session_dir, star_files) -> Observation:
     obs.scheduler_data["queried_name"] = "alf Lyr"
     obs.sequencer_data["star_spectra_images"] = star_files
     obs.reduction_data["master_bias_image"] = "BIAS_master.fits"
+    obs.reduction_data["master_dark_image"] = "DARK_master.fits"
     obs.reduction_data["master_flat_image"] = "FLAT_master.fits"
     return obs
 
 
 def _write_inputs(session_dir):
     fits.writeto(session_dir / "BIAS_master.fits", np.full(SHAPE, 300.0, dtype=np.float32))
+    fits.writeto(session_dir / "DARK_master.fits", np.full(SHAPE, 300.0, dtype=np.float32))
     fits.writeto(session_dir / "FLAT_master.fits", np.full(SHAPE, 0.5, dtype=np.float32))
     names = []
     for i in (1, 2):
@@ -58,7 +60,8 @@ class TestPreprocTargetPlugin:
                 assert list(hdul[0].header["COMMENT"]) == [
                     "Master bias subtracted: BIAS_master.fits",
                     "Divided by master flat: FLAT_master.fits",
-                    "Dark not subtracted",
+                    "Dark not subtracted; hot pixels replaced: 0 (dark - bias > 0 ADU)",
+                    "Hot pixel map from: DARK_master.fits",
                 ]
 
     async def test_raw_frames_are_left_untouched(self, tmp_path):

@@ -23,12 +23,14 @@ def _obs(session_dir, calib_files=None) -> Observation:
     if calib_files is not None:
         obs.sequencer_data["calib_images"] = calib_files
     obs.reduction_data["master_bias_image"] = "BIAS_master.fits"
+    obs.reduction_data["master_dark_image"] = "DARK_master.fits"
     obs.reduction_data["master_flat_image"] = "FLAT_master.fits"
     return obs
 
 
 def _write_inputs(session_dir):
     fits.writeto(session_dir / "BIAS_master.fits", np.full(SHAPE, 300.0, dtype=np.float32))
+    fits.writeto(session_dir / "DARK_master.fits", np.full(SHAPE, 300.0, dtype=np.float32))
     fits.writeto(session_dir / "FLAT_master.fits", np.full(SHAPE, 2.0, dtype=np.float32))
     names = []
     for i in (1, 2, 3):

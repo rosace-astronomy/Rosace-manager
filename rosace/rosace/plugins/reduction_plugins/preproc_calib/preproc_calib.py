@@ -3,8 +3,9 @@ REDUCTION sub-plugin — Calibration-lamp preprocessing
 Corrects every calibration-lamp frame with the master bias and the master flat: (frame - bias) / flat.
 
 Same computation as preproc_target, on the lamp series. Inputs: the shared
-keys calib_images, master_bias_image and master_flat_image. Each frame is
-corrected on its own; the dark is not subtracted for now. The corrected
+keys calib_images, master_bias_image, master_dark_image and
+master_flat_image. Each frame is corrected on its own; the dark is not
+subtracted, but the hot pixels the master dark shows are replaced. The corrected
 frames go to the observation's intermediate-file directory ("<queried
 name>_<observation id>" in the session directory) as
 "<raw name>_preproc.fits", and their paths, relative to the session
@@ -29,7 +30,8 @@ class PreprocCalibPlugin(SubPlugin):
     """Corrects every calibration-lamp frame with the master bias and the master flat."""
 
     async def execute(self, obs: Observation) -> Observation:
-        written, out_dir = preprocess_frames(obs, "calib_images")
+        written, out_dir, hot_count = preprocess_frames(obs, "calib_images")
         obs.reduction_data["preproc_calib_images"] = written
-        log.info(f"[PREPROC_CALIB] {len(written)} frames preprocessed into '{out_dir.name}'")
+        log.info(f"[PREPROC_CALIB] {len(written)} frames preprocessed into '{out_dir.name}', "
+                 f"{hot_count} hot pixels replaced in each")
         return obs

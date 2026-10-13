@@ -2,7 +2,8 @@
 Shared functions of the native reduction chain: finding a step's input under
 its shared key, writing float images, the observation's intermediate-file
 directory, the session's master calibration frames (bias, dark, flat), the
-preprocessing of raw frames with them, column/row shifts, reading the
+preprocessing of raw frames with them (hot pixels replaced from the master
+dark), column/row shifts, reading the
 dispersion law and resampling a spectrum on a constant wavelength step.
 
 Plain functions, not a sub-plugin: same status as axes_helpers.py -- not
@@ -54,6 +55,11 @@ MIN_FLAT_FOR_MEASUREMENT = 0.05
 # fraction of the band's height at each edge where slit-edge effects matter.
 LIT_BAND_LEVEL_FRACTION = 0.5
 LIT_BAND_MARGIN_FRACTION = 0.05
+
+# A pixel is hot when its master dark minus master bias exceeds the median of
+# that difference by this many times its noise (robust: median absolute
+# deviation).
+HOT_PIXEL_SIGMA = 5.0
 
 _SERIES_INDEX_RE = re.compile(r"-\d+$")
 _UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]")
@@ -193,34 +199,76 @@ def find_trace(image: np.ndarray, flat: np.ndarray) -> FeatureAxes | None:
     return dataclasses.replace(axes, cy=axes.cy + band_low)
 
 
-def preprocess_frames(obs: Observation, input_key: str) -> tuple[list[str], Path]:
+def hot_pixel_map(dark: np.ndarray, bias: np.ndarray) -> tuple[np.ndarray, float]:
+    """Hot pixels of the sensor: where master dark - master bias exceeds its
+    median by HOT_PIXEL_SIGMA times its noise (1.4826 x the median absolute
+    deviation, which the hot pixels themselves barely move). Returns the mask
+    and the threshold, in ADU of dark - bias. A noiseless difference gives no
+    hot pixel."""
+    diff = dark - bias
+    median = float(np.median(diff))
+    noise = 1.4826 * float(np.median(np.abs(diff - median)))
+    threshold = median + HOT_PIXEL_SIGMA * noise
+    return diff > threshold, threshold
+
+
+def replace_hot_pixels(data: np.ndarray, hot: np.ndarray, good: np.ndarray) -> np.ndarray:
+    """Replaces each hot pixel inside the good area by a linear interpolation,
+    along its row (the dispersion axis), between the nearest healthy pixels
+    (good and not hot) on its left and right: the mean of both neighbours for
+    an isolated pixel, the nearest healthy value at an edge. Along the row,
+    because across it the trace profile is narrow and a vertical neighbour
+    would differ from the pixel itself. A row without any healthy pixel is
+    left as is. Returns a new array."""
+    result = data.copy()
+    to_fix = hot & good
+    healthy = good & ~hot
+    for row in np.flatnonzero(to_fix.any(axis=1)):
+        source = np.flatnonzero(healthy[row])
+        if source.size == 0:
+            continue
+        target = np.flatnonzero(to_fix[row])
+        result[row, target] = np.interp(target, source, data[row, source])
+    return result
+
+
+def preprocess_frames(obs: Observation, input_key: str) -> tuple[list[str], Path, int]:
     """Corrects each raw frame under input_key (e.g. "star_spectra_images")
     with the session's masters: (frame - master bias) / master flat, frame by
-    frame (no stacking). The dark is not subtracted. Only the useful area is
+    frame (no stacking). The dark is not subtracted, but the hot pixels it
+    shows (hot_pixel_map()) are replaced by their row neighbours
+    (replace_hot_pixels()) -- the same pixels in every frame. Only the useful area is
     kept: outside the band lit through the slit (flat_band()), and where the
     master flat is below MIN_FLAT_FOR_MEASUREMENT (dead sensor edges), the
     result is 0 -- so no inf, NaN or huge value reaches the next steps. Each result
     is written to intermediate_dir(obs) as "<raw name>_preproc.fits", float32,
-    with the raw frame's header plus COMMENT lines naming both masters.
-    Returns the written paths, relative to the session directory, and the
-    intermediate directory."""
+    with the raw frame's header plus COMMENT lines naming the masters.
+    Returns the written paths, relative to the session directory, the
+    intermediate directory and the number of hot pixels replaced in each frame."""
     session_dir = Path(obs.obs_dir or "")
     files = find_shared_input(obs, input_key)
     bias_name = find_shared_input(obs, "master_bias_image")
+    dark_name = find_shared_input(obs, "master_dark_image")
     flat_name = find_shared_input(obs, "master_flat_image")
     out_dir = intermediate_dir(obs)
 
     bias = fits.getdata(session_dir / bias_name).astype(np.float64)
+    dark = fits.getdata(session_dir / dark_name).astype(np.float64)
     flat = fits.getdata(session_dir / flat_name).astype(np.float64)
     if bias.shape != flat.shape:
         raise RuntimeError(f"Master bias '{bias_name}' is {bias.shape}, master flat '{flat_name}' is {flat.shape}")
+    if bias.shape != dark.shape:
+        raise RuntimeError(f"Master bias '{bias_name}' is {bias.shape}, master dark '{dark_name}' is {dark.shape}")
     band_low, band_high = flat_band(flat)
     rows = np.arange(flat.shape[0])[:, None]
     flat_usable = (flat >= MIN_FLAT_FOR_MEASUREMENT) & (rows >= band_low) & (rows <= band_high)
+    hot, threshold = hot_pixel_map(dark, bias)
+    hot_count = int((hot & flat_usable).sum())
     comments = [
         f"Master bias subtracted: {bias_name}",
         f"Divided by master flat: {flat_name}",
-        "Dark not subtracted",
+        f"Dark not subtracted; hot pixels replaced: {hot_count} (dark - bias > {threshold:.0f} ADU)",
+        f"Hot pixel map from: {dark_name}",
     ]
 
     written = []
@@ -229,10 +277,11 @@ def preprocess_frames(obs: Observation, input_key: str) -> tuple[list[str], Path
         if raw.shape != bias.shape:
             raise RuntimeError(f"'{name}' is {raw.shape}, the masters are {bias.shape}")
         data = np.divide(raw - bias, flat, out=np.zeros_like(raw), where=flat_usable)
+        data = replace_hot_pixels(data, hot, flat_usable)
         out_path = out_dir / f"{Path(name).stem}_preproc.fits"
         write_float_image(out_path, data, fits.getheader(session_dir / name), comments)
         written.append(str(out_path.relative_to(session_dir)))
-    return written, out_dir
+    return written, out_dir, hot_count
 
 
 def shift_columns(data: np.ndarray, shifts: np.ndarray) -> np.ndarray:
