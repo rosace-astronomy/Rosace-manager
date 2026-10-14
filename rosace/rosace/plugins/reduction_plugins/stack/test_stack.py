@@ -97,9 +97,22 @@ class TestStackPlugin:
         rejected = result.reduction_data["stack"]["rejected"]
         assert len(rejected) == 1
         assert rejected[0]["file"].endswith("-2_preproc_1d.fits")
-        assert rejected[0]["flux_fraction"] == pytest.approx(0.1)
+        assert rejected[0]["flux_fraction"] == pytest.approx(1 / 12, abs=1e-3)
         assert "-2_preproc_1d.fits" in caplog.text
-        assert any(str(c).startswith("Rejected (flux 10% of median)") for c in header["COMMENT"])
+        assert any(str(c).startswith("Rejected (flux 8% of the brightest)") for c in header["COMMENT"])
+
+    async def test_mostly_cloudy_series(self, tmp_path):
+        # Three of five frames under cloud: the median is a cloudy frame, so
+        # only a comparison with the brightest frame rejects them
+        obs = _setup(tmp_path, [_spectrum(12.0), _spectrum(1.5), _spectrum(1.2), _spectrum(1.0), _spectrum(10.0)])
+
+        result = await StackPlugin().execute(obs)
+
+        data, header = _read(tmp_path, result.reduction_data["stack_target_spectrum"])
+        assert np.allclose(data, 22.0)
+        assert header["EXPTIME2"] == "2x20s"
+        rejected = result.reduction_data["stack"]["rejected"]
+        assert [r["file"][-18:] for r in rejected] == ["-2_preproc_1d.fits", "-3_preproc_1d.fits", "-4_preproc_1d.fits"]
 
     async def test_last_frame_rejected_shortens_exptime(self, tmp_path):
         obs = _setup(tmp_path, [_spectrum(10.0), _spectrum(12.0), _spectrum(0.5)])

@@ -163,7 +163,7 @@ subplugin_params:
     # pointing_72ed's plate solve. Must exceed the mount's first-pointing
     # error: the search is centred on the corrected (commanded) position,
     # which is that whole error away from where the telescope really points.
-    phase2_search_radius_deg: 5
+    phase2_search_radius_deg: 1
 
   slit_xy:
     # Light source for the slit image: CALIB, FLAT or SKY (never DARK -- the

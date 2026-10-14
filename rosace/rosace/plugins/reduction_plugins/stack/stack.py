@@ -4,9 +4,11 @@ Sums the 1D spectra of the target series, and those of the lamp series, into one
 
 For each series -- target (shared key extract_target_spectra), then lamp
 (extract_calib_spectra) -- the flux of every spectrum is the sum of its
-values. A spectrum below MIN_FLUX_FRACTION of the series' median flux (a
-cloud, a frame without starlight, a lamp that did not light up) is rejected
-with a warning; the others are summed as they are, without shifting (their
+values. A spectrum below MIN_FLUX_FRACTION of the brightest spectrum's flux
+(a cloud, a frame without starlight, a lamp that did not light up) is
+rejected with a warning -- the brightest, not the median: once half the
+series is cloudy, the median is itself a cloudy frame and would reject
+nothing. The others are summed as they are, without shifting (their
 position comes from the slit) and without cosmic-ray rejection.
 
 The stacked spectrum keeps the first retained spectrum's header, plus:
@@ -91,15 +93,15 @@ def stack_series(obs: Observation, input_key: str, label: str) -> tuple[str, lis
         raise RuntimeError(f"STACK: the {label.lower()} spectra have different lengths: {[s.shape for s in spectra]}")
 
     fluxes = np.array([s.sum() for s in spectra])
-    median = float(np.median(fluxes))
-    if median <= 0:
-        raise RuntimeError(f"STACK: the {label.lower()} spectra carry no light (median flux {median:g})")
+    brightest = float(fluxes.max())
+    if brightest <= 0:
+        raise RuntimeError(f"STACK: the {label.lower()} spectra carry no light (brightest flux {brightest:g})")
     kept, rejected = [], []
     for index, (name, flux) in enumerate(zip(files, fluxes)):
-        fraction = float(flux) / median
+        fraction = float(flux) / brightest
         if fraction < MIN_FLUX_FRACTION:
             rejected.append({"file": name, "flux_fraction": round(fraction, 3)})
-            log.warning(f"[STACK] {label} spectrum rejected, flux {fraction:.0%} of the median: {name}")
+            log.warning(f"[STACK] {label} spectrum rejected, flux {fraction:.0%} of the brightest: {name}")
         else:
             kept.append(index)
 
@@ -119,7 +121,7 @@ def stack_series(obs: Observation, input_key: str, label: str) -> tuple[str, lis
     # File names only: the sources sit in the same intermediate directory, and
     # a full path would not fit in one COMMENT card
     comments += [f"Source: {Path(name).name}" for name in kept_files]
-    comments += [f"Rejected (flux {r['flux_fraction']:.0%} of median): {Path(r['file']).name}" for r in rejected]
+    comments += [f"Rejected (flux {r['flux_fraction']:.0%} of the brightest):{Path(r['file']).name}" for r in rejected]
 
     out_path = intermediate_dir(obs) / stack_filename(files[0])
     write_float_image(out_path, total, header, comments)
