@@ -191,7 +191,7 @@ class TestIntermediateDir:
     def test_named_after_queried_name_and_observation_id(self, tmp_path):
         obs = _obs(tmp_path, scheduler_data={"queried_name": "alf Lyr / Vega"})
         directory = intermediate_dir(obs)
-        assert directory == tmp_path / "alfLyrVega_obs-master"
+        assert directory == tmp_path / "alf_Lyr_Vega_obs-master"
         assert directory.is_dir()
 
     def test_existing_directory_is_kept(self, tmp_path):

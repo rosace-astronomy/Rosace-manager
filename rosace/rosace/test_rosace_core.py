@@ -477,6 +477,12 @@ class TestObservation:
         obs.scheduler_data["queried_name"] = "V/380 Cyg"
         assert "/" not in obs.suggested_filename
         assert " " not in obs.suggested_filename
+        assert obs.suggested_filename.endswith("_V380_Cyg.yaml")
+
+    def test_suggested_filename_drops_simbad_star_prefix(self):
+        obs = Observation(id="x", created_at=datetime.now(timezone.utc), session_id="sess1234")
+        obs.scheduler_data["queried_name"] = "*   8 Lac A"
+        assert obs.suggested_filename.endswith("_8_Lac_A.yaml")
 
     def test_suggested_filename_reflects_current_scheduler_data(self):
         """The property recomputes on every read — not frozen at creation."""

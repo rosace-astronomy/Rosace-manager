@@ -549,7 +549,7 @@ class TestBuildFitsRootName:
     def test_star_with_target_name_and_single_exposure(self):
         result = build_fits_root_name("STAR", target_name="V831 Cas", exposure_time=30, timestamp=self.FIXED_TS)
 
-        assert result == "V831Cas_30s_20260807_143022"
+        assert result == "V831_Cas_30s_20260807_143022"
 
     def test_star_without_target_name_falls_back_to_literal_star(self):
         result = build_fits_root_name("STAR", exposure_time=30, timestamp=self.FIXED_TS)
@@ -561,7 +561,7 @@ class TestBuildFitsRootName:
             "STAR", target_name="V831 Cas", exposure_time=30, num_exposures=7, timestamp=self.FIXED_TS
         )
 
-        assert result == "V831Cas_7x30s_20260807_143022"
+        assert result == "V831_Cas_7x30s_20260807_143022"
 
     def test_sub_second_exposure_uses_underscore_decimal(self):
         result = build_fits_root_name("guiding", exposure_time=0.3, timestamp=self.FIXED_TS)
@@ -580,7 +580,7 @@ class TestBuildFitsRootName:
     def test_strips_unsafe_characters_from_target_name(self):
         result = build_fits_root_name("STAR", target_name="HD 12345*", exposure_time=30, timestamp=self.FIXED_TS)
 
-        assert result == "HD12345_30s_20260807_143022"
+        assert result == "HD_12345_30s_20260807_143022"
 
     def test_guiding_with_target_name_inserted_after_prefix(self):
         result = build_fits_root_name("GUIDING", target_name="Vega", exposure_time=0.3, timestamp=self.FIXED_TS)
@@ -595,7 +595,7 @@ class TestBuildFitsRootName:
     def test_guiding_strips_unsafe_characters_from_target_name(self):
         result = build_fits_root_name("GUIDING", target_name="HD 12345*", exposure_time=0.3, timestamp=self.FIXED_TS)
 
-        assert result == "GUIDING_HD12345_0_30s_20260807_143022"
+        assert result == "GUIDING_HD_12345_0_30s_20260807_143022"
 
     def test_guiding_target_name_with_no_safe_characters_left_raises(self):
         with pytest.raises(ValueError, match="no safe characters"):

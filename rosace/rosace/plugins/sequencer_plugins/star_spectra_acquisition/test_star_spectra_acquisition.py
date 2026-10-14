@@ -131,7 +131,7 @@ class TestStarSpectraAcquisitionPlugin:
 
         result = await StarSpectraAcquisitionPlugin().execute(obs)
 
-        expected_name = f"V831Cas_1s_{FIXED_TS}.fits"
+        expected_name = f"V831_Cas_1s_{FIXED_TS}.fits"
         assert result.sequencer_data["star_spectra_images"] == [expected_name]
 
     async def test_computes_exposure_time_from_magnitude_when_not_set(self, tmp_path, monkeypatch):

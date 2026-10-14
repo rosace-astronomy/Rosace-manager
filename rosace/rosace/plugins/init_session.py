@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from ..config import OBSERVATIONS_DIR, SEQUENCER_BACKEND, SITE_NAME
+from ..file_names import safe_name
 from ..models import SessionContext
 from ..time_helpers import astronomical_day_local_date
 from .camera_cooldown import activate_cooling_for_every_camera, cool_science_camera_to_target
@@ -17,8 +18,7 @@ class InitSessionPlugin:
         log.info(f"[INIT_SESSION] Starting session {ctx.session_id}")
 
         date_str = astronomical_day_local_date()
-        safe_site = SITE_NAME.replace(" ", "_").replace("/", "-")
-        session_dir = OBSERVATIONS_DIR / f"{date_str}_{safe_site}"
+        session_dir = OBSERVATIONS_DIR / f"{date_str}_{safe_name(SITE_NAME)}"
         session_dir.mkdir(parents=True, exist_ok=True)
         ctx.session_dir = str(session_dir)
         log.info(f"[INIT_SESSION] Session directory: {session_dir}")

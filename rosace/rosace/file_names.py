@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 The ROSACE project
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+"""
+The one rule turning a star or site name into a file-name fragment, used
+wherever such a name enters a file or directory name (observation file,
+raw FITS frames, intermediate directory, Demetra project, session
+directory) — so every file of an observation spells the name the same way.
+"""
+
+from __future__ import annotations
+
+import re
+
+_SPACES = re.compile(r"\s+")
+_UNSAFE_CHARS = re.compile(r"[^A-Za-z0-9_-]")
+_REPEATED_UNDERSCORES = re.compile(r"_{2,}")
+
+
+def safe_name(name: str) -> str:
+    """The name as a file-name fragment: each run of spaces becomes "_",
+    every character outside [A-Za-z0-9_-] is removed (Simbad's "*" among
+    them: a shell wildcard, and forbidden in Windows file names), repeated
+    "_" collapse into one and leading/trailing "_" are dropped:
+    "*   8 Lac A" -> "8_Lac_A", "V/380 Cyg" -> "V380_Cyg". Returns "" when
+    nothing usable is left; each caller decides what that means."""
+    name = _UNSAFE_CHARS.sub("", _SPACES.sub("_", name))
+    return _REPEATED_UNDERSCORES.sub("_", name).strip("_")

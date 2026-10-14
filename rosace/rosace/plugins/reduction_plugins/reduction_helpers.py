@@ -39,6 +39,7 @@ from astropy.time import Time
 from numpy.polynomial import Polynomial
 
 from ...config import GUI_PREVIEW_DIR
+from ...file_names import safe_name
 from ...image_broadcast import ws_image_broadcaster
 from ...models import Observation
 from .axes_helpers import FeatureAxes, find_axes
@@ -62,7 +63,6 @@ LIT_BAND_MARGIN_FRACTION = 0.05
 HOT_PIXEL_SIGMA = 5.0
 
 _SERIES_INDEX_RE = re.compile(r"-\d+$")
-_UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]")
 
 # Casiers searched, in this order, for a shared input key.
 _CASIERS = ("scheduler_data", "sequencer_data", "reduction_data", "sharing_data", "archive_data")
@@ -161,13 +161,13 @@ def resolve_master(
 def intermediate_dir(obs: Observation) -> Path:
     """The observation's directory of intermediate files, created if needed:
     "<queried name>_<observation id>" inside the session directory (e.g.
-    "Vega_0e37017f"), the name stripped of anything but letters, digits, "_"
-    and "-" (same rule as FITS file names). Every intermediate file of the
+    "Vega_0e37017f"), the name made file-safe by file_names.safe_name() (same
+    rule as every other file named after the star). Every intermediate file of the
     observation goes there; deleting it loses nothing, everything can be
     rebuilt from the raw frames."""
     if not obs.obs_dir:
         raise RuntimeError("Observation directory (obs_dir) not set")
-    name = _UNSAFE_NAME_CHARS.sub("", obs.scheduler_data.get("queried_name") or "")
+    name = safe_name(obs.scheduler_data.get("queried_name") or "")
     if not name:
         raise RuntimeError("No usable queried_name to name the intermediate-file directory")
     directory = Path(obs.obs_dir) / f"{name}_{obs.id}"

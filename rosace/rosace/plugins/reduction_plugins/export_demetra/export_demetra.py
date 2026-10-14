@@ -120,14 +120,9 @@ def _dec_deg_to_dms(dec_deg: float) -> str:
 
 
 def _export_base_name(obs: Observation) -> str:
-    """Mirrors Observation.suggested_filename's own <iso_datetime>_<name>
-    logic (without the .yaml extension), so the .obs.srl/.zip sit next to
-    the observation's own YAML with a recognizably related name."""
-    target = obs.scheduler_data.get("target")
-    name = obs.scheduler_data.get("queried_name") or (target.name if target else None) or "target"
-    iso_str = obs.created_at.strftime("%Y%m%dT%H%M%S")
-    safe_name = name.replace(" ", "_").replace("/", "-")
-    return f"{iso_str}_{safe_name}"
+    """The observation file's own name without its .yaml extension, so the
+    .obs.srl/.zip sit next to the observation's YAML with the same name."""
+    return Path(obs.yaml_file or obs.suggested_filename).stem
 
 
 def _required_files(obs: Observation, key: str, what: str) -> list[str]:

@@ -48,7 +48,7 @@ class TestPreprocTargetPlugin:
 
         result = await PreprocTargetPlugin().execute(_obs(tmp_path, names))
 
-        expected = [f"alfLyr_0e37017f/{n[:-5]}_preproc.fits" for n in names]
+        expected = [f"alf_Lyr_0e37017f/{n[:-5]}_preproc.fits" for n in names]
         assert result.reduction_data["preproc_target_images"] == expected
         for i, rel in enumerate(expected, start=1):
             with fits.open(tmp_path / rel) as hdul:

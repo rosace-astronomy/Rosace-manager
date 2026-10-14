@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import math
-import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +20,7 @@ import numpy as np
 from astropy.io import fits
 
 from ...config import GUI_PREVIEW_DIR, SUBPLUGIN_PARAMS
+from ...file_names import safe_name
 from ...hardware.spectroscope import LightSource
 from ...image_broadcast import ws_image_broadcaster
 from ...models import Observation
@@ -30,13 +30,11 @@ ALLOWED_IMAGE_TYPES = {"STAR", "BIAS", "DARK", "FLAT", "CALIB", "GUIDING", "GUID
 
 _TEMP_ALLOWED_TYPES = {"DARK", "BIAS"}
 
-# STAR's target_name *replaces* the literal "STAR" prefix (e.g. "V831Cas_...");
+# STAR's target_name *replaces* the literal "STAR" prefix (e.g. "V831_Cas_...");
 # GUIDING's *follows* the literal "GUIDING" prefix instead (e.g. "GUIDING_Vega_...")
 # -- kept as its own type, not folded into STAR, since GUIDING's own image_type
 # still needs to appear in the name (it's not itself the science target).
 _TARGET_NAME_APPEND_TYPES = {"GUIDING"}
-
-_UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]")
 
 
 def _raw_variant_filename(filename: str) -> str:
@@ -352,7 +350,7 @@ def build_fits_root_name(
     deliberately not the resolved canonical Target.name) plugs in
     differently depending on image_type:
     - STAR: target_name, if given, *replaces* the literal "STAR" prefix
-      — e.g. image_type="STAR", target_name="V831 Cas" -> "V831Cas...".
+      — e.g. image_type="STAR", target_name="V831 Cas" -> "V831_Cas...".
       Without a target_name, image_type="STAR" alone falls back to the
       literal "STAR" prefix (handy for a quick dev/debug call).
     - GUIDING: target_name, if given, is inserted as its own field right
@@ -363,10 +361,10 @@ def build_fits_root_name(
       science target's own file.
     - Any other image_type (BIAS/DARK/FLAT/CALIB): passing target_name is
       an explicit error — that combination can only be a caller mistake.
-    Every character outside [A-Za-z0-9_-] is stripped from target_name
-    (this is what makes stray spaces and characters like "*" in some star
-    names filesystem-safe) — no exceptions, since a space or a "*" in a
-    FITS filename is a real problem for downstream automated processing.
+    target_name goes through file_names.safe_name(), the one rule shared by
+    every file named after a star ("*   8 Lac A" -> "8_Lac_A") — a space or
+    a "*" in a FITS filename is a real problem for downstream automated
+    processing.
 
     sensor_temp_c is an optional field, DARK/BIAS only (an ordinary
     STAR/GUIDING/etc. image never reports it) — not knowing it (no
@@ -399,7 +397,7 @@ def build_fits_root_name(
     target_name_field = None
     if image_type == "STAR":
         if target_name:
-            prefix = _UNSAFE_NAME_CHARS.sub("", target_name)
+            prefix = safe_name(target_name)
             if not prefix:
                 raise ValueError(f"build_fits_root_name: target_name={target_name!r} has no safe characters left")
         else:
@@ -407,7 +405,7 @@ def build_fits_root_name(
     elif image_type in _TARGET_NAME_APPEND_TYPES:
         prefix = image_type
         if target_name:
-            target_name_field = _UNSAFE_NAME_CHARS.sub("", target_name)
+            target_name_field = safe_name(target_name)
             if not target_name_field:
                 raise ValueError(f"build_fits_root_name: target_name={target_name!r} has no safe characters left")
     else:

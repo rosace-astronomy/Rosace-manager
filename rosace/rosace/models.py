@@ -14,6 +14,8 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .file_names import safe_name
+
 
 # ─────────────────────────────────────────────────────────────
 # State machine
@@ -172,15 +174,15 @@ class Observation(BaseModel):
         SCHEDULER has run). Uses the queried name (queried_name) rather than
         the canonical Simbad name, consistent with the rest of the app —
         falls back to the canonical name if queried_name isn't set (shouldn't
-        happen once SCHEDULER has run, both are always set together).
+        happen once SCHEDULER has run, both are always set together), made
+        file-safe by file_names.safe_name() ("*   8 Lac A" -> "8_Lac_A").
         The model's only business-logic concession: reading its own
         scheduler_data to give itself a readable name.
         """
         target = self.scheduler_data.get("target")
         name = self.scheduler_data.get("queried_name") or (target.name if target else None) or "target"
         iso_str = self.created_at.strftime("%Y%m%dT%H%M%S")
-        safe_name = name.replace(" ", "_").replace("/", "-")
-        return f"{iso_str}_{safe_name}.yaml"
+        return f"{iso_str}_{safe_name(name) or 'target'}.yaml"
 
 
 # ─────────────────────────────────────────────────────────────
