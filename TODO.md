@@ -1,6 +1,6 @@
 # TODO
 
-## Dernière mise à jour : 2026-09-25 08:15
+## Dernière mise à jour : 2026-10-15 06:44
 
 Liste des tâches en attente du projet Rosace. Claude peut ajouter une
 ligne dès qu'une nouvelle idée apparaît en conversation. **Seul
@@ -27,20 +27,29 @@ Claude peut le suggérer, jamais le faire lui-même.
       devices de la session restent perdus jusqu'à la session suivante (un
       client INDI neuf n'est créé qu'au démarrage d'une session ou d'un test
       matériel) (2026-10-13)
+- [ ] La monture AM3 arrête de suivre peu après le méridien : HD 26398
+      (nuit du 14, partie à l'est, angle horaire −5,8° → +6,0° prévu) a
+      perdu l'étoile vers 02:18 UT, angle horaire ≈ +1,3° ; 5 poses sur 14
+      sans étoile, écart de 4,3° à la fin (rattrapé par `stack`). Le
+      réglage provisoire `selector.meridian_tolerance_deg: 15` ne
+      correspond donc pas à la monture telle qu'elle est réglée : choisir
+      entre régler la limite de la monture (driver AM3 / Ekos) ou ramener
+      ce réglage vers 1°. Rosace ne voit pas non plus l'arrêt du suivi
+      pendant la série (16 min sans étoile sans aucun message) (2026-10-15)
 
 ## Chantiers proposés
 
-- [ ] Flux dans la table `observations` : un résumé par observation
-      (flux médian en ADU/s, dispersion entre poses, nombre de poses
-      mesurées / saturées), calculé par `calculate_flux` et recopié via
-      `obs.measurements` (phase B du scheduler multi-programmes) ; le détail
-      pose par pose reste dans `spectrum_flux` (2026-10-02)
+- [ ] Flux et transparence dans la table `observations` : un résumé par
+      observation, calculé par `calculate_flux` et recopié via
+      `obs.measurements` — flux médian en ADU/s, dispersion du flux de
+      l'étoile d'une pose à l'autre, flux de la pose la plus faible rapporté
+      à la meilleure, nombre de poses mesurées / saturées, et nombre
+      d'étoiles détectées dans les images de guidage ; le détail pose par
+      pose reste dans `spectrum_flux` (2026-10-02). La nuit du 13 a montré
+      que ce sont les bons indicateurs de nuages, et que le fond des zones de
+      ciel des spectres ne l'est pas (surtout le halo de l'étoile)
+      (2026-10-14)
 - [ ] Distance à la Lune : filtre scheduler sur la distance de la cible à la Lune (seuil à définir, probablement selon la phase) — pas urgent
-- [ ] Temps de pose des étoiles faibles : la loi `exposure_time_mag0 ×
-      10^(mag/2,5)` vise l'approche de la saturation. Au-delà de
-      `max_exposure_time`, la durée est déjà découpée en poses de 180 s, mais
-      le temps total explose pour une étoile faible (magnitude 9,8 avec 4 s à
-      magnitude 0 : environ 33 600 s, soit 187 poses).
 - [ ] Journalisation temporelle des étapes (time-series DB type InfluxDB). Définir les étapes que je veux suivre (pointing, science, focus, reference images... à compléter)
 - [ ] Responsive design sur la GUI web (X4) pour tablette et téléphone
       (2026-09-20)
@@ -48,8 +57,6 @@ Claude peut le suggérer, jamais le faire lui-même.
       deux repérées, probablement liées au chantier ASCOM/Windows (à
       confirmer/préciser lesquelles) (2026-09-20)
 - [ ] Pour le calcul de foc, on peut pondérer la valeur moyenne de fWHM retenue en appliquant un coef de pondération proportionnel à la distance au centre du carré (100% au centre, 30% dans les coins). Pour durcir la valeur retenue.
-- [ ] Dans `focus`, logger la température du focuser en même temps que la
-      date/heure de la mesure de FWHM.
 - [ ] Une fois le focus en base : l'afficher (GUI ou export) en fonction de
       la température du focuser, pas seulement de l'heure/date — le focus
       dépend surtout de la température, un historique chronologique seul
@@ -82,18 +89,6 @@ Claude peut le suggérer, jamais le faire lui-même.
       lire la config au moment de l'usage plutôt qu'à l'import (refonte
       d'une cinquantaine de fichiers). Dans les deux cas, refusé pendant une
       session (2026-10-14)
-- [ ] Hauteur du Soleil : aucun contrôle dans Rosace aujourd'hui, il observe
-      tant qu'on ne l'arrête pas. Ne pas observer tant que le Soleil est
-      au-dessus d'une hauteur donnée (réglage d'installation), et terminer la
-      session proprement à l'aube si aucun arrêt n'a été demandé — premier
-      garde-fou d'un fonctionnement sans surveillance (2026-10-14)
-- [ ] Indicateur de transparence par observation (élargit la ligne « Flux
-      dans la table observations ») : dispersion du flux de l'étoile d'une
-      pose à l'autre, flux de la pose la plus faible rapporté à la meilleure,
-      nombre d'étoiles détectées dans les images de guidage — enregistrés
-      dans `obs.measurements`. La nuit du 13 a montré que ce sont les bons
-      indicateurs de nuages, et que le fond des zones de ciel des spectres
-      ne l'est pas (surtout le halo de l'étoile) (2026-10-14)
 - [ ] Largeur de la trace en base : enregistrer la FWHM de la trace au
       centre du capteur (mesurée par `extract`, ou au même endroit) dans les
       mesures de chaque observation, à côté du FWHM du guidage et de la
@@ -109,6 +104,35 @@ Claude peut le suggérer, jamais le faire lui-même.
       critères de qualité avant envoi (spectre complet, transparence, flux
       suffisant), suivi de ce qui a été envoyé et accepté, et conformité de
       l'en-tête FITS (déjà vérifiée par `write_spectrum`) (2026-10-14)
+- [ ] Graphe de guidage PHD2 par observation (écart en AD et en Déc, pose
+      par pose, comme le graphe de PHD2). Étape 1, sans toucher à Rosace :
+      lire le journal de guidage de PHD2 (`PHD2_GuideLog_*.txt`, sur la
+      machine de PHD2, à copier sur le PC), le découper par observation avec
+      les heures de début et de fin de guidage du log de Rosace, tracer un
+      graphe par observation. Étape 2, si ça vaut la peine : Rosace enregistre
+      lui-même les événements `GuideStep` reçus de PHD2 pendant chaque
+      observation, graphe dans le résumé PDF et chiffres (dispersion du
+      guidage) dans la base — à faire avec la ligne « pertes d'étoile de
+      PHD2 » (2026-10-14)
+- [ ] Étoile de guidage PHD2 loin de la fente et des bords : le 14 au soir,
+      NGC 6543 a échoué parce que PHD2 guidait sur l'objet lui-même, à 5 px
+      au-dessus de la fente ; amené dans la fente, il a disparu en partie et
+      PHD2 ne s'est jamais stabilisé (180 s). PHD2 n'a pas de zone
+      d'exclusion, mais `guide` et `find_star` acceptent une zone de
+      recherche (`roi`, un rectangle [x, y, largeur, hauteur]) : la sélection
+      automatique de l'étoile s'y limite. Piste : passer à `start_guiding()`
+      un rectangle au-dessus ou au-dessous de la bande de la fente, marges
+      aux bords comprises (choisir le côté le plus riche en étoiles, d'après
+      l'image de guidage de Rosace). À vérifier sur le ciel : que les étoiles
+      secondaires du mode multi-étoiles restent dans ce rectangle, et quelle
+      marge aux bords PHD2 applique déjà de lui-même. Dans le même chantier :
+      afficher sur le panneau « Guidage » (et dans le résumé PDF) la zone de
+      recherche donnée à PHD2 et la position de l'étoile de référence qu'il a
+      retenue (`get_lock_position()`, déjà lu par `pointing_72ed`) — un
+      élément d'overlay de plus, de couleur distincte du point de la fente de
+      `slit_xy` ; et vérifier, avant d'aller plus loin, que cette étoile n'est
+      pas dans la bande de la fente (sinon WARNING, ou relancer la sélection)
+      (2026-10-14)
 
 ## Chantiers plus lointains
 
@@ -148,15 +172,6 @@ Claude peut le suggérer, jamais le faire lui-même.
       demande d'arrêt (manuelle ou programmée) et la fin de CLOSE_SESSION —
       l'observation en cours va à son terme, ce qui peut prendre plus d'une
       demi-heure (2026-10-13)
-- [ ] Noms de fichiers avec `*` et espaces multiples : les noms Simbad des
-      Be importées de BeSS (`*   8 Lac A`, `* bet Mon A`) passent tels quels
-      dans `Observation.suggested_filename` → `20261013T185447_*___8_Lac_A.yaml`,
-      spectre final, PNG/PDF/SVG, summary (29 fichiers la nuit du
-      2026-10-13). Le `*` est un joker du shell (pénible à manipuler, refusé
-      par Windows). Nettoyer le nom comme le fait déjà `intermediate_dir()`
-      (lettres, chiffres, `_`, `-`), sans toucher aux fichiers passés
-      (2026-10-14)
-
 - [ ] GUI web : l'affichage d'une nouvelle image (au moins panneau Spectre)
       repart en taille pleine à chaque nouvelle capture au lieu de garder
       le zoom courant (constaté 2026-09-19)
@@ -167,6 +182,13 @@ Claude peut le suggérer, jamais le faire lui-même.
       propre (idée 2026-10-07)
 
 ## Réduction
+
+- [ ] Trace pas tout à fait droite : sur HD 7636 (2026-10-14), droite entre
+      x ≈ 250 et 1350 (−0,12°) mais remonte d'environ 2 px au bout bleu
+      (x < 200). Un seul angle (tilt) ne la décrit pas exactement : l'angle
+      mesuré dépend du poids donné au bout bleu (axes d'inertie −0,09°,
+      bandes −0,14°). Étudier une correction courbe, ou ignorer le bout bleu
+      (2026-10-16)
 
 - [ ] tilt : le décalage s'applique pour l'instant à toute la hauteur de la
       colonne. À optimiser si c'est trop lent : se limiter à une bande autour
@@ -191,9 +213,3 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Summary et log : séparer l'écart étoile–fente en composante le long de
       la fente (sans effet sur le flux) et en travers (pertes de lumière) ;
       seule la seconde compte pour le centrage (2026-10-10)
-- [ ] stack : le rejet d'une pose sous 30 % de la *médiane* de la série ne
-      filtre plus quand plus de la moitié des poses sont nuageuses (la médiane
-      est elle-même une pose vide). HD 175511, nuit du 13 : 8 poses sans
-      étoile sur 14, 3 écartées, 5 sommées dans le spectre (et comptées dans
-      EXPTIME). Comparer chaque pose aux meilleures de la série plutôt qu'à
-      la médiane (2026-10-14)

@@ -21,6 +21,7 @@ from rosace.plugins.reduction_plugins.reduction_helpers import (
     find_shared_input,
     law_coverage,
     publish_spectrum_preview,
+    find_trace,
     flat_band,
     hot_pixel_map,
     intermediate_dir,
@@ -435,6 +436,27 @@ class TestFlatBand:
         flat[4] = 0.7   # 0.7 >= 0.6: in
         flat[15] = 0.5  # 0.5 < 0.6: out
         assert flat_band(flat) == (4, 14)
+
+
+class TestFindTrace:
+
+    def test_faint_trace_measured_before_the_flat_division(self):
+        """A faint, slightly tilted trace on uniform noise, divided by a flat
+        that is faint on the left: the amplified noise there must not
+        outweigh the trace."""
+        # Measured on the flat-divided frame, this case gives about -0.01 deg
+        rng = np.random.default_rng(2)
+        height, width = 120, 400
+        flat = np.zeros((height, width))
+        flat[20:100] = np.where(np.arange(width) < 60, 0.1, 3.6)
+        y, x = np.mgrid[0:height, 0:width]
+        trace_y = 60.0 + (x - width / 2) * np.tan(np.radians(-0.5))
+        raw = 30.0 * np.exp(-0.5 * ((y - trace_y) / 2.0) ** 2) + rng.normal(0.0, 3.0, (height, width))
+        preprocessed = np.where(flat > 0, raw / np.where(flat > 0, flat, 1.0), 0.0)
+        axes = find_trace(preprocessed, flat)
+        assert axes is not None
+        assert axes.angle_deg == pytest.approx(-0.5, abs=0.05)
+        assert axes.cy == pytest.approx(60.0, abs=0.5)
 
 
 class TestResampleLinear:

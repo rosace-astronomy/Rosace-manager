@@ -190,10 +190,18 @@ def find_trace(image: np.ndarray, flat: np.ndarray) -> FeatureAxes | None:
     MIN_FLAT_FOR_MEASUREMENT) set to 0; cx/cy in full-frame coordinates.
     Outside the band the preprocessed frames are 0: left in, they would make
     find_axes() see a zero background and take the whole lit band for the
-    trace. None when no trace is found."""
+    trace. None when no trace is found.
+
+    image is a preprocessed (flat-divided) frame or sum; the measurement is
+    made on image x flat, i.e. before the flat division, in memory only. The
+    flat is faint at the blue end (about 0.2 against 3.6 in the red on the
+    72ED), so dividing by it amplifies the noise there 5 to 20 times: on a
+    faint object those amplified noise patches pass find_axes()'s threshold
+    and outweigh the trace (M 57: -7.4 deg instead of -0.07). The geometry of
+    the trace needs no flat correction."""
     band_low, band_high = flat_band(flat)
     band = slice(band_low, band_high + 1)
-    axes = find_axes(np.where(flat[band] < MIN_FLAT_FOR_MEASUREMENT, 0.0, image[band]))
+    axes = find_axes(np.where(flat[band] < MIN_FLAT_FOR_MEASUREMENT, 0.0, image[band] * flat[band]))
     if axes is None:
         return None
     return dataclasses.replace(axes, cy=axes.cy + band_low)
