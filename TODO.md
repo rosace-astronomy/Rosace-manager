@@ -39,6 +39,22 @@ Claude peut le suggérer, jamais le faire lui-même.
 
 ## Chantiers proposés
 
+- [ ] Image Docker de la démo sur matériel rejoué (étape 5 du chantier
+      démo) : astrometry.net et les 7 tuiles d'index dans l'image, jeu de
+      rejeu copié depuis `docker/replay_data/`, lancement par `--demo-mode`,
+      volume sur `~/.rosace-demo` ; supprimer `docker/config.demo.yaml`,
+      `docker/demo_programs/`, `docker/seed_demo_data.py`, `docker/preview/`
+      et réécrire `docker/README.md` (2026-10-16)
+- [ ] Publier l'image Docker de la démo sur ghcr.io, et le jeu de rejeu en
+      pièce jointe d'une release GitHub, pour qu'un autre poste n'ait pas à
+      le reconstruire depuis `~/.rosace` (2026-10-16)
+- [ ] Supprimer le backend `internal` (`sequencer_backend: internal`,
+      `programs/demo.yaml`, les `_internal.py`) : la démo ne s'en sert plus.
+      Basculer d'abord ses tests sur le matériel rejoué (2026-10-16)
+- [ ] `--demo-mode` démarre toujours sur le port 8000 ; à côté du vrai
+      serveur, il faut passer par `ROSACE_CONFIG=… uvicorn … --port 8001`.
+      Option `--port` ? (2026-10-16)
+
 - [ ] Flux et transparence dans la table `observations` : un résumé par
       observation, calculé par `calculate_flux` et recopié via
       `obs.measurements` — flux médian en ADU/s, dispersion du flux de
