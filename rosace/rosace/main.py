@@ -71,6 +71,7 @@ from .database import (
     db_set_stage_status, db_get_recent_observations, db_record_measurements,
 )
 from .demo_seed import seed_demo_data
+from .hardware_replay.fake_phd2 import start_fake_phd2
 from .control_schedule import next_occurrence
 from .errors import SessionFatalError
 from .observation_file import create_observation_file, write_observation_file
@@ -99,14 +100,21 @@ async def lifespan(_app: FastAPI):
     await db_init()
     await targets_db_init()
     await auth_db_init()
+    fake_phd2 = None
     if IS_DEMO_MODE:
         await seed_demo_data()
+        try:
+            fake_phd2 = await start_fake_phd2()
+        except OSError as e:
+            log.error(f"Fake PHD2 not started: {e}")
     ws_log_handler.bind_loop(asyncio.get_running_loop())
     ws_image_broadcaster.bind_loop(asyncio.get_running_loop())
     logging.getLogger("spectro").addHandler(ws_log_handler)
     schedule_task = asyncio.create_task(_control_schedule_loop())
     yield
     schedule_task.cancel()
+    if fake_phd2 is not None:
+        await fake_phd2.stop()
 
 app = FastAPI(
     title="Spectro Orchestrator",
@@ -393,6 +401,7 @@ async def get_status():
         "site_longitude_deg": SITE_LONGITUDE_DEG,   # for the GUI's sidereal clock
         "hardware_test_running": state.hardware_test_running,
         "hardware_test_available": SEQUENCER_BACKEND == "indi",
+        "demo_mode": IS_DEMO_MODE,   # the GUI says "DEMO mode" in its title
     }
 
 @protected.get("/observations/completed")

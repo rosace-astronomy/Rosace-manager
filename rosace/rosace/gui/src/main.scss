@@ -116,6 +116,16 @@ body {
 			text-transform: uppercase;
 			color: var(--accent);
 		}
+
+		// Shown only with the demo configuration (status.demo_mode)
+		#demo-badge {
+			font-size: 0.9rem;
+			font-weight: 700;
+			color: white;
+			background: #ef6c00;
+			border-radius: 4px;
+			padding: 0.15rem 0.5rem;
+		}
 	}
 
 	// Pipeline stage chips — system-level states only 

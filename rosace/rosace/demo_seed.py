@@ -2,62 +2,41 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """
-Seeds a minimal illustrative catalogue (a few well-known bright stars, 1
-program, an observation plan) into a fresh targets.db, plus a fixed demo
-admin account, the first time the demo config (conf/config_demo.yaml,
-IS_DEMO_MODE) starts against an empty database. Called from main.py's
-lifespan(). Skipped once anything already exists, so restarting the server
-never overwrites manual edits made through the GUI.
+Prepares the demo (conf/config_demo.yaml, IS_DEMO_MODE) from the replay
+dataset the active hardware profile names (hardware_replay/bench.py; built by
+scripts/build_demo_dataset.py). Called from main.py's lifespan().
 
-The observation plan is written where the demo config's
-observation_list_path key says (at the root of subplugin_params) —
-read from the configuration, never imported from the scheduler's code.
+- a fixed demo admin account (rosace/rosace) — a deliberate demo-only
+  convenience, never do this for a real installation;
+- the reduction's reference files (lamp lines, instrumental response) copied
+  from the dataset to where the configuration expects them, when missing;
+- the GUI's guide and 2D panels showing the dataset's first observation,
+  when they show nothing yet;
+- once, on an empty targets.db: the dataset's targets in its programs, with
+  their recorded exposure time, and the observation list
+  (observation_list_path) asking for them in the dataset's order.
 
-The program is deliberately named "demo" — the one program YAML
-(programs/demo.yaml) that's backend-agnostic, so it needs no shadow-copy
-trick the way the Docker demo's richer catalogue does (see
-docker/seed_demo_data.py's own docstring).
-
-The rosace/rosace credential is a deliberate demo-only convenience, same
-rationale and same pair as the Docker demo's own (docker/seed_demo_data.py)
-— never do this for a real installation.
+Idempotent: what already exists is never overwritten, so restarting the
+server keeps manual edits. Without a dataset, only the account is created
+and a WARNING says how to build it.
 """
 
 import logging
+import shutil
 from pathlib import Path
 
 from .auth import auth_db_init, ensure_first_admin
-from .config import SUBPLUGIN_PARAMS
+from .config import BASE_DATA_DIR, GUI_PREVIEW_DIR, SUBPLUGIN_PARAMS
+from .hardware_replay.bench import ReplayBench, dataset_dir_from_profile
 from .targets import (
     program_add_star, program_insert, program_list, ProgramCreate,
-    star_add_alias, star_insert, StarCreate,
+    star_insert, StarCreate,
 )
 
 DEMO_ADMIN_USERNAME = "rosace"
 DEMO_ADMIN_PASSWORD = "rosace"
 
 log = logging.getLogger("spectro.demo_seed")
-
-# name, ra (deg), dec (deg), magnitude_v — Vega/Arcturus/Castor are the same
-# real coordinates already used by plugins/schedulers/blank/scheduler.py,
-# kept consistent rather than inventing new example data; the rest are
-# other well-known bright stars, spread across right ascension so at least
-# one is typically observable whenever the demo runs, and across magnitude
-# to show a visibly different exposure count/duration per star (see
-# compute_exposure_time_and_count() in acquisition_helpers.py). Polaris is
-# circumpolar at this app's default site latitude (45°N) — always above
-# min_target_altitude_deg, a reliable fallback target for the demo.
-_STARS = [
-    ("Vega", 279.234735, 38.783611, 0.03),
-    ("Arcturus", 213.915300, 19.182410, -0.05),
-    ("Castor", 113.649413, 31.888276, 1.58),
-    ("Sirius", 101.287155, -16.716116, -1.46),
-    ("Capella", 79.172328, 45.998054, 0.08),
-    ("Rigel", 78.634467, -8.201638, 0.13),
-    ("Polaris", 37.954561, 89.264109, 1.98),
-]
-
-_PROGRAM_NAME = "demo"
 
 
 async def _seed_admin() -> None:
@@ -69,35 +48,64 @@ async def _seed_admin() -> None:
         log.info("An account already exists — skipping demo admin bootstrap.")
 
 
-async def seed_demo_data() -> None:
-    """Idempotent: no-op once targets.db already has at least one program."""
-    await _seed_admin()
+def _copy_if_missing(source: Path, destination: Path) -> None:
+    if not destination.exists():
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
 
-    if await program_list():
-        log.info("targets.db already populated — skipping demo catalogue seed.")
-        return
 
-    log.info(f"Seeding demo catalogue ({len(_STARS)} stars, 1 program, observation plan)...")
+def _install_files(bench: ReplayBench) -> None:
+    reduction = bench.manifest["reduction"]
+    if "reference_lines" in reduction:
+        source = bench.path(reduction["reference_lines"])
+        _copy_if_missing(source, BASE_DATA_DIR / "reference_lines" / source.name)
+    if "response" in reduction:
+        source = bench.path(reduction["response"])
+        _copy_if_missing(source, BASE_DATA_DIR / "response" / source.name)
+    first = bench.stars[0]
+    _copy_if_missing(bench.path(first["guiding"]["slew"]), GUI_PREVIEW_DIR / "guidage.fits")
+    _copy_if_missing(bench.path(first["science"][0]), GUI_PREVIEW_DIR / "spectre.fits")
 
-    star_ids = {}
-    for name, ra, dec, mag in _STARS:
-        star_ids[name] = await star_insert(StarCreate(name=name, ra=ra, dec=dec, magnitude_v=mag))
-        await star_add_alias(star_ids[name], name)
 
-    program_id = await program_insert(
-        ProgramCreate(name=_PROGRAM_NAME, description="Minimal demo catalogue (--demo-mode)")
-    )
-    for name, *_rest in _STARS:
-        await program_add_star(program_id, star_ids[name])
-
+async def _seed_catalogue(bench: ReplayBench) -> None:
+    programs: dict[str, int] = {}
     lines = ["Priority, Program, Star, commentaire"]
-    for i, (name, *_rest) in enumerate(_STARS, start=1):
-        lines.append(f"{i}, {_PROGRAM_NAME}, {name}, demo seed")
+    for priority, star in enumerate(bench.stars, start=1):
+        program = star["program"]
+        if program not in programs:
+            programs[program] = await program_insert(
+                ProgramCreate(name=program, description="Demo: replay of real observations")
+            )
+        star_id = await star_insert(StarCreate(
+            name=star["name"], ra=star["ra_deg"], dec=star["dec_deg"],
+            magnitude_v=star.get("magnitude_v"), spectral_type=star.get("spectral_type"),
+        ))
+        await program_add_star(programs[program], star_id, star.get("exposure_time"))
+        lines.append(f"{priority}, {program}, {star['name']}, replay of observation {star['observation_id']}")
 
-    # Same key the demo's scheduler (scheduler_rosace_2026) reads its plan
-    # from, declared by conf/config_demo.yaml.
     list_path = Path(SUBPLUGIN_PARAMS["observation_list_path"]).expanduser()
     list_path.parent.mkdir(parents=True, exist_ok=True)
     list_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    log.info(f"Seeded the demo catalogue: {len(bench.stars)} targets in {', '.join(programs)}, wrote {list_path}")
 
-    log.info(f"Seeded {len(_STARS)} stars, 1 program, wrote {list_path}")
+
+async def seed_demo_data() -> None:
+    await _seed_admin()
+
+    dataset_dir = dataset_dir_from_profile()
+    try:
+        bench = ReplayBench(dataset_dir) if dataset_dir is not None else None
+    except FileNotFoundError:
+        bench = None
+    if bench is None:
+        log.warning(
+            f"Replay dataset not found ({dataset_dir}): the demo cannot observe. Build it with "
+            f"`python scripts/build_demo_dataset.py --output {dataset_dir}`, then restart the server."
+        )
+        return
+
+    _install_files(bench)
+    if await program_list():
+        log.info("targets.db already populated — skipping demo catalogue seed.")
+        return
+    await _seed_catalogue(bench)

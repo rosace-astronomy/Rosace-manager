@@ -21,3 +21,6 @@ node_modules/
 
 # VScode
 Rosace-manager.code-workspace
+
+# Demo replay dataset (scripts/build_demo_dataset.py): real frames, not versioned
+docker/replay_data/

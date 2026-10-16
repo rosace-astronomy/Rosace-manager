@@ -1,0 +1,105 @@
+# Replay hardware profile, used by the demo mode (conf/config_demo.yaml).
+#
+# The 72ED's devices, replaced by replay classes (rosace/hardware_replay/):
+# no INDI server, no telescope. The cameras hand back the frames recorded on
+# a real night (the replay dataset, built by scripts/build_demo_dataset.py),
+# and a fake PHD2 started by the server answers on PHD2_config's port. Every
+# SEQUENCER sub-plugin of the real 72ED programs runs unchanged against it.
+# The devices' own params are the 72ED's (cooling, backlash...), so the
+# sub-plugins behave as on the real instrument.
+
+# Not a telescope: every session run with this profile is recorded as
+# simulated (sessions.simulated in rosace.db), so that its data can be purged
+# with `python -m rosace.main --purge-simulated`.
+simulated: true
+
+# The replay dataset: its manifest.yaml and the recorded frames.
+replay_dataset_dir: ~/.rosace-demo/replay
+
+INDI_drivers:
+
+    guiding_camera:
+        role: camera
+        module: devices
+        module_dir: rosace.hardware_replay
+        class_name: ReplayCamera
+        # Plumbing fields every device declares; unused by replay devices
+        indi_name: replay guiding camera
+        indi_client:
+            indi_host: none
+            indi_port: 0
+        replay_frames: guiding
+        # Longest wait for one exposure (seconds): a 10 s guide image takes 2 s
+        max_wait_seconds: 2
+        cooling: false
+
+    science_camera:
+        role: camera
+        module: devices
+        module_dir: rosace.hardware_replay
+        class_name: ReplayCamera
+        indi_name: replay science camera
+        indi_client:
+            indi_host: none
+            indi_port: 0
+        replay_frames: science
+        # Longest wait for one exposure (seconds): a 180 s frame takes 5 s
+        max_wait_seconds: 5
+        cooling: true
+        cooling_capability: -30
+        temperature_tolerance_deg_c: 2
+
+    mount:
+        role: mount
+        module: devices
+        module_dir: rosace.hardware_replay
+        class_name: ReplayMount
+        indi_name: replay mount
+        indi_client:
+            indi_host: none
+            indi_port: 0
+        # Duration of every slew (seconds)
+        slew_seconds: 2
+        backlash_offset_deg: 2
+
+    focuser:
+        role: focuser
+        module: devices
+        module_dir: rosace.hardware_replay
+        class_name: ReplayFocuser
+        indi_name: replay focuser
+        indi_client:
+            indi_host: none
+            indi_port: 0
+
+    spectroscope:
+        role: spectroscope
+        module: devices
+        module_dir: rosace.hardware_replay
+        class_name: ReplaySpectroscope
+        indi_name: replay spectroscope
+        indi_client:
+            indi_host: none
+            indi_port: 0
+
+# The fake PHD2 (hardware_replay/fake_phd2.py), started by the server in demo
+# mode: a port of its own, never the real PHD2's 4400.
+PHD2_config:
+    host: 127.0.0.1
+    port: 4499
+    do_calibration: False
+    profile_name: Replay
+    settle:
+        pixels: 0.8
+        time: 3
+        timeout: 180
+    # Seconds between a guide call and the fake PHD2's SettleDone
+    replay_settle_seconds: 3
+
+# The 72ED profiles' mandatory steps, without home_sync_am3: the homing aims at
+# a random point of the current sky and plate-solves around it, while replay
+# can only serve the homing image recorded on the real night -- its field is
+# never there, and every attempt times out (4 minutes lost at the first
+# observation). INIT_SESSION still unparks the mount.
+sequencer_prefix:
+    - guiding_dark_acquisition

@@ -2141,7 +2141,7 @@ class TestApiEndpoints:
         assert set(data.keys()) == {
             "stage", "is_running", "session_active", "completed_count", "pending_post_obs_count",
             "scheduled_start", "scheduled_stop", "site_longitude_deg",
-            "hardware_test_running", "hardware_test_available",
+            "hardware_test_running", "hardware_test_available", "demo_mode",
         }
 
     def test_hardware_test_refused_in_simulation(self, monkeypatch):

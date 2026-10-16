@@ -20,7 +20,7 @@ import os
 import sys
 
 _HELP_TEXT = """\
-Usage: python -m rosace.main [config_path] [--demo-mode] [--check-config [config_path]] [--create-admin username] [--list-subplugins [family]] [--purge-simulated [--apply]]
+Usage: python -m rosace.main [config_path] [--demo-mode] [--check-config [config_path]] [--create-admin username] [--list-subplugins [family]] [--purge-simulated [--apply]] [--purge-demo [--apply]]
 
   (no arguments)            Start the server using the active config, resolved in
                             priority order: ROSACE_CONFIG env var > <base_data_dir>/
@@ -33,12 +33,13 @@ Usage: python -m rosace.main [config_path] [--demo-mode] [--check-config [config
                             One-off equivalent of setting ROSACE_CONFIG yourself.
 
   --demo-mode               Start the server against the packaged demo config
-                            (conf/config_demo.yaml) — simulated backend, no INDI/
-                            PHD2 needed, isolated under ~/.rosace-demo, self-seeds
-                            a small illustrative catalogue on first run. For trying
-                            Rosace out after a local install, before touching any
-                            hardware. See also the Docker image for an even
-                            lighter, install-free trial.
+                            (conf/config_demo.yaml): the real 72ED programs run
+                            against replay devices that hand back the frames of a
+                            real night (no INDI server, no PHD2, no telescope),
+                            isolated under ~/.rosace-demo. Needs the replay
+                            dataset (scripts/build_demo_dataset.py --output
+                            ~/.rosace-demo/replay) and solve-field. The Docker
+                            image runs the same, dataset included.
 
   --check-config [config_path]
                             Validate a config and exit — never starts the server.
@@ -71,13 +72,20 @@ Usage: python -m rosace.main [config_path] [--demo-mode] [--check-config [config
                             the files they wrote in their session directory. Without
                             --apply, only lists what would go. Never starts the server.
 
+  --purge-demo [--apply]    Empty the demo's data directory (~/.rosace-demo:
+                            databases, log, observations, previews...) to start a
+                            fresh demo, keeping only the replay dataset. Refused
+                            while a demo server runs. Without --apply, only lists
+                            what would go. Never starts the server.
+
   --help, -h                Show this message and exit.
 """
 
 
 def run_cli(argv: list[str]) -> None:
     """Handles argv (sys.argv[1:]). The tool options (--help, --check-config,
-    --create-admin, --list-subplugins, --purge-simulated) exit the process;
+    --create-admin, --list-subplugins, --purge-simulated, --purge-demo) exit
+    the process;
     --demo-mode, a config path or no argument at all set ROSACE_CONFIG where
     needed and return, so main.py goes on to start the server."""
     if "--help" in argv or "-h" in argv:
@@ -144,6 +152,23 @@ def run_cli(argv: list[str]) -> None:
         for row_family, name, summary in rows:
             print(f"{row_family:10s} {name:20s} {summary}")
         sys.exit(0)
+    elif "--purge-demo" in argv:
+        apply = "--apply" in argv
+        os.environ["ROSACE_CONFIG"] = os.path.join(os.path.dirname(__file__), "conf", "config_demo.yaml")
+        from rosace.demo_purge import purge_demo, report
+        try:
+            entries, kept = purge_demo(apply=apply)
+        except RuntimeError as e:
+            print(f"[FAIL] {e}")
+            sys.exit(1)
+        if not entries:
+            print("[OK] the demo has no data to purge")
+            sys.exit(0)
+        print(report(entries))
+        print(f"Kept: {kept} (replay dataset)")
+        print("[OK] purged -- the next demo start seeds a fresh demo" if apply
+              else "Dry run: nothing deleted (add --apply to delete)")
+        sys.exit(0)
     elif "--purge-simulated" in argv:
         apply = "--apply" in argv
         from rosace.simulated_data import purge_simulated, report
@@ -158,9 +183,9 @@ def run_cli(argv: list[str]) -> None:
         # Pure sugar for ROSACE_CONFIG: resolves the packaged demo config's
         # path (this module sits next to main.py, so its conf/ is the same)
         # and returns to main.py's normal server startup, same as the bare
-        # config_path branch does. Actual demo behavior (seeding, isolation)
-        # lives entirely in conf/config_demo.yaml + demo_seed.py, triggered by
-        # IS_DEMO_MODE — not by this flag itself.
+        # config_path branch does. Actual demo behavior (seeding, fake PHD2,
+        # isolation) lives entirely in conf/config_demo.yaml, demo_seed.py and
+        # hardware_replay/, triggered by IS_DEMO_MODE — not by this flag itself.
         os.environ["ROSACE_CONFIG"] = os.path.join(os.path.dirname(__file__), "conf", "config_demo.yaml")
     elif argv:
         os.environ["ROSACE_CONFIG"] = argv[0]

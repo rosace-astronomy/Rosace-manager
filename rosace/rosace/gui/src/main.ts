@@ -87,6 +87,7 @@ interface ApiStatus {
     site_longitude_deg: number | null;	// east positive, from the configuration (sidereal clock)
     hardware_test_running: boolean;		// the hardware test (POST /control/hardware-test) is running
     hardware_test_available: boolean;	// false in simulation (no hardware to test)
+    demo_mode: boolean;					// demo configuration: shown in the title
 }
 
 type ScheduleKind = "start" | "stop";
@@ -109,7 +110,7 @@ interface AppData {
 const app_data = makeState<AppData>( {
 	status: { stage: "idle", is_running: false, session_active: false, completed_count: 0, pending_post_obs_count: 0,
 		scheduled_start: null, scheduled_stop: null, site_longitude_deg: null,
-		hardware_test_running: false, hardware_test_available: false },
+		hardware_test_running: false, hardware_test_available: false, demo_mode: false },
 	connected: false,
 	observations: [],
 	step_progress: {},
@@ -144,6 +145,7 @@ const FAKE_STATUS: ApiStatus = {
 	site_longitude_deg: null,
 	hardware_test_running: false,
 	hardware_test_available: true,
+	demo_mode: false,
 }
 
 
@@ -213,8 +215,11 @@ const PIPELINE_LABEL: Record<typeof PIPELINE_STAGES[number], string> = {	//allow
  * Application Header
  */
 
+const APP_TITLE = "Rosace — Robotic Spectro";
+
 class AppHeader extends HBox {
 
+	private demo_badge: Label;
 	private hwtest: Button;
 	private hw_busy = false;				// this page's own test is running
 	private hw_showing_result = false;		// green or red, for HW_TEST_RESULT_MS
@@ -234,7 +239,8 @@ class AppHeader extends HBox {
 		this.setContent( [
                 new HBox({ cls: "header-logo", content: [
 					new Image( { id: "image", src: "assets/logo.svg" } ), 
-					new Label( { id: "title", text: "Rosace — Robotic Spectro" })
+					new Label( { id: "title", text: APP_TITLE }),
+					this.demo_badge = new Label( { id: "demo-badge", text: "DEMO MODE" }),
 				] }),
                 new HBox({ cls: "pipeline-bar", content: chips }),
                 label = new Label({ cls: "obs-count-badge", text: "0 obs" }),
@@ -248,8 +254,20 @@ class AppHeader extends HBox {
 		app_data.watch( "status.completed_count", e => {
 			label.setText( `${e.value} obs` );	// update label
 		})
-		app_data.watch( "status", ( ) => this.refreshHardwareTest( ) );
+		app_data.watch( "status", ( ) => { this.refreshHardwareTest( ); this.refreshTitle( ); } );
 		this.refreshHardwareTest( );
+		this.refreshTitle( );
+	}
+
+	/**
+	 * A red "DEMO MODE" badge next to the title, and "DEMO mode" in the
+	 * browser tab (plain text only there), when the server runs the demo
+	 * configuration (status.demo_mode).
+	 */
+	private refreshTitle( ) {
+		const demo = app_data.status.demo_mode;
+		this.demo_badge.show( demo );
+		document.title = demo ? `${APP_TITLE} — DEMO mode` : APP_TITLE;
 	}
 
 	/**
