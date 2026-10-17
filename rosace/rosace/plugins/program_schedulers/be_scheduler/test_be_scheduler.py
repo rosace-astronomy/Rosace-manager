@@ -265,8 +265,10 @@ async def test_recent_failure_backoff(tmp_path, no_download):
     robot = _write_robot(tmp_path / "robot.txt", _robot_line(star))
 
     # The failure time is recorded at the real current time (ended_at): decide at that time too.
+    # Created now, not some minutes ago: a creation before local noon would fall in the
+    # previous astronomical day when the test runs just after noon.
     now = datetime.now(timezone.utc)
-    await _observed(program, star, now - timedelta(minutes=20), success=False)
+    await _observed(program, star, now, success=False)
 
     assert await BeSchedulerScheduler().propose(_ctx(program, robot, now=now)) is None
 

@@ -212,6 +212,9 @@ class TestCheckFeasible:
 
 
 class TestSuccessesForTarget:
+    """Observations placed before the fixed evening instant NOW, so that the
+    astronomical-day boundary (local noon) never falls between them and the
+    query, whatever the time the tests run."""
 
     @pytest_asyncio.fixture(autouse=True)
     async def init_db(self):
@@ -220,7 +223,7 @@ class TestSuccessesForTarget:
     async def _observation(self, session_id, program, target, minutes_ago, success):
         obs = Observation(
             id=str(uuid.uuid4())[:8],
-            created_at=datetime.now(timezone.utc) - timedelta(minutes=minutes_ago),
+            created_at=NOW - timedelta(minutes=minutes_ago),
             session_id=session_id,
             scheduler_data={"target": Target(name=target, ra=1.0, dec=1.0),
                             "queried_name": target, "program": program, "priority": 3},
@@ -235,17 +238,17 @@ class TestSuccessesForTarget:
         await db_insert_session(session)
         program, target = f"prog_{uuid.uuid4().hex[:8]}", f"star_{uuid.uuid4().hex[:8]}"
 
-        assert await db_get_successes_for_target(program, target) == (0, None)
+        assert await db_get_successes_for_target(program, target, now=NOW) == (0, None)
 
         first = await self._observation(session.session_id, program, target, 30, success=True)
         await self._observation(session.session_id, program, target, 10, success=False)
-        count, last = await db_get_successes_for_target(program, target)
+        count, last = await db_get_successes_for_target(program, target, now=NOW)
         assert count == 1
         assert last == first.created_at
 
         other = await self._observation(session.session_id, f"{program}_other", target, 5, success=True)
         assert other is not None
-        assert (await db_get_successes_for_target(program, target))[0] == 1
+        assert (await db_get_successes_for_target(program, target, now=NOW))[0] == 1
 
 
 class TestFailureBackoff:
@@ -264,7 +267,10 @@ class TestFailureBackoff:
         assert await checks.check_not_recently_failed(program, target, now) is None
 
         obs = Observation(
-            id=str(uuid.uuid4())[:8], created_at=now - timedelta(minutes=20), session_id=session.session_id,
+            # Created now, not some minutes ago: the failure time is recorded at the real
+            # current time (ended_at), and a creation before local noon would fall in the
+            # previous astronomical day when the test runs just after noon.
+            id=str(uuid.uuid4())[:8], created_at=now, session_id=session.session_id,
             scheduler_data={"target": Target(name=target, ra=1.0, dec=1.0), "queried_name": target,
                             "program": program, "priority": 3},
         )
@@ -316,10 +322,11 @@ class TestHistoryHelpers:
     async def init_db(self):
         await db_init()
 
-    async def _observation(self, session_id, program, target, minutes_ago, success):
+    async def _observation(self, session_id, program, target, minutes_ago, success, anchor=None):
+        """anchor: the instant minutes_ago counts from, the real current time by default."""
         obs = Observation(
             id=str(uuid.uuid4())[:8],
-            created_at=datetime.now(timezone.utc) - timedelta(minutes=minutes_ago),
+            created_at=(anchor or datetime.now(timezone.utc)) - timedelta(minutes=minutes_ago),
             session_id=session_id,
             scheduler_data={"target": Target(name=target, ra=1.0, dec=1.0),
                             "queried_name": target, "program": program, "priority": 3},
@@ -334,14 +341,14 @@ class TestHistoryHelpers:
         session = SessionContext(site_name="Test")
         await db_insert_session(session)
         program, target = f"prog_{uuid.uuid4().hex[:8]}", f"star_{uuid.uuid4().hex[:8]}"
-        assert await db_count_trailing_failures(program, target) == 0
-        await self._observation(session.session_id, program, target, 40, success=False)
-        await self._observation(session.session_id, program, target, 30, success=True)
-        await self._observation(session.session_id, program, target, 20, success=False)
-        await self._observation(session.session_id, program, target, 10, success=False)
-        assert await db_count_trailing_failures(program, target) == 2
-        await self._observation(session.session_id, program, target, 5, success=True)
-        assert await db_count_trailing_failures(program, target) == 0
+        # Before the fixed evening instant NOW: no astronomical-day boundary (local
+        # noon) between the observations and the query, whatever the time the test runs.
+        assert await db_count_trailing_failures(program, target, now=NOW) == 0
+        for minutes_ago, success in ((40, False), (30, True), (20, False), (10, False)):
+            await self._observation(session.session_id, program, target, minutes_ago, success, anchor=NOW)
+        assert await db_count_trailing_failures(program, target, now=NOW) == 2
+        await self._observation(session.session_id, program, target, 5, True, anchor=NOW)
+        assert await db_count_trailing_failures(program, target, now=NOW) == 0
 
     async def test_program_time(self):
         session = SessionContext(site_name="Test")
