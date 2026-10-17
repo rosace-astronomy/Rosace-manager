@@ -247,7 +247,7 @@ class TestFocusPlugin:
         # Default fraction 0.9 on 960x1280: columns 208..1071, rows 48..911,
         # sent as outer pixel edges.
         publish_mock.assert_awaited_once_with(
-            guide_path, source="focus", overlay={"window": [207.5, 47.5, 1071.5, 911.5]},
+            guide_path, source="focus", overlay={"window": [207.5, 47.5, 1071.5, 911.5]}, obs=obs,
         )
 
     async def test_published_window_follows_configured_fraction(self, tmp_path, monkeypatch, rng, publish_mock):

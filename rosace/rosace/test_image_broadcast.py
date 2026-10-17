@@ -73,6 +73,15 @@ class TestBroadcast:
             {"msg": IMAGE_NEW_MSG, "params": {"panel": "guidage", "source": "slit_xy", "overlay": overlay}}
         ]
 
+    async def test_includes_kind_when_given(self):
+        broadcaster = WebSocketImageBroadcaster()
+        ws = FakeWebSocket()
+        broadcaster.add_client(ws)
+
+        await broadcaster.broadcast("spectre", kind="dark")
+
+        assert ws.sent == [{"msg": IMAGE_NEW_MSG, "params": {"panel": "spectre", "kind": "dark"}}]
+
     async def test_removes_client_when_send_fails(self):
         broadcaster = WebSocketImageBroadcaster()
         ws = FakeWebSocket(fail=True)

@@ -78,6 +78,18 @@ body {
 		background: var(--bg-card);
 		border-bottom: 1px solid var(--border);
 		flex-shrink: 0;
+
+		// image panels: the object and observation ID keep their case, only the
+		// panel name is written in capitals (panelTitle() in main.ts)
+		&.keep-case {
+			text-transform: none;
+		}
+
+		// object and observation ID after the panel name, in the text colour
+		.title-detail {
+			color: var(--text);
+			margin-left: 0.8em;
+		}
 	}
 }
 
@@ -326,6 +338,13 @@ body {
 			justify-content: center;
 			gap: 0.5rem;
 			min-width: 0;
+		}
+
+		// A stop was asked, the current observation goes on to its end
+		.stop-notice {
+			color: #ef6c00;
+			font-weight: 700;
+			white-space: nowrap;
 		}
 
 		.schedule-chip {
@@ -586,21 +605,9 @@ body {
 		}
 	}
 
-	// Room for "λ: 6562.8 Å  F: 1.234  (extrapolé)" without moving the title
+	// Room for "λ: 6562.8 Å  F: 1.234  (extrapolé)"
 	.spectrum-viewer .fits-toolbar .fits-readout {
 		min-width: 44ch;
-	}
-
-	// Title shown in the "Spectre 1D" toolbar (target, program, time, observation ID)
-	.spectrum-title {
-		align-self: center;
-		justify-content: center;
-		font-weight: 700;
-		color: var(--text);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		min-width: 0;
 	}
 
 	.fits-viewer {
@@ -654,19 +661,17 @@ body {
 			// against the frame instead of blending into a black background.
 			background: var(--neutral);
 			// A plain arrow while hovering (easier to aim at one particular pixel,
-			// the pixel readout is right there in the toolbar), and the closed hand
-			// only while the button is held down, i.e. while actually panning.
+			// the pixel readout is right there in the toolbar); a crosshair while
+			// drawing a zone (left button), the closed hand while panning (right
+			// button), up/down arrows for a vertical-only pan (Ctrl)
 			cursor: default;
 
-			&:active {
-				cursor: grabbing;
-			}
-
-			// zone-selection mode ("Zone" toggle) and an in-progress Ctrl+drag
-			// (vertical-only pan) each override the default arrow/grabbing pan
-			// cursor above -- mutually exclusive, never both set at once
 			&.zone-mode {
 				cursor: crosshair;
+			}
+
+			&.panning {
+				cursor: grabbing;
 			}
 
 			&.v-pan {

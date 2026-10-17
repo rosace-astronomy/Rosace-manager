@@ -9,8 +9,11 @@
  * lines to mark and the dispersion law's coverage -- outside it, the
  * wavelengths are extrapolated and drawn shaded.
  *
- * Wheel zooms in wavelength around the cursor, drag pans in wavelength, and
- * the flux axis always fits the visible part of the spectrum.
+ * Same gestures as FitsViewer: left drag draws a wavelength range (the zone),
+ * double-click releases it; right drag pans in wavelength, a right click
+ * without moving opens the menu (zoom on the zone, whole spectrum); the wheel
+ * zooms in wavelength around the cursor. The flux axis always fits the
+ * visible part of the spectrum.
  */
 
 import { VBox, HBox, Button, Canvas, CanvasEx, BoxProps, Label, Menu } from "x4js";
@@ -21,6 +24,19 @@ const WHEEL_ZOOM_FACTOR = 1.15;
 const MIN_VISIBLE_POINTS = 10;		// narrowest zoom, in spectrum points
 const SELECT_CLICK_THRESHOLD = 3;	// canvas pixels -- below, a "Zone" gesture is a plain click
 const FLUX_MARGIN = 0.06;			// fraction of the flux range added above and below the curve
+
+const LEFT_BUTTON = 0;
+const RIGHT_BUTTON = 2;
+
+const HELP_LINES = [
+	"Clic gauche + glisser : tracer une zone",
+	"Double-clic : libérer la zone",
+	"Clic droit + glisser : déplacer le spectre",
+	"Clic droit : menu (agrandir la zone, tout)",
+	"Molette : zoom en longueur d'onde",
+	"Bouton Zone (jaune) : libère la zone",
+	"Le flux s'ajuste à la partie visible",
+];
 
 // Plot area margins (canvas pixels): room for the axis labels and the line names
 const MARGIN = { left: 58, right: 14, top: 20, bottom: 34 };
@@ -40,7 +56,6 @@ export class SpectrumViewer extends VBox {
 
 	private canvas: Canvas;
 	private zoneButton: Button;
-	private titleLabel: Label;
 	private readout: Label;
 	private lastReadout = "";
 
@@ -53,16 +68,19 @@ export class SpectrumViewer extends VBox {
 	private viewMin = 0;
 	private viewMax = 1;
 
+	// Right-button drag: pans; a right click without moving opens the menu
 	private dragging = false;
+	private dragMoved = false;
 	private dragStartX = 0;
 	private dragOriginMin = 0;
 	private dragOriginMax = 0;
 
-	// "Zone" mode: drag selects a wavelength range, zoomed on release
-	private selectionMode = false;
+	// The zone (left-button drag), in wavelengths so it follows zoom and pan;
+	// kept until released (double-click, "Zone" button) or a new spectrum
 	private selecting = false;
 	private selectStartX = 0;
 	private selectEndX = 0;
+	private zone: [ number, number ] | null = null;
 
 	constructor( props: SpectrumViewerProps = {} ) {
 		super( props );
@@ -72,8 +90,8 @@ export class SpectrumViewer extends VBox {
 		this.setContent( [
 			new HBox({ cls: "fits-toolbar", content: [
 				new Button({ cls: "fits-btn", label: "Tout", click: () => this.zoomFit() }),
-				this.zoneButton = new Button({ cls: "fits-btn", label: "Zone", click: () => this.toggleZoneMode() }),
-				this.titleLabel = new Label({ cls: "spectrum-title", flex: 1, text: "" }),
+				this.zoneButton = new Button({ cls: "fits-btn", label: "Zone", tooltip: "Jaune : une zone est tracée ; clic : la libérer", click: () => this.clearZone() }),
+				new Button({ cls: "fits-btn", label: "Aide", click: () => this.showHelp() }),
 				this.readout = new Label({ cls: "fits-readout", text: "" }),
 			]}),
 			this.canvas = new Canvas({ cls: "fits-canvas", flex: 1, clear: true, paint_cb: ctx => this.paint( ctx ) }),
@@ -84,7 +102,10 @@ export class SpectrumViewer extends VBox {
 		this.canvas.addDOMEvent( "pointermove", ( ev: PointerEvent ) => this.onPointerMove( ev ) );
 		this.canvas.addDOMEvent( "pointerup", ( ev: PointerEvent ) => this.onPointerUp( ev ) );
 		this.canvas.addDOMEvent( "pointerleave", () => this.setReadout( "" ) );
-		this.canvas.addDOMEvent( "contextmenu", ( ev: MouseEvent ) => this.onContextMenu( ev ) );
+		// the menu opens on a right click without moving (onPointerUp); the
+		// browser's own context menu never shows
+		this.canvas.addDOMEvent( "contextmenu", ( ev: MouseEvent ) => ev.preventDefault() );
+		this.canvas.addDOMEvent( "dblclick", () => this.clearZone() );
 	}
 
 	/** Parses a 1D FITS spectrum and shows it whole. */
@@ -106,14 +127,15 @@ export class SpectrumViewer extends VBox {
 		}
 		this.unit = ( h["CUNIT1"] ?? "Angstrom" ) === "nm" ? "nm" : "Å";
 		this.setReadout( "" );
+		this.setZone( null );
 		this.zoomFit();
 	}
 
-	/** Sets (or clears, with null) the title, lines and coverage drawn with the spectrum. */
+	/** Sets (or clears, with null) the lines and coverage drawn with the
+	 * spectrum; its title goes to the panel's title bar (MainView). */
 
 	setOverlay( overlay: SpectrumOverlay | null ) {
 		this.overlay = overlay;
-		this.titleLabel.setText( overlay?.title ?? "" );
 		this.canvas.redraw();
 	}
 
@@ -128,10 +150,32 @@ export class SpectrumViewer extends VBox {
 		this.canvas.redraw();
 	}
 
-	private toggleZoneMode() {
-		this.selectionMode = !this.selectionMode;
-		this.zoneButton.setClass( "active", this.selectionMode );
-		this.canvas.setClass( "zone-mode", this.selectionMode );
+	/** Sets (or releases, with null) the zone; the "Zone" button is yellow while one exists. */
+
+	private setZone( zone: [ number, number ] | null ) {
+		this.zone = zone;
+		this.zoneButton.setClass( "active", zone !== null );
+	}
+
+	/** Releases the zone (double-click, "Zone" button). */
+
+	private clearZone() {
+		this.setZone( null );
+		this.canvas.redraw();
+	}
+
+	/** "Agrandir zone": shows exactly the zone's wavelength range. */
+
+	private zoomZone() {
+		if( this.zone ) {
+			this.setView( this.zone[0], this.zone[1] );
+		}
+	}
+
+	/** "Aide" button: the mouse gestures, in the middle of the plot. */
+
+	private showHelp() {
+		new Menu({ items: HELP_LINES }).displayNear( this.canvas.getBoundingRect(), "center middle", "center middle" );
 	}
 
 	private firstWavelength() {
@@ -229,16 +273,22 @@ export class SpectrumViewer extends VBox {
 		if( !this.spectrum ) {
 			return;
 		}
-		this.canvas.setCapture( ev.pointerId );
-		if( this.selectionMode ) {
+		if( ev.button === LEFT_BUTTON ) {
+			this.canvas.setCapture( ev.pointerId );
+			this.canvas.setClass( "zone-mode", true );
 			this.selecting = true;
 			this.selectStartX = this.selectEndX = this.canvasX( ev );
 			return;
 		}
-		this.dragging = true;
-		this.dragStartX = ev.pageX;
-		this.dragOriginMin = this.viewMin;
-		this.dragOriginMax = this.viewMax;
+		if( ev.button === RIGHT_BUTTON ) {
+			this.canvas.setCapture( ev.pointerId );
+			this.canvas.setClass( "panning", true );
+			this.dragging = true;
+			this.dragMoved = false;
+			this.dragStartX = ev.pageX;
+			this.dragOriginMin = this.viewMin;
+			this.dragOriginMax = this.viewMax;
+		}
 	}
 
 	private onPointerMove( ev: PointerEvent ) {
@@ -247,6 +297,9 @@ export class SpectrumViewer extends VBox {
 			this.canvas.redraw();
 		}
 		else if( this.dragging ) {
+			if( Math.abs( ev.pageX - this.dragStartX ) > SELECT_CLICK_THRESHOLD ) {
+				this.dragMoved = true;
+			}
 			const shift = ( ev.pageX - this.dragStartX ) / this.plotWidth() * ( this.dragOriginMax - this.dragOriginMin );
 			this.setView( this.dragOriginMin - shift, this.dragOriginMax - shift );
 		}
@@ -257,17 +310,23 @@ export class SpectrumViewer extends VBox {
 		this.canvas.releaseCapture( ev.pointerId );
 		if( this.selecting ) {
 			this.selecting = false;
+			this.canvas.setClass( "zone-mode", false );
+			// a plain click (no real drag) leaves the current zone as it is
 			if( Math.abs( this.selectEndX - this.selectStartX ) > SELECT_CLICK_THRESHOLD ) {
 				const a = this.toWavelength( this.selectStartX );
 				const b = this.toWavelength( this.selectEndX );
-				this.setView( Math.min( a, b ), Math.max( a, b ) );
+				this.setZone( [ Math.min( a, b ), Math.max( a, b ) ] );
 			}
-			else {
-				this.canvas.redraw();
-			}
+			this.canvas.redraw();
 			return;
 		}
-		this.dragging = false;
+		if( this.dragging ) {
+			this.dragging = false;
+			this.canvas.setClass( "panning", false );
+			if( !this.dragMoved ) {
+				this.showMenu( ev );
+			}
+		}
 	}
 
 	/** Shows the wavelength and flux of the spectrum point under the cursor,
@@ -294,22 +353,13 @@ export class SpectrumViewer extends VBox {
 		}
 	}
 
-	private onContextMenu( ev: MouseEvent ) {
-		if( !this.spectrum ) {
-			return;
-		}
-		const menu = new Menu({ items: [
+	/** Right click without moving: the actions menu. */
+
+	private showMenu( ev: MouseEvent ) {
+		new Menu({ items: [
+			{ text: "Agrandir zone", disabled: this.zone === null, click: () => this.zoomZone() },
 			{ text: "Tout", click: () => this.zoomFit() },
-			{ text: this.selectionMode ? "Désactiver Zone" : "Activer Zone", click: () => this.toggleZoneMode() },
-			"-",
-			"Molette : zoom en longueur d'onde",
-			"Glisser : déplacer le spectre",
-			"Zone + glisser : agrandir un intervalle",
-			"Le flux s'ajuste à la partie visible",
-		]});
-		menu.displayAt( ev.pageX, ev.pageY );
-		ev.stopPropagation();
-		ev.preventDefault();
+		]}).displayAt( ev.pageX, ev.pageY );
 	}
 
 	// ::: Drawing ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -415,11 +465,15 @@ export class SpectrumViewer extends VBox {
 		}
 		ctx.stroke();
 
-		// "Zone" selection being drawn
+		// the zone being drawn, or the one kept (in wavelengths, follows zoom and pan)
+		ctx.fillStyle = "rgba(255, 204, 0, 0.18)";
 		if( this.selecting ) {
 			const x0 = Math.min( this.selectStartX, this.selectEndX );
-			ctx.fillStyle = "rgba(255, 204, 0, 0.18)";
 			ctx.fillRect( x0, top, Math.abs( this.selectEndX - this.selectStartX ), bottom - top );
+		}
+		else if( this.zone ) {
+			const x0 = this.toCanvasX( this.zone[0] );
+			ctx.fillRect( x0, top, this.toCanvasX( this.zone[1] ) - x0, bottom - top );
 		}
 		ctx.restore();
 

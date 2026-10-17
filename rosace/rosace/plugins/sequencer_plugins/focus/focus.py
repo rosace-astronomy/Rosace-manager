@@ -224,7 +224,7 @@ def measure_fwhm(
     return float(np.mean(fwhms)), len(fwhms), float(min(snrs))
 
 
-async def _show_on_gui(image_path, shape: tuple[int, int], window_fraction: float) -> None:
+async def _show_on_gui(obs: Observation, image_path, shape: tuple[int, int], window_fraction: float) -> None:
     """Shows the guide image on the GUI's Guidage panel with the search window
     actually used for the measurement, as outer pixel edges in Rosace's pixel
     convention (pixel centres on integers). Best effort -- a display problem
@@ -232,7 +232,7 @@ async def _show_on_gui(image_path, shape: tuple[int, int], window_fraction: floa
     x0, y0, x1, y1 = _central_window_bounds(shape, window_fraction)
     overlay = {"window": [x0 - 0.5, y0 - 0.5, x1 - 0.5, y1 - 0.5]}
     try:
-        await publish_guide_preview(image_path, source="focus", overlay=overlay)
+        await publish_guide_preview(image_path, source="focus", overlay=overlay, obs=obs)
     except Exception as e:
         log.warning(f"[FOCUS] Could not show the guide image on the GUI: {e}")
 
@@ -248,7 +248,7 @@ class FocusPlugin(SubPlugin):
         data = fits.getdata(guide_image)
 
         window_fraction = SUBPLUGIN_PARAMS.get("focus", {}).get("window_fraction", DEFAULT_WINDOW_FRACTION)
-        await _show_on_gui(guide_image, data.shape, window_fraction)
+        await _show_on_gui(obs, guide_image, data.shape, window_fraction)
         result = measure_fwhm(data, window_fraction)
         if result is None:
             log.warning("[FOCUS] No usable star to measure focus sharpness")

@@ -27,6 +27,12 @@ whichever sub-plugin sent them, and an image without an overlay clears the previ
 Omitted from the message when not given, same as `source`. A publisher may also keep it
 next to the file (<panel>.json, served by GET /images/{panel}/overlay) so a reloaded page
 finds it again -- reduction_helpers.publish_spectrum_preview() does.
+
+An optional `kind` names the type of image -- "science", "dark", "bias", "flat",
+"calib" on the 2D spectrum panel, "guide" or "slit" (lamp-lit) on the guiding panel
+(see acquisition_helpers.py). The GUI redoes its automatic display stretch when the
+type changes; the FITS header cannot tell it (every frame says IMAGETYP 'Light
+Frame'). Omitted from the message when not given.
 """
 
 from __future__ import annotations
@@ -55,7 +61,8 @@ class WebSocketImageBroadcaster:
     def remove_client(self, websocket: WebSocket) -> None:
         self._clients.discard(websocket)
 
-    async def broadcast(self, panel: str, source: str | None = None, overlay: dict | None = None) -> None:
+    async def broadcast(self, panel: str, source: str | None = None, overlay: dict | None = None,
+                        kind: str | None = None) -> None:
         if not self._clients:
             return
         params: dict = {"panel": panel}
@@ -63,6 +70,8 @@ class WebSocketImageBroadcaster:
             params["source"] = source
         if overlay is not None:
             params["overlay"] = overlay
+        if kind is not None:
+            params["kind"] = kind
         message = {"msg": IMAGE_NEW_MSG, "params": params}
         if self._loop is not None and asyncio.get_running_loop() is not self._loop:
             # Called from another thread's loop: send from the main loop, and wait

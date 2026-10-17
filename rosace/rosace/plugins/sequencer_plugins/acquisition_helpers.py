@@ -189,24 +189,44 @@ async def capture_guide_image(
 
     if image_to_gui:
         GUI_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+        _label_preview(image[0].header, obs)	# the files above are already written
         image.writeto(GUI_PREVIEW_DIR / "guidage.fits", overwrite=True)
-        await ws_image_broadcaster.broadcast("guidage")
+        kind = "guide" if light_source is LightSource.SKY else "slit"
+        await ws_image_broadcaster.broadcast("guidage", kind=kind)
     return path
 
 
+def _label_preview(header: fits.Header, obs: Observation | None) -> None:
+    """Stamps the observation on a GUI preview image -- OBJECT (queried name)
+    and OBS_ID -- so its panel can title itself, also after a page reload
+    (the preview file survives). Only ever called on the preview copy, never
+    on a file of the observation."""
+    if obs is None:
+        return
+    name = obs.scheduler_data.get("queried_name")
+    if name:
+        header["OBJECT"] = (name, "Queried name, stamped by Rosace")
+    header["OBS_ID"] = (obs.id, "Rosace observation ID, GUI preview only")
+
+
 async def publish_guide_preview(
-    image_path: Path, source: str | None = None, overlay: dict | None = None
+    image_path: Path, source: str | None = None, overlay: dict | None = None, kind: str = "guide",
+    obs: Observation | None = None,
 ) -> None:
     """Shows an already-written guide image on the GUI's "Guidage" panel:
-    copies it to GUI_PREVIEW_DIR/"guidage.fits" and notifies connected
-    clients, forwarding source and overlay (see image_broadcast.py).
+    copies it to GUI_PREVIEW_DIR/"guidage.fits" (labelled with obs's object
+    and ID when given) and notifies connected clients, forwarding source,
+    overlay and kind (see image_broadcast.py): "guide" for a sky image,
+    "slit" for slit_xy's lamp-lit one.
 
     For a caller that wants something drawn over the image -- it captures
     with image_to_gui=False, then publishes the image with its overlay:
     slit_xy.py (the measured slit), focus.py (its search window)."""
     GUI_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(image_path, GUI_PREVIEW_DIR / "guidage.fits")
-    await ws_image_broadcaster.broadcast("guidage", source=source, overlay=overlay)
+    with fits.open(image_path) as hdul:
+        _label_preview(hdul[0].header, obs)
+        hdul.writeto(GUI_PREVIEW_DIR / "guidage.fits", overwrite=True)
+    await ws_image_broadcaster.broadcast("guidage", source=source, overlay=overlay, kind=kind)
 
 
 def slit_position(obs: Observation) -> tuple[float, float]:
@@ -227,7 +247,8 @@ def slit_position(obs: Observation) -> tuple[float, float]:
 
 
 async def capture_science_image(
-    camera: Any, exposure_time: float, obs_dir: str, filename: str, image_to_gui: bool = False
+    camera: Any, exposure_time: float, obs_dir: str, filename: str, image_to_gui: bool = False,
+    obs: Observation | None = None,
 ) -> Path:
     """Exposes the science camera for exposure_time seconds and writes the
     resulting FITS image to obs_dir/filename, returning the written path.
@@ -259,9 +280,24 @@ async def capture_science_image(
     image.writeto(path, overwrite=True)
     if image_to_gui:
         GUI_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+        _label_preview(image[0].header, obs)	# the observation's file is already written
         image.writeto(GUI_PREVIEW_DIR / "spectre.fits", overwrite=True)
-        await ws_image_broadcaster.broadcast("spectre")
+        await ws_image_broadcaster.broadcast("spectre", kind=frame_kind(filename))
     return path
+
+
+# File-name prefixes of the calibration series (build_fits_root_name()); a
+# science frame is named after its target
+_CALIBRATION_PREFIXES = ("DARK", "BIAS", "FLAT", "CALIB")
+
+
+def frame_kind(filename: str) -> str:
+    """Type of a science-camera frame, from its file name: "dark", "bias",
+    "flat" or "calib" for a calibration series, "science" otherwise. Sent to
+    the GUI with the image, which redoes its display stretch when the type
+    changes -- the FITS header cannot tell (IMAGETYP is always 'Light Frame')."""
+    prefix = Path(filename).name.split("_", 1)[0]
+    return prefix.lower() if prefix in _CALIBRATION_PREFIXES else "science"
 
 
 def compute_exposure_time_and_count(

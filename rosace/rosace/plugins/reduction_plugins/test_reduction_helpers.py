@@ -565,7 +565,7 @@ class TestPublishSpectrumPreview:
         panel, source, overlay = published[0]
         assert (panel, source) == ("spectre1d", "write_spectrum")
         assert overlay == json.loads((tmp_path / "gui" / "spectre1d.json").read_text())
-        assert overlay["title"] == f"16 Peg — Be_stars — 2026-09-25 21:44 UT — obs {obs.id}"
+        assert overlay["title"] == f"16 Peg — {obs.id}"
         assert overlay["coverage"] == [4158.59, 7147.04]
         names = [line["name"] for line in overlay["lines"]]
         assert names == ["Hα", "Hβ", "Hγ", "Hδ", "Hε", "H8"]

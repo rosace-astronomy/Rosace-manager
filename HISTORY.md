@@ -1109,3 +1109,12 @@ Found on the first real run: (1) `home_sync_am3` plate-solves around a random po
 
 Also added: `--purge-demo [--apply]` (a fresh demo, the replay dataset kept — the scheduler counts observations per astronomical day, so a second run the same day otherwise observes nothing) and a DEMO MODE badge in the GUI (`/status`'s `demo_mode`). Still to do: the Docker image (it runs the former demo) and removing the `internal` backend (TODO.md).
 
+## 2026-10-17 — GUI: panels, stop notice, zoom, stretch by image type, mouse gestures
+
+*Relates to: the GUI section of CLAUDE.md.*
+
+Four GUI items of TODO.md plus one asked the same day. Guidage now sits left of Spectre 2D. While a stop is pending — the current observation goes on to its end, which can take half an hour with little else changing on screen — an orange « Arrêt demandé » shows between START and STOP. A new image of the same size keeps the zoom instead of snapping back to « Tout ».
+
+The display stretch was computed once per panel, at its first image, so a dark or a flat after a science frame came up nearly black or white. Re-stretching on a change of image type needed the type, and the FITS header cannot give it: every frame says `IMAGETYP = 'Light Frame'`, since Rosace never sets INDI's `CCD_FRAME_TYPE`. The server now sends a `kind` with `image.new`, from the file-name prefix Rosace already writes (`DARK_`, `BIAS_`, `FLAT_`, `CALIB_`) or the light source of a guide image; writing the real frame type into the FITS files is left in TODO.md (it changes camera control and needs testing on the instrument).
+
+Mouse gestures were reworked because selecting a zone meant first clicking « Zone »: a left drag now draws the zone directly, a right drag pans, a right click opens an actions menu (zoom on the zone, « Seuils ») instead of a help menu, a double-click releases the zone, an « Aide » button lists the gestures, and « Ajuster les niveaux » became « Seuils » — the same on the 1D spectrum, where the range is no longer zoomed on release but through the menu. The same day, each panel's title bar gained the object and observation ID of the image shown (stamped as `OBJECT`/`OBS_ID` on the GUI preview copy only, so a reloaded page keeps them); the 1D spectrum's title moved from its toolbar to the title bar and lost the program and time, and the « Aide » menu opens in the middle of the image.

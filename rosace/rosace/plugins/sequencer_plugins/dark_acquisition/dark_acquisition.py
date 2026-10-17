@@ -130,7 +130,7 @@ class DarkAcquisitionPlugin(SubPlugin):
             for i in range(1, DARK_COUNT + 1):
                 suffix = f"-{i}" if DARK_COUNT > 1 else ""
                 path = await capture_science_image(
-                    camera, MAX_EXPOSURE_TIME_SECONDS, obs.obs_dir, f"{root_name}{suffix}.fits", image_to_gui=True
+                    camera, MAX_EXPOSURE_TIME_SECONDS, obs.obs_dir, f"{root_name}{suffix}.fits", image_to_gui=True, obs=obs
                 )
                 captured.append(path.name)
 

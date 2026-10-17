@@ -268,7 +268,7 @@ class SlitXyPlugin(SubPlugin):
                 f"[SLIT_XY] Slit calculation failed on {image_name or 'no image'} ({e}), "
                 f"using default ({default_x}, {default_y})"
             )
-            await _publish(image_path, zone, None, None)
+            await _publish(obs, image_path, zone, None, None)
             return obs
 
         slit_y = round(measurement.y_at_slit_x + offset_y, 2)
@@ -286,7 +286,7 @@ class SlitXyPlugin(SubPlugin):
             f"(measured {measurement.y_at_slit_x:.2f}, offset {offset_y:+.2f}; "
             f"default ({default_x}, {default_y}), angle {measurement.angle_deg:+.2f} deg)"
         )
-        await _publish(image_path, zone, measurement, (float(default_x), slit_y))
+        await _publish(obs, image_path, zone, measurement, (float(default_x), slit_y))
         return obs
 
 
@@ -303,6 +303,7 @@ async def _restore_sky(obs: Observation, light_settle_seconds: float) -> None:
 
 
 async def _publish(
+    obs: Observation,
     image_path,
     zone: SearchZone | None,
     measurement: SlitMeasurement | None,
@@ -325,6 +326,6 @@ async def _publish(
             point = [retained[0], retained[1]]
         overlay = {"zone": edges, "line": line, "point": point}
     try:
-        await publish_guide_preview(image_path, source="slit_xy", overlay=overlay)
+        await publish_guide_preview(image_path, source="slit_xy", overlay=overlay, kind="slit", obs=obs)
     except Exception as e:
         log.warning(f"[SLIT_XY] Could not show the slit image on the GUI: {e}")

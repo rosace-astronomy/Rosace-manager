@@ -105,7 +105,7 @@ class FlatAcquisitionPlugin(SubPlugin):
             for i in range(1, FLAT_COUNT + 1):
                 suffix = f"-{i}" if FLAT_COUNT > 1 else ""
                 path = await capture_science_image(
-                    camera, FLAT_EXPOSURE_TIME_SECONDS, obs.obs_dir, f"{root_name}{suffix}.fits", image_to_gui=True
+                    camera, FLAT_EXPOSURE_TIME_SECONDS, obs.obs_dir, f"{root_name}{suffix}.fits", image_to_gui=True, obs=obs
                 )
                 captured.append(path.name)
 

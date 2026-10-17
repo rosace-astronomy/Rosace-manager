@@ -1,6 +1,6 @@
 # TODO
 
-## Dernière mise à jour : 2026-10-15 06:44
+## Dernière mise à jour : 2026-10-17
 
 Liste des tâches en attente du projet Rosace. Claude peut ajouter une
 ligne dès qu'une nouvelle idée apparaît en conversation. **Seul
@@ -9,8 +9,6 @@ Claude peut le suggérer, jamais le faire lui-même.
 
 ## Bugs / fiabilité matérielle
 
-- [ ] Étape SEQUENCER en jaune (avertissement) quand une étape non
-      bloquante échoue — backend + GUI
 - [ ] Première pose d'une série DARK (science) pas franchement noire (un
       vrai spectre visible), alors que les poses suivantes de la même série
       sont bonnes (constaté 2026-09-19) — probable pose lancée trop tôt
@@ -36,6 +34,30 @@ Claude peut le suggérer, jamais le faire lui-même.
       entre régler la limite de la monture (driver AM3 / Ekos) ou ramener
       ce réglage vers 1°. Rosace ne voit pas non plus l'arrêt du suivi
       pendant la série (16 min sans étoile sans aucun message) (2026-10-15)
+
+## Gros chantiers
+
+- [ ] Passer sur le RC8 sous abri : nouvel instrument, donc nouveau profil
+      matériel (`hardware_indi_<…>.yaml` : caméras, monture, spectro,
+      focuser, PHD2), nouvelle config (site, noms BeSS, réglages du guidage
+      `slit_x`/`slit_y`/échantillonnage, bornes de réduction, réponse
+      instrumentale, raies de la lampe), étapes propres à la monture
+      (`sequencer_prefix`), et validation sur le ciel (2026-10-17)
+- [ ] Page de validation des spectres Be avant envoi à BeSS : l'observateur
+      voit chaque spectre (et son résumé PDF), l'accepte ou le refuse, et
+      seuls les spectres acceptés partent vers BeSS. Pose la question du
+      SHARING : envoi automatique en fin d'observation, ou différé après
+      validation (un état « à valider / validé / envoyé » par spectre,
+      conservé en base) — à cadrer avec la ligne « SHARING pour le
+      programme Be » (2026-10-17)
+- [ ] Simplifier CLAUDE.md (232 ko, ~940 lignes ; traduction française
+      dans `~/Téléchargements/CLAUDE_fr_2026-10-17_v1.0.pdf`) : y garder les
+      règles, conventions et l'architecture ; déplacer l'histoire (dates,
+      incidents, options écartées) vers HISTORY.md et le détail des
+      algorithmes (seuils, étapes, valeurs mesurées) vers les docstrings des
+      modules ; corriger au passage les phrases périmées. Section par
+      section, chaque changement validé par l'utilisateur. Objectif
+      indicatif : taille divisée par 3 ou 4 (2026-10-17)
 
 ## Chantiers proposés
 
@@ -67,8 +89,6 @@ Claude peut le suggérer, jamais le faire lui-même.
       (2026-10-14)
 - [ ] Distance à la Lune : filtre scheduler sur la distance de la cible à la Lune (seuil à définir, probablement selon la phase) — pas urgent
 - [ ] Journalisation temporelle des étapes (time-series DB type InfluxDB). Définir les étapes que je veux suivre (pointing, science, focus, reference images... à compléter)
-- [ ] Responsive design sur la GUI web (X4) pour tablette et téléphone
-      (2026-09-20)
 - [ ] Revoir les bibliothèques "fragiles"/peu maintenues du projet — une ou
       deux repérées, probablement liées au chantier ASCOM/Windows (à
       confirmer/préciser lesquelles) (2026-09-20)
@@ -83,11 +103,6 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Retraiter une observation ou toute une session (réduction relancée sur
       les fichiers existants) : un point d'entrée API REST, appelé depuis
       le GUI (2026-10-06)
-- [ ] Mode démo : images réalistes (guidage avec fente et étoiles, vrai
-      spectre) et spectre résultant affiché, même factice (2026-10-06)
-- [ ] GUI : version anglaise de l'interface (libellés, messages, menus d'aide),
-      avec choix de la langue — x4js a un module de traduction (`core_i18n`)
-      à regarder (2026-10-11)
 - [ ] Tracer les pertes d'étoile de PHD2 : l'événement `StarLost` arrive déjà
       au client (`phd2_client.py::_dispatch_event()`) mais est ignoré. Un
       WARNING à la première perte, un INFO à la reprise (nombre de poses /
@@ -150,6 +165,33 @@ Claude peut le suggérer, jamais le faire lui-même.
       pas dans la bande de la fente (sinon WARNING, ou relancer la sélection)
       (2026-10-14)
 
+## GUI
+
+- [ ] GUI : indiquer « arrêt en cours » dans la zone start/stop, entre la
+      demande d'arrêt (manuelle ou programmée) et la fin de CLOSE_SESSION —
+      l'observation en cours va à son terme, ce qui peut prendre plus d'une
+      demi-heure (2026-10-13)
+      Revu 2026-10-17 : afficher clairement « Arrêt demandé » tant que
+      l'observation en cours continue après la demande d'arrêt — à ce
+      moment l'écran ne donne presque plus d'information sur ce qui se passe
+- [ ] Étape SEQUENCER en jaune (avertissement) quand une étape non
+      bloquante échoue — backend + GUI
+- [ ] GUI : refaire l'ajustement automatique des seuils (étirement 1 %/99 %)
+      quand une nouvelle image d'un autre type que la précédente arrive sur
+      un panneau (science → dark → flat…) — aujourd'hui seule la 1re image
+      reçue est ajustée, la suite se fait à la main ; le type peut se lire
+      dans l'en-tête FITS (`IMAGETYP`) ou le préfixe du nom (2026-10-12)
+- [ ] GUI web : l'affichage d'une nouvelle image (au moins panneau Spectre)
+      repart en taille pleine à chaque nouvelle capture au lieu de garder
+      le zoom courant (constaté 2026-09-19)
+- [ ] GUI : inverser les panneaux Spectre 2D (gauche aujourd'hui) et
+      Guidage (droite) — pas urgent (2026-10-11)
+- [ ] Responsive design sur la GUI web (X4) pour tablette et téléphone
+      (2026-09-20)
+- [ ] GUI : version anglaise de l'interface (libellés, messages, menus d'aide),
+      avec choix de la langue — x4js a un module de traduction (`core_i18n`)
+      à regarder (2026-10-11)
+
 ## Chantiers plus lointains
 
 - [ ] Backend ASCOM / passage sous Windows — bloqué sur l'accès à un
@@ -164,6 +206,17 @@ Claude peut le suggérer, jamais le faire lui-même.
 
 ## Petits items
 
+- [ ] Écrire le vrai type de pose dans les FITS : régler `CCD_FRAME_TYPE`
+      d'INDI (Light / Dark / Bias / Flat) avant chaque série, pour que
+      l'en-tête dise `IMAGETYP = 'Dark Frame'` etc. — aujourd'hui toutes les
+      poses sont `'Light Frame'`, y compris darks, bias, flats et lampe (utile
+      à Demetra et aux autres logiciels). À valider sur le vrai matériel
+      (2026-10-17)
+- [ ] Liste d'observation manuelle : accepter les lignes en commentaire
+      (`#` en début de ligne), ignorées sans message, dans les deux lecteurs
+      (`manual_list` du sélecteur et `scheduler_rosace_2026`). Aujourd'hui
+      une telle ligne est bien ignorée, mais comme ligne invalide, avec une
+      ERROR dans le journal (2026-10-17)
 - [ ] Numéro de version de Rosace : `pyproject.toml` déclare `0.5.0` (repris
       dans le mot-clé FITS `SWCREATE` des spectres), mais ce numéro n'a
       jamais évolué. Définir une règle de numérotation (quand l'incrémenter),
@@ -177,20 +230,6 @@ Claude peut le suggérer, jamais le faire lui-même.
       Souhait de l'utilisateur : `rosace` seul démarre le serveur,
       `rosace --help` affiche l'aide (mêmes options que `python -m
       rosace.main`) (2026-10-11)
-- [ ] GUI : refaire l'ajustement automatique des seuils (étirement 1 %/99 %)
-      quand une nouvelle image d'un autre type que la précédente arrive sur
-      un panneau (science → dark → flat…) — aujourd'hui seule la 1re image
-      reçue est ajustée, la suite se fait à la main ; le type peut se lire
-      dans l'en-tête FITS (`IMAGETYP`) ou le préfixe du nom (2026-10-12)
-- [ ] GUI : inverser les panneaux Spectre 2D (gauche aujourd'hui) et
-      Guidage (droite) — pas urgent (2026-10-11)
-- [ ] GUI : indiquer « arrêt en cours » dans la zone start/stop, entre la
-      demande d'arrêt (manuelle ou programmée) et la fin de CLOSE_SESSION —
-      l'observation en cours va à son terme, ce qui peut prendre plus d'une
-      demi-heure (2026-10-13)
-- [ ] GUI web : l'affichage d'une nouvelle image (au moins panneau Spectre)
-      repart en taille pleine à chaque nouvelle capture au lieu de garder
-      le zoom courant (constaté 2026-09-19)
 - [ ] flat_acquisition : la lampe flat chauffe encore pendant la série — 1re
       image à 88 % des suivantes, puis +1 % jusqu'à la 5e (nuit 2026-09-25).
       Le rejet min/max du master l'écarte, mais une pause de stabilisation

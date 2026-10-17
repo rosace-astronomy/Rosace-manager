@@ -1,6 +1,6 @@
 import { VBox, HBox, Button, Label, Application, BoxProps, Image, Listbox, ListItem,
 	SimpleText, SimpleTextArea, Notification, Tag, initTooltips, makeState, asap, EvMessage, HSizer,
-	VSizer, Component, TextEdit,
+	VSizer, Component, TextEdit, UnsafeHtml, unsafeHtml,
 	} from "x4js";
 
 import "./main.scss";
@@ -398,6 +398,21 @@ class AppFooter extends HBox {
  * MainView is the main dashboard view
  */
 
+/** A panel's title bar: its name (in capitals and the accent colour, like the
+ * other panels' titles), then the parts given (object, observation ID) in their
+ * own case and the text colour, " — " between them. */
+
+function panelTitle( name: string, ...parts: ( string | undefined )[] ): UnsafeHtml {
+	const detail = parts.map( p => p?.trim( ) ).filter( p => p ).join( " — " );
+	return unsafeHtml( detail ? `${name}<span class="title-detail">${escapeText( detail )}</span>` : name );
+}
+
+/** Plain text made safe for inclusion in HTML (a star name could contain "<" or "&"). */
+
+function escapeText( text: string ): string {
+	return text.replace( /&/g, "&amp;" ).replace( /</g, "&lt;" ).replace( />/g, "&gt;" );
+}
+
 class MainView extends VBox {
 
 	private obs_list: Listbox;
@@ -407,9 +422,10 @@ class MainView extends VBox {
 	private guidage_viewer: FitsViewer;
 	private spectrum_panel: VBox;
 	private spectrum_viewer: SpectrumViewer;
-	// Tracks, per panel, whether its first real (non-placeholder) image has
-	// already received its automatic stretch -- see loadPanelImage below.
-	private autoStretched: Record<string, boolean> = {};
+	// Panel title bars: "<panel> — <object> — <observation ID>" of the image shown
+	private guidage_title: Label;
+	private spectre_title: Label;
+	private spectrum_title: Label;
 
 	// Scheduled start/stop (controls bar): one time field per button, one chip per
 	// scheduled instant (shown only while something is scheduled). Times are typed
@@ -420,6 +436,8 @@ class MainView extends VBox {
 	private start_time: TextEdit;
 	private stop_time: TextEdit;
 	private schedule_chips = {} as Record<ScheduleKind, { box: HBox, label: Label }>;
+	// "Arrêt demandé": a stop was asked, the current observation goes on to its end
+	private stop_notice: Label;
 
 	constructor( props: BoxProps ) {
 		super( props );
@@ -438,6 +456,7 @@ class MainView extends VBox {
 							tooltip: "Heure de départ (vide : départ immédiat)", change: () => this.updateControls() }),
 						new HBox({ cls: "schedule-chips", flex: 1, content: [
 							this.makeScheduleChip( "start" ),
+							this.stop_notice = new Label({ cls: "stop-notice", text: "" }),
 							this.makeScheduleChip( "stop" ),
 						] }),
 						this.stop_time = new TextEdit({ cls: "schedule-time", label: "", type: "time", value: "",
@@ -461,18 +480,18 @@ class MainView extends VBox {
 				// height, then the two camera images side by side
 				new VBox({ cls: "right-col", flex: 1, content: [
 					this.spectrum_panel = new VBox({ cls: "panel spectre1d", flex: 1, content: [
-						new Label({ cls: "title", text: "Spectre 1D" }),
+						this.spectrum_title = new Label({ cls: "title keep-case", text: "SPECTRE 1D" }),
 						this.spectrum_viewer = new SpectrumViewer({ flex: 1 }),
 					] }),
 					this.makeSpectrumSizer( ),
 					new HBox({ cls: "images-row", flex: 1, content: [
-						new VBox({ cls: "panel spectre", flex: 1, content: [
-							new Label({ cls: "title", text: "Spectre 2D" }),
-							this.spectre_viewer = new FitsViewer({ flex: 1 }),
-						] }),
 						new VBox({ cls: "panel guidage", flex: 1, content: [
-							new Label({ cls: "title", text: "Guidage" }),
+							this.guidage_title = new Label({ cls: "title keep-case", text: "GUIDAGE" }),
 							this.guidage_viewer = new FitsViewer({ flex: 1 }),
+						] }),
+						new VBox({ cls: "panel spectre", flex: 1, content: [
+							this.spectre_title = new Label({ cls: "title keep-case", text: "SPECTRE 2D" }),
+							this.spectre_viewer = new FitsViewer({ flex: 1 }),
 						] }),
 					] }),
 				] })
@@ -492,8 +511,8 @@ class MainView extends VBox {
 				this.logMany( lines.map( l => `[${l.level}] ${l.text}` ) );
 			}
 			else if( ev.msg === IMAGE_NEW_MSG ) {
-				const { panel, overlay } = ev.params as { panel: string, overlay?: ImageOverlay };
-				this.loadPanelImage( panel, overlay ?? null );
+				const { panel, overlay, kind } = ev.params as { panel: string, overlay?: ImageOverlay, kind?: string };
+				this.loadPanelImage( panel, overlay ?? null, kind );
 			}
 		} );
 
@@ -505,6 +524,7 @@ class MainView extends VBox {
 		// watch status
 		app_data.watch( "status", e => {
 			this.updateStageChips( e.value );
+			this.refreshStopNotice( e.value );
 		} );
 			
 		// attendons d'etre montés dans l'UI
@@ -558,9 +578,11 @@ class MainView extends VBox {
 	 * image_broadcast.py) and displays it with its overlay -- applied only once
 	 * the new image is loaded, and null clears the previous image's one. panel
 	 * is "guidage" or "spectre" (the 2D images); "spectre1d" goes to loadSpectrum().
+	 * kind is the type of image sent by the server ("science", "dark", "guide",
+	 * "slit"...): the viewer redoes its automatic stretch when it changes.
 	 */
 
-	private async loadPanelImage( panel: string, overlay: ImageOverlay | null ) {
+	private async loadPanelImage( panel: string, overlay: ImageOverlay | null, kind?: string ) {
 		if( panel === SPECTRUM_PANEL ) {
 			return this.loadSpectrum( overlay as SpectrumOverlay | null, false );
 		}
@@ -576,18 +598,13 @@ class MainView extends VBox {
 			return;
 		}
 
-		viewer.loadFits( await res.arrayBuffer() );
+		viewer.loadFits( await res.arrayBuffer(), kind );
 		viewer.setOverlay( overlay );
 
-		// first image on this panel (the last one at startup, or a new capture):
-		// apply the automatic (whole-image) percentile stretch once, so it doesn't
-		// come up all-black by default -- never re-applies on later images (a
-		// manual "Ajuster les niveaux" click takes over from here, same
-		// persistence rule as any other adjustment).
-		if( !this.autoStretched[panel] ) {
-			viewer.adjustLevels();
-			this.autoStretched[panel] = true;
-		}
+		// the server stamps the object and observation ID on its preview copy
+		const header = viewer.getHeader( ) ?? {};
+		const title = panel === "guidage" ? this.guidage_title : this.spectre_title;
+		title.setText( panelTitle( panel === "guidage" ? "GUIDAGE" : "SPECTRE 2D", header["OBJECT"], header["OBS_ID"] ) );
 	}
 
 
@@ -610,6 +627,7 @@ class MainView extends VBox {
 			}
 			this.spectrum_viewer.loadFits( buffer );
 			this.spectrum_viewer.setOverlay( overlay );
+			this.spectrum_title.setText( panelTitle( "SPECTRE 1D", overlay?.title ) );
 		}
 		catch( e ) {
 			this.showError( "spectrum load error", e.toString( ) );
@@ -969,6 +987,17 @@ class MainView extends VBox {
             this.updateControls( );
         }
     }
+
+	/**
+	 * Shown while a stop was asked but the session still runs: the current
+	 * observation goes on to its end, then CLOSE_SESSION -- a long series can
+	 * take half an hour, with little else changing on screen.
+	 */
+	private refreshStopNotice( status: ApiStatus ) {
+		const stopping = status.session_active && !status.is_running;
+		this.stop_notice.show( stopping );
+		this.stop_notice.setText( "Arrêt demandé" );
+	}
 
 	// ::: Scheduled start / stop :::::::::::::::::::::::::::::::::::::::::::::::
 

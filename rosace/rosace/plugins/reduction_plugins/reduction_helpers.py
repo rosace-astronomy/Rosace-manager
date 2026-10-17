@@ -35,7 +35,6 @@ from typing import Any, Callable
 import numpy as np
 import yaml
 from astropy.io import fits
-from astropy.time import Time
 from numpy.polynomial import Polynomial
 
 from ...config import GUI_PREVIEW_DIR
@@ -470,7 +469,8 @@ async def publish_spectrum_preview(obs: Observation, spectrum_path: Path) -> Non
     """Shows a 1D spectrum on the GUI's "Spectre 1D" panel, the same way
     acquisition_helpers.publish_guide_preview() shows a guide image: copies it
     to GUI_PREVIEW_DIR/"spectre1d.fits" and notifies connected clients. Its
-    overlay -- title, dispersion-law coverage (the rest is drawn as
+    overlay -- title (object and observation ID, shown in the panel's title
+    bar), dispersion-law coverage (the rest is drawn as
     extrapolated) and Balmer lines within the spectrum, angstrom spectra only
     -- is sent with the message and also written next to the file,
     "spectre1d.json", so a reloaded page finds it again (GET /images/{panel}/overlay)."""
@@ -485,14 +485,9 @@ async def publish_spectrum_preview(obs: Observation, spectrum_path: Path) -> Non
     if header.get("CUNIT1", "Angstrom") == "Angstrom":
         lines = [{"name": name, "wavelength": line} for name, line in BALMER_LINES_A.items() if low <= line <= high]
 
-    if "JD-MID" in header:
-        middle = Time(header["JD-MID"], format="jd", scale="utc").datetime
-    else:
-        middle = Time(header["DATE-OBS"], format="isot", scale="utc").datetime
     name = obs.scheduler_data.get("queried_name") or header.get("OBJNAME", "")
-    parts = [name, obs.scheduler_data.get("program", ""), f"{middle:%Y-%m-%d %H:%M} UT", f"obs {obs.id}"]
     overlay = {
-        "title": " — ".join(p for p in parts if p),
+        "title": " — ".join(p for p in (name, obs.id) if p),
         "coverage": list(coverage) if coverage else None,
         "lines": lines,
     }

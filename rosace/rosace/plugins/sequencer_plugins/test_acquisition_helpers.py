@@ -20,6 +20,7 @@ from rosace.plugins.sequencer_plugins.acquisition_helpers import (
     capture_guide_image,
     capture_science_image,
     compute_exposure_time_and_count,
+    frame_kind,
     publish_guide_preview,
     slit_position,
 )
@@ -216,7 +217,18 @@ class TestCaptureGuideImage:
 
         assert fake_image.writeto.call_count == 3  # raw + corrected + gui preview
         fake_image.writeto.assert_any_call(gui_dir / "guidage.fits", overwrite=True)
-        broadcast_mock.assert_awaited_once_with("guidage")
+        broadcast_mock.assert_awaited_once_with("guidage", kind="guide")
+
+    async def test_lamp_lit_image_is_sent_as_slit_kind(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(acquisition_helpers, "GUI_PREVIEW_DIR", tmp_path / "gui_preview")
+        broadcast_mock = AsyncMock()
+        monkeypatch.setattr(acquisition_helpers.ws_image_broadcaster, "broadcast", broadcast_mock)
+        obs = _make_obs(tmp_path)
+        obs.hardware["guiding_camera"].expose.return_value = _fake_image()
+
+        await capture_guide_image(obs, 0.01, light_source=LightSource.CALIB, subtract_dark=False, image_to_gui=True)
+
+        broadcast_mock.assert_awaited_once_with("guidage", kind="slit")
 
     async def test_switches_spectroscope_to_requested_light_source(self, tmp_path):
         obs = _make_obs(tmp_path)
@@ -267,10 +279,36 @@ class TestPublishGuidePreview:
         fits.PrimaryHDU(np.full(_DEFAULT_FRAME, 7, dtype=np.uint16)).writeto(image_path)
         overlay = {"zone": [0, 0, 3, 3], "line": None, "point": None}
 
-        await publish_guide_preview(image_path, source="slit_xy", overlay=overlay)
+        await publish_guide_preview(image_path, source="slit_xy", overlay=overlay, kind="slit")
 
         assert (fits.getdata(gui_dir / "guidage.fits") == 7).all()
-        broadcast_mock.assert_awaited_once_with("guidage", source="slit_xy", overlay=overlay)
+        broadcast_mock.assert_awaited_once_with("guidage", source="slit_xy", overlay=overlay, kind="slit")
+
+    async def test_preview_labelled_with_object_and_observation_id(self, tmp_path, monkeypatch):
+        gui_dir = tmp_path / "gui_preview"
+        monkeypatch.setattr(acquisition_helpers, "GUI_PREVIEW_DIR", gui_dir)
+        monkeypatch.setattr(acquisition_helpers.ws_image_broadcaster, "broadcast", AsyncMock())
+        image_path = tmp_path / "GUIDING_x.fits"
+        fits.PrimaryHDU(np.zeros(_DEFAULT_FRAME, dtype=np.uint16)).writeto(image_path)
+        obs = _make_obs(tmp_path)
+        obs.scheduler_data["queried_name"] = "HD 7636"
+
+        await publish_guide_preview(image_path, source="focus", obs=obs)
+
+        header = fits.getheader(gui_dir / "guidage.fits")
+        assert (header["OBJECT"], header["OBS_ID"]) == ("HD 7636", obs.id)
+        assert "OBS_ID" not in fits.getheader(image_path)   # the observation's own file is untouched
+
+    async def test_kind_defaults_to_guide(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(acquisition_helpers, "GUI_PREVIEW_DIR", tmp_path / "gui_preview")
+        broadcast_mock = AsyncMock()
+        monkeypatch.setattr(acquisition_helpers.ws_image_broadcaster, "broadcast", broadcast_mock)
+        image_path = tmp_path / "GUIDING_x.fits"
+        fits.PrimaryHDU(np.zeros(_DEFAULT_FRAME, dtype=np.uint16)).writeto(image_path)
+
+        await publish_guide_preview(image_path, source="focus")
+
+        broadcast_mock.assert_awaited_once_with("guidage", source="focus", overlay=None, kind="guide")
 
 
 class TestSlitPosition:
@@ -539,7 +577,37 @@ class TestCaptureScienceImage:
 
         assert fake_image.writeto.call_count == 2
         fake_image.writeto.assert_any_call(gui_dir / "spectre.fits", overwrite=True)
-        broadcast_mock.assert_awaited_once_with("spectre")
+        broadcast_mock.assert_awaited_once_with("spectre", kind="science")
+
+    async def test_preview_labelled_only_after_the_file_is_written(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(acquisition_helpers, "GUI_PREVIEW_DIR", tmp_path / "gui_preview")
+        monkeypatch.setattr(acquisition_helpers.ws_image_broadcaster, "broadcast", AsyncMock())
+        image = fits.HDUList([fits.PrimaryHDU(np.zeros(_DEFAULT_FRAME, dtype=np.uint16))])
+        camera = AsyncMock()
+        camera.expose.return_value = image
+        obs = _make_obs(tmp_path)
+        obs.scheduler_data["queried_name"] = "psi Per"
+
+        path = await capture_science_image(camera, 5.0, str(tmp_path), "psi_Per-1.fits", image_to_gui=True, obs=obs)
+
+        assert "OBS_ID" not in fits.getheader(path)
+        preview = fits.getheader(tmp_path / "gui_preview" / "spectre.fits")
+        assert (preview["OBJECT"], preview["OBS_ID"]) == ("psi Per", obs.id)
+
+
+class TestFrameKind:
+
+    @pytest.mark.parametrize("filename, kind", [
+        ("DARK_-5deg_5x180s_20261012_183653-1.fits", "dark"),
+        ("BIAS_-5deg_5x0_00s_20261015_003402-2.fits", "bias"),
+        ("FLAT_5x3s_20261014_181516-1.fits", "flat"),
+        ("CALIB_3x3s_20261014_181500-3.fits", "calib"),
+        ("HD_7636_13x180s_20261014_235411-1.fits", "science"),
+        ("Vega_5x4s_20261016_181700-1.fits", "science"),
+        ("/some/dir/FLAT_5x3s_x-1.fits", "flat"),
+    ])
+    def test_kind_from_file_name(self, filename, kind):
+        assert frame_kind(filename) == kind
 
 
 class TestBuildFitsRootName:
