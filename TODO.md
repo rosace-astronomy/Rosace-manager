@@ -58,6 +58,16 @@ Claude peut le suggérer, jamais le faire lui-même.
       modules ; corriger au passage les phrases périmées. Section par
       section, chaque changement validé par l'utilisateur. Objectif
       indicatif : taille divisée par 3 ou 4 (2026-10-17)
+- [ ] Supprimer l'étape SHARING ? Question à laisser décanter : est-elle
+      encore nécessaire ? L'envoi vers BeSS se fait après validation, donc
+      en différé par rapport aux observations, et la page de validation
+      sera une étape de REDUCTION de `Be_stars.yaml`. Une étape SHARING
+      exécutée automatiquement juste après la réduction n'aurait alors plus
+      de rôle. La retirer touche la machine à états (`main.py`),
+      `models.py` (casier `sharing_data`), `rosace.db`
+      (`sharing_status`/`sharing_done`), la clé `sharing:` de tous les
+      programmes, `sharing_plugins/`, la GUI et les tests ; même question
+      pour ARCHIVE, encore un espace réservé (2026-10-17)
 
 ## Chantiers proposés
 

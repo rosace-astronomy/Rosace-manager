@@ -144,6 +144,9 @@ subplugin_params:
     wavelength_min: 3750
     wavelength_max: 7500
 
+  snr:
+    zones: [[3750, 7500], [6000, 7000]]
+
   plot_spectrum:
     png: true
     pdf: true

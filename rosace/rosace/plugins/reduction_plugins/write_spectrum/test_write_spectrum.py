@@ -37,6 +37,8 @@ BESS_KEYWORDS = {
     "BSS_TELL": (str, None), "BSS_COSM": (str, None), "BSS_NORM": (str, None),
     "BSS_STYP": (str, None), "BSS_VMAG": (float, (-27, 30)), "BSS_ITRP": (float, None),
     "BSS_ESRP": (float, (0, 1e6)), "BSS_SRPW": (float, (0, 1e6)),
+    "SNR1": (float, (0, 1e6)), "SNR1LO": (float, (0, 1e6)), "SNR1HI": (float, (0, 1e6)),
+    "SNR2": (float, (0, 1e6)), "SNR2LO": (float, (0, 1e6)), "SNR2HI": (float, (0, 1e6)),
 }
 # Spectra passed to the GUI publication, mocked by _setup()
 PUBLISHED: list = []
@@ -141,6 +143,20 @@ class TestWriteSpectrumPlugin:
             assert camera_card not in h
         assert [str(c) for c in h["COMMENT"]] == ["Sum of 5 1D spectra"]
         assert "BSS_ESRP" not in h and "BSS_SRPW" not in h
+        assert "SNR1" not in h
+        assert bess_errors(h) == []
+
+    async def test_signal_to_noise_ratio(self, tmp_path, monkeypatch):
+        obs = _setup(tmp_path, monkeypatch)
+        obs.reduction_data["spectrum_snr"] = [{"wavelength_min": 3750.0, "wavelength_max": 7500.0, "snr": 78.0},
+                                              {"wavelength_min": 6000.0, "wavelength_max": 7000.0, "snr": 38.0}]
+
+        result = await WriteSpectrumPlugin().execute(obs)
+
+        h = fits.getheader(tmp_path / result.reduction_data["final_spectrum"])
+        assert (h["SNR1"], h["SNR1LO"], h["SNR1HI"]) == (78.0, 3750.0, 7500.0)
+        assert (h["SNR2"], h["SNR2LO"], h["SNR2HI"]) == (38.0, 6000.0, 7000.0)
+        assert "SNR3" not in h
         assert bess_errors(h) == []
 
     async def test_measured_resolving_power(self, tmp_path, monkeypatch):

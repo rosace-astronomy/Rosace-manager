@@ -9,9 +9,12 @@ backups, read through session_log_extractor.read_log_lines()).
 
 A4 portrait pages, "<final name>_summary.pdf" in the session directory,
 shared key summary_file:
-1. Summary: a band of quality indicators in large type at the top -- the
-   resolving power (BSS_ESRP at BSS_SRPW, read from the final FITS, so the
-   page shows what the delivered file says; "not measured" when absent);
+1. Summary: a header with the title block on the left (star name; magnitude,
+   date and program; session and observation IDs; final file) and, on the right, a
+   box of the same height with the quality indicators, one per line -- the
+   resolving power (BSS_ESRP at BSS_SRPW) and the signal-to-noise ratio of
+   each measured zone (SNR1, SNR2...), read from the final FITS, so the page
+   shows what the delivered file says; "not measured" when absent;
    the observation's conditions (object, program, times, exposures,
    site, equipment, configuration file, observation file, IDs); the final
    spectrum (Balmer and He I lines) and, right below on the same wavelength
@@ -94,15 +97,19 @@ ZOOM_STRETCH_SIGMA = 15           # slit zoom: white at the sky median + 15 nois
 HELIUM_LINES_A = {"He I 4026": 4026.19, "He I 4471": 4471.48, "He I 4921": 4921.93,
                   "He I 5876": 5875.62, "He I 6678": 6678.15}
 LOG_MAX_LINES = 60
+QUALITY_FONT_SIZE = 10            # page 1 quality box (R and the SNR zones, one per line)
+QUALITY_BOX_LEFT = 0.72           # the box takes the right quarter of the page 1 header
+HEADER_TOP = 0.975
 _LOG_RECORD_RE = re.compile(r"^(\d{4}-\d{2}-\d{2} (\d{2}:\d{2}:\d{2})) - (\w+) - (.*)$", re.S)
 _TAG_RE = re.compile(r"^\[([A-Z0-9_]+)\]")
 COLOURS = ("#1d3c6e", "#c0392b", "#27864a", "#d68910", "#7d3c98", "#17a589", "#7f8c8d", "#2e86c1")
 
 
-def _page(title: str, subtitle: str = "") -> Figure:
+def _page(title: str | None, subtitle: str = "") -> Figure:
     figure = Figure(figsize=A4_PORTRAIT_INCHES)
     FigureCanvasAgg(figure)
-    figure.suptitle(title, fontsize=13, fontweight="bold", y=0.975)
+    if title:
+        figure.suptitle(title, fontsize=13, fontweight="bold", y=0.975)
     if subtitle:
         figure.text(0.5, 0.948, subtitle, ha="center", fontsize=8, color="#444")
     return figure
@@ -171,25 +178,50 @@ def _conditions(ctx: _Context) -> list[tuple[str, str]]:
 def _quality_items(ctx: _Context) -> list[tuple[str, bool]]:
     """The quality indicators shown at the top of page 1, as (text, measured)."""
     h = ctx.header
+    unit = "nm" if str(h.get("CUNIT1", "")).lower() == "nm" else "Å"
     if "BSS_ESRP" in h and "BSS_SRPW" in h:
-        unit = "nm" if str(h.get("CUNIT1", "")).lower() == "nm" else "Å"
-        return [(f"R = {h['BSS_ESRP']:.0f} at {h['BSS_SRPW']:g} {unit}", True)]
-    return [("R: not measured", False)]
+        items = [(f"R = {h['BSS_ESRP']:.0f} at {h['BSS_SRPW']:g} {unit}", True)]
+    else:
+        items = [("R: not measured", False)]
+    k = 1
+    while f"SNR{k}" in h:
+        items.append((f"SNR {h[f'SNR{k}']:.0f} ({h[f'SNR{k}LO']:g}–{h[f'SNR{k}HI']:g} {unit})", True))
+        k += 1
+    if k == 1:
+        items.append(("SNR: not measured", False))
+    return items
 
 
-def _draw_quality(figure: Figure, ctx: _Context) -> None:
+def _draw_header(figure: Figure, ctx: _Context) -> None:
+    """Page 1 header: the title block on the left three quarters (star name,
+    date and program, IDs, final file), and on the right quarter a box of the
+    same height with the quality indicators, one per line."""
+    obs, h = ctx.obs, ctx.header
+    magnitude = f"Mag. {h['BSS_VMAG']:.2f}  -  " if "BSS_VMAG" in h else ""
+    lines = [
+        (h.get("OBJNAME", ""), 18, "bold", "#000"),
+        (f"{magnitude}{h['DATE-OBS'][:10]}  -  {obs.scheduler_data.get('program', '')}", 11, "normal", "#000"),
+        (f"Session {obs.session_id}  |  Observation {obs.id}", 9, "normal", "#444"),
+        (ctx.final_path.name, 8, "normal", "#444"),
+    ]
+    y = HEADER_TOP
+    for text, size, weight, colour in lines:
+        figure.text(0.05, y, text, ha="left", va="top", fontsize=size, fontweight=weight, color=colour)
+        y -= size / 72 / A4_PORTRAIT_INCHES[1] * 1.45          # line height in figure units
+    bottom = y + 0.004
+    figure.add_artist(Rectangle((QUALITY_BOX_LEFT, bottom), 0.96 - QUALITY_BOX_LEFT, HEADER_TOP + 0.006 - bottom,
+                                transform=figure.transFigure, fill=False, edgecolor="#1d3c6e", linewidth=1))
     items = _quality_items(ctx)
-    step = 1.0 / len(items)
+    step = (HEADER_TOP + 0.006 - bottom) / len(items)
     for i, (text, measured) in enumerate(items):
-        figure.text(step * (i + 0.5), 0.912, text, ha="center", va="center", fontsize=16, fontweight="bold",
+        figure.text((QUALITY_BOX_LEFT + 0.96) / 2, HEADER_TOP + 0.006 - step * (i + 0.5), text, ha="center",
+                    va="center", fontsize=QUALITY_FONT_SIZE, fontweight="bold",
                     color="#1d3c6e" if measured else "#999")
-    for i in range(1, len(items)):
-        figure.text(step * i, 0.912, "|", ha="center", va="center", fontsize=16, color="#999")
 
 
 def page_summary(ctx: _Context) -> Figure:
-    figure = _page(ctx.title, ctx.subtitle)
-    _draw_quality(figure, ctx)
+    figure = _page(None)
+    _draw_header(figure, ctx)
     text_axes = figure.add_axes((0.06, 0.60, 0.90, 0.28))
     text_axes.set_axis_off()
     rows = _conditions(ctx)

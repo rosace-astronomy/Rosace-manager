@@ -25,6 +25,10 @@ frame's cards survive.
   dispersion law file, shared key dispersion_law_file): BSS_ESRP and the
   wavelength it is given at, BSS_SRPW, in the unit of CUNIT1. Absent when the
   law holds none (not measured, or a law written before it was).
+- Signal-to-noise ratio (snr, shared key spectrum_snr), not BeSS keywords
+  (BeSS keeps them without using them): SNR1 with its zone SNR1LO-SNR1HI (in
+  the unit of CUNIT1), SNR2..., one per measured zone. Absent when not
+  measured.
   Giving both forms makes BeSS issue a warning, not a rejection.
 - Wavelength axis: CRVAL1, CDELT1, CRPIX1, CTYPE1, CUNIT1.
 - Processing: BSS_VHEL = 0 and BSS_TELL/BSS_COSM/BSS_NORM = 'none' (no
@@ -119,6 +123,14 @@ def _measured_resolving_power(obs: Observation, session_dir: Path) -> tuple[floa
     return float(law["resolving_power"]), float(law["resolving_power_wavelength"])
 
 
+def _spectrum_snr(obs: Observation) -> list[dict]:
+    """The measured SNR zones (shared key spectrum_snr); empty when not measured."""
+    try:
+        return list(find_shared_input(obs, "spectrum_snr"))
+    except RuntimeError:
+        return []
+
+
 class WriteSpectrumPlugin(SubPlugin):
     """Writes the final 1D FITS spectrum, its header rebuilt with every keyword the BeSS specification asks for."""
 
@@ -178,6 +190,10 @@ class WriteSpectrumPlugin(SubPlugin):
         if measured is not None:
             h["BSS_ESRP"] = (measured[0], "Effective spectral resolving power")
             h["BSS_SRPW"] = (measured[1], "Wavelength of the resolving power")
+        for k, zone in enumerate(_spectrum_snr(obs), start=1):
+            h[f"SNR{k}"] = (float(zone["snr"]), "DER_SNR, stacked spectrum before resampling")
+            h[f"SNR{k}LO"] = (float(zone["wavelength_min"]), f"Start of the SNR{k} zone")
+            h[f"SNR{k}HI"] = (float(zone["wavelength_max"]), f"End of the SNR{k} zone")
 
         h["CRVAL1"] = (float(old["CRVAL1"]), "Wavelength of the reference point")
         h["CDELT1"] = (float(old["CDELT1"]), "Wavelength step")

@@ -131,12 +131,24 @@ class TestQualityBand:
         fits.setval(final, "BSS_ESRP", value=630.0)
         fits.setval(final, "BSS_SRPW", value=6563.0)
 
-        assert module._quality_items(module._Context(obs)) == [("R = 630 at 6563 Å", True)]
+        assert module._quality_items(module._Context(obs)) == [("R = 630 at 6563 Å", True),
+                                                               ("SNR: not measured", False)]
+
+    def test_signal_to_noise_ratios_from_the_final_header(self, tmp_path, monkeypatch):
+        obs, session = _setup(tmp_path, monkeypatch)
+        final = session / obs.reduction_data["final_spectrum"]
+        for keyword, value in (("BSS_ESRP", 630.0), ("BSS_SRPW", 6563.0), ("SNR1", 78.0), ("SNR1LO", 3750.0),
+                               ("SNR1HI", 7500.0), ("SNR2", 38.0), ("SNR2LO", 6000.0), ("SNR2HI", 7000.0)):
+            fits.setval(final, keyword, value=value)
+
+        assert module._quality_items(module._Context(obs)) == [
+            ("R = 630 at 6563 Å", True), ("SNR 78 (3750–7500 Å)", True), ("SNR 38 (6000–7000 Å)", True)]
 
     def test_resolving_power_not_measured(self, tmp_path, monkeypatch):
         obs, _ = _setup(tmp_path, monkeypatch)
 
-        assert module._quality_items(module._Context(obs)) == [("R: not measured", False)]
+        assert module._quality_items(module._Context(obs)) == [("R: not measured", False),
+                                                               ("SNR: not measured", False)]
 
 
 LOG = """2026-09-25 21:37:40 - WARNING - [CROP] warning of the previous observation's reduction

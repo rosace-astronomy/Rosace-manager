@@ -308,6 +308,12 @@ subplugin_params:
     wavelength_min: 3750
     wavelength_max: 7500
 
+  snr:
+    # Wavelength zones (law's unit) where the signal-to-noise ratio of the
+    # stacked spectrum is measured (DER_SNR), each one reported on its own,
+    # all of equal importance.
+    zones: [[3750, 7500], [6000, 7000]]
+
   plot_spectrum:
     # Formats of the final spectrum's plot, each produced only when true.
     png: true
