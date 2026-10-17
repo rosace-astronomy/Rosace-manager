@@ -36,6 +36,7 @@ BESS_KEYWORDS = {
     "BSS_ELEV": (float, (-200, 5500)), "BSS_VHEL": (float, (-200, 200)),
     "BSS_TELL": (str, None), "BSS_COSM": (str, None), "BSS_NORM": (str, None),
     "BSS_STYP": (str, None), "BSS_VMAG": (float, (-27, 30)), "BSS_ITRP": (float, None),
+    "BSS_ESRP": (float, (0, 1e6)), "BSS_SRPW": (float, (0, 1e6)),
 }
 # Spectra passed to the GUI publication, mocked by _setup()
 PUBLISHED: list = []
@@ -139,7 +140,30 @@ class TestWriteSpectrumPlugin:
         for camera_card in ("ROWORDER", "YBINNING", "PIERSIDE"):
             assert camera_card not in h
         assert [str(c) for c in h["COMMENT"]] == ["Sum of 5 1D spectra"]
+        assert "BSS_ESRP" not in h and "BSS_SRPW" not in h
         assert bess_errors(h) == []
+
+    async def test_measured_resolving_power(self, tmp_path, monkeypatch):
+        obs = _setup(tmp_path, monkeypatch)
+        (tmp_path / "CALIB_law.yaml").write_text(
+            "# a law\nunit: A\nA0: 3000.0\nA1: 3.5\nresolving_power: 630.0\nresolving_power_wavelength: 6563.0\n")
+        obs.reduction_data["dispersion_law_file"] = "CALIB_law.yaml"
+
+        result = await WriteSpectrumPlugin().execute(obs)
+
+        h = fits.getheader(tmp_path / result.reduction_data["final_spectrum"])
+        assert (h["BSS_ESRP"], h["BSS_SRPW"], h["BSS_ITRP"]) == (630.0, 6563.0, 600.0)
+        assert bess_errors(h) == []
+
+    async def test_law_without_resolving_power(self, tmp_path, monkeypatch):
+        obs = _setup(tmp_path, monkeypatch)
+        (tmp_path / "CALIB_law.yaml").write_text("# a law\nunit: A\nA0: 3000.0\nA1: 3.5\n")
+        obs.reduction_data["dispersion_law_file"] = "CALIB_law.yaml"
+
+        result = await WriteSpectrumPlugin().execute(obs)
+
+        h = fits.getheader(tmp_path / result.reduction_data["final_spectrum"])
+        assert "BSS_ESRP" not in h and "BSS_SRPW" not in h
 
     async def test_west_longitude_brought_into_0_360(self, tmp_path, monkeypatch):
         obs = _setup(tmp_path, monkeypatch, longitude=-70.5)

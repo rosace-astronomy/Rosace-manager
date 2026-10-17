@@ -497,7 +497,15 @@ class TestReadLaw:
         path.write_text("# Dispersion law of lamp series X.\n# 8 lines, RMS 0.2 A.\nunit: A\nA0: 3054.8\nA1: 3.5\nA2: 0.0002\n")
         law = read_law(path)
         assert law == {"unit": "A", "coefficients": [3054.8, 3.5, 0.0002],
+                       "resolving_power": None, "resolving_power_wavelength": None,
                        "comments": ["Dispersion law of lamp series X.", "8 lines, RMS 0.2 A."]}
+
+    def test_resolving_power(self, tmp_path):
+        path = tmp_path / "law.yaml"
+        path.write_text("unit: A\nA0: 3054.8\nA1: 3.5\nresolving_power: 630.0\nresolving_power_wavelength: 6563.0\n")
+        law = read_law(path)
+        assert law["coefficients"] == [3054.8, 3.5]
+        assert (law["resolving_power"], law["resolving_power_wavelength"]) == (630.0, 6563.0)
 
 
 class TestWavelengthAxis:

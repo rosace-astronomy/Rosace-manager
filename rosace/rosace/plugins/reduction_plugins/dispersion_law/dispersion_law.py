@@ -36,14 +36,35 @@ left to right on the sensor.
    No law with min_lines lines and its imposed lines is an error, which
    stops the reduction.
 
+5. Resolving power, R = lambda / FWHM, the usual convention (the smallest
+   separable wavelength difference taken as the width at half maximum of an
+   unresolved lamp line). Measured on the lines kept for the law: the
+   Gaussian sigma of each (pixels, from step 1) is fitted by a straight line
+   against the pixel position -- the width grows by about 12 % from blue to
+   red on the Alpy 600 -- lines whose residual exceeds R_CLIP_SIGMA robust
+   sigmas (1.4826 x median absolute deviation) being rejected until stable
+   (a blend reads wider); never below R_MIN_TOLERANCE_FRACTION of the median
+   width, since lines of nearly identical widths would make the robust
+   sigma tiny and reject sound lines for differences of no consequence. That line is read at the pixel of the reference
+   wavelength (subplugin_params.dispersion_law.resolving_power_wavelength,
+   6563 A / 656.3 nm by default: H-alpha, BeSS's example), converted to a
+   width in wavelength with the law's derivative there: FWHM = 2.355 x sigma
+   x local dispersion, R = wavelength / FWHM. No correction is made for the
+   pixel's own width (it is part of what the delivered spectrum went
+   through). The measurement is made before resampling: lambda_calibration's
+   resampling widens the lines a little more, so the delivered spectrum is
+   about 2.7 % less resolved than R says (measured on 2026-10-16). Fewer than
+   R_MIN_LINES lines is only a warning: the law is written without R.
+
 Written to the session directory, named after the lamp series:
-"<lamp series>_dispersion_law.yaml" (coefficients A0..An, a comment header
+"<lamp series>_dispersion_law.yaml" (coefficients A0..An and, when
+measured, resolving_power and resolving_power_wavelength; a comment header
 saying what they are) and "<lamp series>_reference_lines.txt" (the copy of
 the reference list used). When the law file already exists it is reused,
 not recomputed. Shared key dispersion_law_file; casier
 reduction_data["dispersion_law"] (degree, unit, coefficients, RMS, lines
 used, coverage = wavelengths of the first and last line used -- outside,
-the law is extrapolated).
+the law is extrapolated -- and the resolving power with its wavelength).
 """
 
 from __future__ import annotations
@@ -81,8 +102,13 @@ MONOTONY_PROBES = 9                # points across the sensor where the law must
 CLIP_SIGMA = 3.0
 MAX_ITERATIONS = 20
 CHUNK = 5000                       # hypotheses scored at once (memory bound)
+FWHM_PER_SIGMA = 2.0 * np.sqrt(2.0 * np.log(2.0))   # 2.355, for a Gaussian
+R_CLIP_SIGMA = 3.0
+R_MIN_TOLERANCE_FRACTION = 0.05    # a width within 5 % of the line is never rejected
+R_MIN_LINES = 3
 
 DEFAULT_TOLERANCE = {"A": 1.0, "nm": 0.1}
+DEFAULT_R_WAVELENGTH = {"A": 6563.0, "nm": 656.3}
 REFERENCE_LINES_DIR = "reference_lines"
 
 
@@ -90,6 +116,7 @@ REFERENCE_LINES_DIR = "reference_lines"
 class DetectedLines:
     x: np.ndarray            # centres, pixels
     x_error: np.ndarray      # centre errors from the fit, pixels
+    sigma: np.ndarray        # Gaussian widths from the fit, pixels
     amplitude: np.ndarray
     background: np.ndarray   # the continuous background subtracted for detection
     noise: float
@@ -100,6 +127,7 @@ class DispersionSolution:
     coefficients: list[float]        # A0, A1, ...
     x: np.ndarray                    # pixels of the lines used
     x_error: np.ndarray
+    sigma: np.ndarray                # their Gaussian widths, pixels
     wavelength: np.ndarray           # their reference wavelengths
     residual: np.ndarray             # wavelength - law(x)
     rms: float                       # in the wavelength unit
@@ -151,7 +179,7 @@ def detect_lines(spectrum: np.ndarray) -> DetectedLines:
     peaks = np.sort(peaks[strongest])
     widths = peak_widths(signal, peaks, rel_height=0.5)[0] if peaks.size else np.array([])
 
-    x, x_error, amplitude = [], [], []
+    x, x_error, sigmas, amplitude = [], [], [], []
     for peak, fwhm in zip(peaks, widths):
         sigma_guess = max(fwhm / 2.355, LINE_SIGMA_RANGE_PX[0])
         half = max(3, int(np.ceil(FIT_HALF_WIDTH_SIGMA * sigma_guess)))
@@ -166,10 +194,12 @@ def detect_lines(spectrum: np.ndarray) -> DetectedLines:
             continue
         x.append(centre)
         x_error.append(errors[1])
+        sigmas.append(sigma)
         amplitude.append(amp)
     order = np.argsort(x)
     return DetectedLines(
-        np.array(x)[order], np.array(x_error)[order], np.array(amplitude)[order], background, noise
+        np.array(x)[order], np.array(x_error)[order], np.array(sigmas)[order], np.array(amplitude)[order],
+        background, noise,
     )
 
 
@@ -320,6 +350,7 @@ def solve_dispersion(
             coefficients=coefficients,
             x=lines.x[det],
             x_error=lines.x_error[det],
+            sigma=lines.sigma[det],
             wavelength=refs[ref],
             residual=residual,
             rms=float(np.sqrt(np.mean(residual ** 2))),
@@ -333,8 +364,51 @@ def solve_dispersion(
     )
 
 
-def write_law(path: Path, solution: DispersionSolution, lamp_series: str, unit: str) -> None:
-    """The law as a small YAML file: a comment header, the unit, A0..An."""
+@dataclasses.dataclass
+class ResolvingPower:
+    value: float             # R, rounded to the unit
+    wavelength: float        # where it is given
+    fwhm_px: float           # line width there, pixels
+    lines_used: int
+    rejected: list[float]    # reference wavelengths of the lines rejected (too wide or too narrow)
+
+
+def resolving_power(solution: DispersionSolution, wavelength: float, width: int) -> ResolvingPower | None:
+    """R = wavelength / FWHM at the given wavelength, from the widths of the
+    law's lines (see module docstring, step 5); None below R_MIN_LINES lines.
+    width is the spectrum's number of pixels (where the law is inverted)."""
+    keep = np.ones(solution.x.size, dtype=bool)
+    while True:
+        if keep.sum() < R_MIN_LINES:
+            return None
+        line = Polynomial.fit(solution.x[keep], solution.sigma[keep], 1).convert()
+        residual = solution.sigma - line(solution.x)
+        spread = 1.4826 * float(np.median(np.abs(residual[keep])))
+        tolerance = max(R_CLIP_SIGMA * spread, R_MIN_TOLERANCE_FRACTION * float(np.median(solution.sigma[keep])))
+        new_keep = np.abs(residual) <= tolerance
+        if np.array_equal(new_keep, keep):
+            break
+        keep = new_keep
+    pixels = np.arange(width, dtype=np.float64)
+    law = Polynomial(solution.coefficients)
+    x = float(np.interp(wavelength, law(pixels), pixels))
+    fwhm_px = FWHM_PER_SIGMA * float(line(x))
+    fwhm = fwhm_px * float(law.deriv()(x))
+    if fwhm <= 0:
+        return None
+    return ResolvingPower(
+        value=float(round(wavelength / fwhm)),
+        wavelength=float(wavelength),
+        fwhm_px=fwhm_px,
+        lines_used=int(keep.sum()),
+        rejected=[float(w) for w in solution.wavelength[~keep]],
+    )
+
+
+def write_law(path: Path, solution: DispersionSolution, lamp_series: str, unit: str,
+              power: ResolvingPower | None = None) -> None:
+    """The law as a small YAML file: a comment header, the unit, A0..An,
+    and the resolving power when measured."""
     names = " + ".join(["A0", "A1*x"] + [f"A{k}*x^{k}" for k in range(2, len(solution.coefficients))])
     header = [
         f"# Dispersion law of lamp series {lamp_series}, computed by Rosace.",
@@ -343,6 +417,12 @@ def write_law(path: Path, solution: DispersionSolution, lamp_series: str, unit: 
         f"valid between {solution.coverage[0]:g} and {solution.coverage[1]:g} {unit} (extrapolated outside).",
     ]
     body = {"unit": unit} | {f"A{k}": c for k, c in enumerate(solution.coefficients)}
+    if power is not None:
+        header.append(
+            f"# Resolving power R = {power.value:.0f} at {power.wavelength:g} {unit} (FWHM of {power.lines_used} "
+            f"lamp lines, linear fit of sigma vs pixel, before resampling)."
+        )
+        body |= {"resolving_power": power.value, "resolving_power_wavelength": power.wavelength}
     path.write_text("\n".join(header) + "\n" + yaml.safe_dump(body, sort_keys=False))
 
 
@@ -370,6 +450,11 @@ class DispersionLawPlugin(SubPlugin):
                 "coefficients": law["coefficients"],
                 "reused": True,
             }
+            if law["resolving_power"] is not None:
+                obs.reduction_data["dispersion_law"] |= {
+                    "resolving_power": law["resolving_power"],
+                    "resolving_power_wavelength": law["resolving_power_wavelength"],
+                }
             log.info(f"[DISPERSION_LAW] Reused {law_name}")
             return obs
 
@@ -390,7 +475,13 @@ class DispersionLawPlugin(SubPlugin):
             min_lines=int(params.get("min_lines", 7)),
         )
 
-        write_law(law_path, solution, lamp_series, unit)
+        r_wavelength = float(params.get("resolving_power_wavelength", DEFAULT_R_WAVELENGTH[unit]))
+        power = resolving_power(solution, r_wavelength, spectrum.size)
+        if power is None:
+            log.warning(
+                f"[DISPERSION_LAW] Resolving power not measured: fewer than {R_MIN_LINES} lines of consistent width"
+            )
+        write_law(law_path, solution, lamp_series, unit, power)
         shutil.copyfile(reference_file, session_dir / f"{lamp_series}_reference_lines.txt")
         obs.reduction_data["dispersion_law_file"] = law_name
         obs.reduction_data["dispersion_law"] = {
@@ -402,9 +493,19 @@ class DispersionLawPlugin(SubPlugin):
             "lines_used": int(solution.x.size),
             "coverage": [solution.coverage[0], solution.coverage[1]],
         }
+        r_text = ""
+        if power is not None:
+            obs.reduction_data["dispersion_law"] |= {
+                "resolving_power": power.value,
+                "resolving_power_wavelength": power.wavelength,
+                "fwhm_px": round(power.fwhm_px, 3),
+            }
+            if power.rejected:
+                obs.reduction_data["dispersion_law"]["lines_rejected_for_r"] = power.rejected
+            r_text = f", R {power.value:.0f} at {power.wavelength:g} {unit}"
         log.info(
             f"[DISPERSION_LAW] {solution.x.size}/{refs.size} lines, RMS {solution.rms:.3f} {unit} "
             f"({solution.rms_px:.3f} px), valid {solution.coverage[0]:g}-{solution.coverage[1]:g} {unit}, "
-            f"extrapolated outside"
+            f"extrapolated outside{r_text}"
         )
         return obs

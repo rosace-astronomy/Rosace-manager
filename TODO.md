@@ -268,3 +268,5 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Summary et log : séparer l'écart étoile–fente en composante le long de
       la fente (sans effet sur le flux) et en travers (pertes de lumière) ;
       seule la seconde compte pour le centrage (2026-10-10)
+- [ ] Summary : placer R (et bientôt le SNR) dans un cadre à droite du titre
+      de la page 1, plutôt que dans le bandeau sous le sous-titre (2026-10-17)

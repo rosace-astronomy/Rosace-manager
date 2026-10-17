@@ -346,15 +346,22 @@ def transform_frames(
 
 def read_law(path: Path) -> dict:
     """A dispersion law file (written by dispersion_law): {"unit",
-    "coefficients" (A0..An), "comments" (its header comment lines, without
-    the leading "# ")}."""
+    "coefficients" (A0..An), "resolving_power", "resolving_power_wavelength"
+    (None when not measured, as in laws written before it was),
+    "comments" (its header comment lines, without the leading "# ")}."""
     text = Path(path).read_text()
     data = yaml.safe_load(text)
     coefficients = []
     while f"A{len(coefficients)}" in data:
         coefficients.append(float(data[f"A{len(coefficients)}"]))
     comments = [line[1:].strip() for line in text.splitlines() if line.startswith("#")]
-    return {"unit": data.get("unit", "A"), "coefficients": coefficients, "comments": comments}
+    return {
+        "unit": data.get("unit", "A"),
+        "coefficients": coefficients,
+        "resolving_power": data.get("resolving_power"),
+        "resolving_power_wavelength": data.get("resolving_power_wavelength"),
+        "comments": comments,
+    }
 
 
 def resample_linear(spectrum: np.ndarray, law: Polynomial, start: float, step: float, count: int) -> np.ndarray:

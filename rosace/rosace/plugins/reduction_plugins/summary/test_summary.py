@@ -123,6 +123,22 @@ class TestSummaryPlugin:
         assert "Guide image not available" in caplog.text
 
 
+class TestQualityBand:
+
+    def test_resolving_power_from_the_final_header(self, tmp_path, monkeypatch):
+        obs, session = _setup(tmp_path, monkeypatch)
+        final = session / obs.reduction_data["final_spectrum"]
+        fits.setval(final, "BSS_ESRP", value=630.0)
+        fits.setval(final, "BSS_SRPW", value=6563.0)
+
+        assert module._quality_items(module._Context(obs)) == [("R = 630 at 6563 Å", True)]
+
+    def test_resolving_power_not_measured(self, tmp_path, monkeypatch):
+        obs, _ = _setup(tmp_path, monkeypatch)
+
+        assert module._quality_items(module._Context(obs)) == [("R: not measured", False)]
+
+
 LOG = """2026-09-25 21:37:40 - WARNING - [CROP] warning of the previous observation's reduction
 2026-09-25 21:37:51 - INFO - [DB] Observation inserted: 0e37017f
 2026-09-25 21:38:00 - WARNING - Sanitizing exposition time: cannot accept 0.0

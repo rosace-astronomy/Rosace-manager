@@ -19,7 +19,12 @@ frame's cards survive.
 - Observer, site and equipment, from the configuration's observatory block (the BeSS
   forms' names, shared with export_demetra) and the Core site coordinates:
   OBSERVER, BSS_SITE and BSS_LAT/BSS_LONG/BSS_ELEV (both forms), BSS_INST and
-  TELESCOP/INSTRUME/DETNAM (both forms), BSS_ITRP when resolving_power is set.
+  TELESCOP/INSTRUME/DETNAM (both forms), BSS_ITRP when resolving_power is set
+  (the instrument's typical value).
+- Resolving power measured on the lamp (dispersion_law, read from the
+  dispersion law file, shared key dispersion_law_file): BSS_ESRP and the
+  wavelength it is given at, BSS_SRPW, in the unit of CUNIT1. Absent when the
+  law holds none (not measured, or a law written before it was).
   Giving both forms makes BeSS issue a warning, not a rejection.
 - Wavelength axis: CRVAL1, CDELT1, CRPIX1, CTYPE1, CUNIT1.
 - Processing: BSS_VHEL = 0 and BSS_TELL/BSS_COSM/BSS_NORM = 'none' (no
@@ -54,7 +59,7 @@ from ....config import OBSERVATORY, SITE_ELEVATION_M, SITE_LATITUDE_DEG, SITE_LO
 from ....models import Observation
 from ....targets import star_get_by_name
 from ...sub_plugin_base import SubPlugin
-from ..reduction_helpers import final_name, find_shared_input, publish_spectrum_preview
+from ..reduction_helpers import final_name, find_shared_input, publish_spectrum_preview, read_law
 
 log = logging.getLogger("spectro.subplugin.write_spectrum")
 
@@ -97,6 +102,21 @@ async def _spectral_type(*names: str | None) -> str | None:
         if star is not None:
             return star.spectral_type or None
     return None
+
+
+def _measured_resolving_power(obs: Observation, session_dir: Path) -> tuple[float, float] | None:
+    """(R, wavelength) from the dispersion law file; None when there is no
+    law or it holds no resolving power (the keywords are optional)."""
+    try:
+        law_path = session_dir / find_shared_input(obs, "dispersion_law_file")
+    except RuntimeError:
+        return None
+    if not law_path.exists():
+        return None
+    law = read_law(law_path)
+    if law["resolving_power"] is None or law["resolving_power_wavelength"] is None:
+        return None
+    return float(law["resolving_power"]), float(law["resolving_power_wavelength"])
 
 
 class WriteSpectrumPlugin(SubPlugin):
@@ -154,6 +174,10 @@ class WriteSpectrumPlugin(SubPlugin):
                 h[keyword] = (_text(site[key], keyword), comment)
         if site.get("resolving_power"):
             h["BSS_ITRP"] = (float(site["resolving_power"]), "Instrument typical resolving power")
+        measured = _measured_resolving_power(obs, session_dir)
+        if measured is not None:
+            h["BSS_ESRP"] = (measured[0], "Effective spectral resolving power")
+            h["BSS_SRPW"] = (measured[1], "Wavelength of the resolving power")
 
         h["CRVAL1"] = (float(old["CRVAL1"]), "Wavelength of the reference point")
         h["CDELT1"] = (float(old["CDELT1"]), "Wavelength step")

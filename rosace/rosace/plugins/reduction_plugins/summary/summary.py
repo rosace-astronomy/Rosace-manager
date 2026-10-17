@@ -9,7 +9,10 @@ backups, read through session_log_extractor.read_log_lines()).
 
 A4 portrait pages, "<final name>_summary.pdf" in the session directory,
 shared key summary_file:
-1. Summary: the observation's conditions (object, program, times, exposures,
+1. Summary: a band of quality indicators in large type at the top -- the
+   resolving power (BSS_ESRP at BSS_SRPW, read from the final FITS, so the
+   page shows what the delivered file says; "not measured" when absent);
+   the observation's conditions (object, program, times, exposures,
    site, equipment, configuration file, observation file, IDs); the final
    spectrum (Balmer and He I lines) and, right below on the same wavelength
    axis, the calibration lamp with every reference line kept (within the
@@ -165,9 +168,29 @@ def _conditions(ctx: _Context) -> list[tuple[str, str]]:
     return rows
 
 
+def _quality_items(ctx: _Context) -> list[tuple[str, bool]]:
+    """The quality indicators shown at the top of page 1, as (text, measured)."""
+    h = ctx.header
+    if "BSS_ESRP" in h and "BSS_SRPW" in h:
+        unit = "nm" if str(h.get("CUNIT1", "")).lower() == "nm" else "Å"
+        return [(f"R = {h['BSS_ESRP']:.0f} at {h['BSS_SRPW']:g} {unit}", True)]
+    return [("R: not measured", False)]
+
+
+def _draw_quality(figure: Figure, ctx: _Context) -> None:
+    items = _quality_items(ctx)
+    step = 1.0 / len(items)
+    for i, (text, measured) in enumerate(items):
+        figure.text(step * (i + 0.5), 0.912, text, ha="center", va="center", fontsize=16, fontweight="bold",
+                    color="#1d3c6e" if measured else "#999")
+    for i in range(1, len(items)):
+        figure.text(step * i, 0.912, "|", ha="center", va="center", fontsize=16, color="#999")
+
+
 def page_summary(ctx: _Context) -> Figure:
     figure = _page(ctx.title, ctx.subtitle)
-    text_axes = figure.add_axes((0.06, 0.62, 0.90, 0.29))
+    _draw_quality(figure, ctx)
+    text_axes = figure.add_axes((0.06, 0.60, 0.90, 0.28))
     text_axes.set_axis_off()
     rows = _conditions(ctx)
     for i, (label, value) in enumerate(rows):

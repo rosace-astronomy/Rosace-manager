@@ -19,6 +19,7 @@ from rosace.plugins.reduction_plugins.dispersion_law.dispersion_law import (
     detect_lines,
     local_minima_background,
     read_reference_lines,
+    resolving_power,
     solve_dispersion,
 )
 
@@ -36,16 +37,24 @@ def _pixel_of(wavelength, law=TRUE_LAW):
     return float(next(r.real for r in roots if abs(r.imag) < 1e-9 and -50 < r.real < WIDTH + 50))
 
 
-def _lamp(wavelengths=REFS, shifts=None, seed=0, law=TRUE_LAW):
-    """A lamp spectrum: a slow continuum, one Gaussian per line, noise."""
+def _lamp(wavelengths=REFS, shifts=None, seed=0, law=TRUE_LAW, sigma=lambda x: SIGMA_PX, widths=None):
+    """A lamp spectrum: a slow continuum, one Gaussian per line, noise. The
+    line width is sigma(centre) pixels, or widths[wavelength] when given."""
     rng = np.random.default_rng(seed)
     x = np.arange(WIDTH)
     spectrum = 2000.0 + 0.5 * x + rng.normal(0, 30, WIDTH)
     shifts = shifts or {}
+    widths = widths or {}
     for k, w in enumerate(list(wavelengths) + SPURIOUS):
         centre = _pixel_of(w + shifts.get(w, 0.0), law)
-        spectrum += (20000 + 3000 * (k % 5)) * np.exp(-0.5 * ((x - centre) / SIGMA_PX) ** 2)
+        width = widths.get(w, sigma(centre))
+        spectrum += (20000 + 3000 * (k % 5)) * np.exp(-0.5 * ((x - centre) / width) ** 2)
     return spectrum
+
+
+def _expected_r(wavelength, sigma):
+    x = _pixel_of(wavelength)
+    return wavelength / (2.0 * np.sqrt(2.0 * np.log(2.0)) * sigma(x) * TRUE_LAW.deriv()(x))
 
 
 def _write_refs(path, values=REFS, unit_scale=1.0):
@@ -134,6 +143,34 @@ class TestSolveDispersion:
             solve_dispersion(_lamp(), REFS, degree=2, tolerance=1.0)
 
 
+class TestResolvingPower:
+
+    def test_constant_width(self):
+        solution = solve_dispersion(_lamp(), REFS, degree=3, tolerance=1.0)
+        power = resolving_power(solution, 6563.0, WIDTH)
+        assert power.value == pytest.approx(_expected_r(6563.0, lambda x: SIGMA_PX), rel=0.01)
+        assert power.lines_used == 12 and power.rejected == []
+        assert power.fwhm_px == pytest.approx(2.3548 * SIGMA_PX, rel=0.01)
+
+    def test_width_growing_along_the_sensor(self):
+        sigma = lambda x: 1.8 + 0.4 * x / WIDTH
+        solution = solve_dispersion(_lamp(sigma=sigma), REFS, degree=3, tolerance=1.0)
+        for wavelength in (4861.0, 6563.0):
+            power = resolving_power(solution, wavelength, WIDTH)
+            assert power.value == pytest.approx(_expected_r(wavelength, sigma), rel=0.01)
+
+    def test_wide_line_rejected(self):
+        solution = solve_dispersion(_lamp(widths={5852.48: 3.5}), REFS, degree=3, tolerance=1.0)
+        power = resolving_power(solution, 6563.0, WIDTH)
+        assert power.rejected == [5852.48] and power.lines_used == 11
+        assert power.value == pytest.approx(_expected_r(6563.0, lambda x: SIGMA_PX), rel=0.01)
+
+    def test_too_few_lines_gives_none(self):
+        solution = solve_dispersion(_lamp(), REFS, degree=3, tolerance=1.0)
+        solution.x, solution.sigma, solution.wavelength = solution.x[:2], solution.sigma[:2], solution.wavelength[:2]
+        assert resolving_power(solution, 6563.0, WIDTH) is None
+
+
 def _setup(tmp_path, monkeypatch, params, refs_file):
     session = tmp_path / "session"
     (session / SUB).mkdir(parents=True)
@@ -162,6 +199,32 @@ class TestDispersionLawPlugin:
         assert (session / "CALIB_3x3s_20260925_194111_reference_lines.txt").read_text() == refs_file.read_text()
         casier = result.reduction_data["dispersion_law"]
         assert casier["lines_used"] == 12 and casier["coverage"] == [REFS[0], REFS[-1]]
+        expected = _expected_r(6563.0, lambda x: SIGMA_PX)
+        assert casier["resolving_power"] == pytest.approx(expected, rel=0.01)
+        assert casier["resolving_power_wavelength"] == 6563.0
+        assert law["resolving_power"] == casier["resolving_power"] and law["resolving_power_wavelength"] == 6563.0
+        assert "# Resolving power R = " in text and "at 6563 A" in text
+
+    async def test_resolving_power_wavelength_setting(self, tmp_path, monkeypatch):
+        obs, _ = _setup(tmp_path, monkeypatch, {"resolving_power_wavelength": 4861}, _write_refs(tmp_path / "r.txt"))
+
+        result = await DispersionLawPlugin().execute(obs)
+
+        casier = result.reduction_data["dispersion_law"]
+        assert casier["resolving_power_wavelength"] == 4861.0
+        assert casier["resolving_power"] == pytest.approx(_expected_r(4861.0, lambda x: SIGMA_PX), rel=0.01)
+
+    async def test_resolving_power_not_measured_is_only_a_warning(self, tmp_path, monkeypatch, caplog):
+        obs, session = _setup(tmp_path, monkeypatch, {}, _write_refs(tmp_path / "r.txt"))
+        monkeypatch.setattr(module, "resolving_power", lambda *args: None)
+
+        with caplog.at_level(logging.WARNING, logger="spectro.subplugin.dispersion_law"):
+            result = await DispersionLawPlugin().execute(obs)
+
+        assert "Resolving power not measured" in caplog.text
+        assert "resolving_power" not in result.reduction_data["dispersion_law"]
+        law = read_law(session / result.reduction_data["dispersion_law_file"])
+        assert law["resolving_power"] is None and len(law["coefficients"]) == 4
 
     async def test_reference_file_in_the_data_directory(self, tmp_path, monkeypatch):
         (tmp_path / "reference_lines").mkdir()
@@ -182,6 +245,19 @@ class TestDispersionLawPlugin:
 
         assert result.reduction_data["dispersion_law"]["reused"] is True
         assert result.reduction_data["dispersion_law"]["coefficients"] == [3000.0, 3.5, 0.0002, -1.0e-07]
+        assert "resolving_power" not in result.reduction_data["dispersion_law"]
+
+    async def test_reused_law_keeps_its_resolving_power(self, tmp_path, monkeypatch):
+        obs, session = _setup(tmp_path, monkeypatch, {}, tmp_path / "missing.txt")
+        (session / "CALIB_3x3s_20260925_194111_dispersion_law.yaml").write_text(
+            "# a law\nunit: A\nA0: 3000.0\nA1: 3.5\nA2: 0.0002\nA3: -1.0e-07\n"
+            "resolving_power: 638.0\nresolving_power_wavelength: 6563.0\n")
+
+        result = await DispersionLawPlugin().execute(obs)
+
+        casier = result.reduction_data["dispersion_law"]
+        assert casier["coefficients"] == [3000.0, 3.5, 0.0002, -1.0e-07]
+        assert (casier["resolving_power"], casier["resolving_power_wavelength"]) == (638.0, 6563.0)
 
     async def test_nanometres(self, tmp_path, monkeypatch):
         refs_file = _write_refs(tmp_path / "refs_nm.txt", unit_scale=0.1)
