@@ -45,6 +45,7 @@ reduction:
   - stack               # Stacking of the 1D spectra
   - dispersion_law      # Pixel-to-wavelength law of the lamp series (reused if already computed)
   - snr                 # Signal-to-noise ratio (DER_SNR) of the stacked spectrum, per wavelength zone, never blocking
+  - guiding_stats       # Guiding RMS and largest error (PHD2 guide log, after settling), never blocking
   - lambda_calibration  # Law applied, constant wavelength step
   - response            # Instrumental response correction
   - scaling             # Division by the mean level in a wavelength zone (set to 1)

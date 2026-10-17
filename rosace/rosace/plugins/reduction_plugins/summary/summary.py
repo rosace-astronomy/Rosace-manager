@@ -12,8 +12,9 @@ shared key summary_file:
 1. Summary: a header with the title block on the left (star name; magnitude,
    date and program; session and observation IDs; final file) and, on the right, a
    box of the same height with the quality indicators, one per line -- the
-   resolving power (BSS_ESRP at BSS_SRPW) and the signal-to-noise ratio of
-   each measured zone (SNR1, SNR2...), read from the final FITS, so the page
+   resolving power (BSS_ESRP at BSS_SRPW), the signal-to-noise ratio of
+   each measured zone (SNR1, SNR2...) and the guiding RMS (GUIDRMS), read
+   from the final FITS, so the page
    shows what the delivered file says; "not measured" when absent;
    the observation's conditions (object, program, times, exposures,
    site, equipment, configuration file, observation file, IDs); the final
@@ -28,7 +29,18 @@ shared key summary_file:
    solution, the star-to-slit offset and the image's median level (clouds,
    light pollution); then, frame by frame against UT, the star's flux (sum of
    its 1D spectrum) and the sky level (median of the sky zones of extract in
-   its corrected frame), frames rejected by stack marked.
+   its corrected frame), frames rejected by stack marked; below, PHD2
+   guiding, from the observation's guide log (stop_phd2_guiding, shared
+   key guide_log_file) against UT: one panel per axis (RA, Dec) with the
+   star's error (arcsec, curve) and the correction pulses (ms, bars on a
+   second axis, drawn in the direction the pulse moves the star: East and
+   North up, so a bar opposes the error it corrects), the science exposures
+   as green bands, the lock position changes as dashed lines, lost frames
+   as black triangles along the top, the part before PHD2's last completed
+   settling shaded grey (not measured); the statistics of guiding_stats
+   (shared key guiding_stats, measured after settling) above. The error and
+   pulse axes stop at the 99th percentile after settling (a lock position
+   change alone can reach 20").
 3. Extraction and series: the whole sum of the corrected 2D target frames
    (true proportions), with extract's spectrum window and sky zones (stretched on the
    sky zones, so the background shows); each frame's spectrum calibrated
@@ -70,6 +82,7 @@ from numpy.polynomial import Polynomial
 
 from ....config import CONFIG_PATH, OBSERVATORY, SITE_ELEVATION_M, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, SUBPLUGIN_PARAMS
 from ....models import Observation
+from ....phd2.guide_log import parse_guide_log, settled_frame
 from ....session_log_extractor import read_log_lines
 from ...sequencer_plugins.acquisition_helpers import slit_position
 from ...sequencer_plugins.plate_solve_helper import world_to_pixel
@@ -97,6 +110,12 @@ ZOOM_STRETCH_SIGMA = 15           # slit zoom: white at the sky median + 15 nois
 HELIUM_LINES_A = {"He I 4026": 4026.19, "He I 4471": 4471.48, "He I 4921": 4921.93,
                   "He I 5876": 5875.62, "He I 6678": 6678.15}
 LOG_MAX_LINES = 60
+GUIDE_ERROR_MIN_LIMIT_ARCSEC = 3.0   # PHD2 page: smallest error axis (+-)
+GUIDE_PULSE_MIN_LIMIT_MS = 300       # PHD2 page: smallest pulse axis (+-)
+SERIES_RECT = (0.13, 0.49, 0.72, 0.15)   # frame-by-frame flux and sky, page 2
+EXPOSURE_BAND = "#b9cdb9"            # science exposures, a tint of the web GUI's accent colour
+SETTLING_BAND = "#e3e3e3"            # PHD2 settling, left out of the guiding statistics
+GUIDE_COLOURS = {"RA": ("#0b2f5c", "#5b8fd0"), "Dec": ("#5c140b", "#e0705c")}   # (error curve, pulse bars)
 QUALITY_FONT_SIZE = 10            # page 1 quality box (R and the SNR zones, one per line)
 QUALITY_BOX_LEFT = 0.72           # the box takes the right quarter of the page 1 header
 HEADER_TOP = 0.975
@@ -189,6 +208,10 @@ def _quality_items(ctx: _Context) -> list[tuple[str, bool]]:
         k += 1
     if k == 1:
         items.append(("SNR: not measured", False))
+    if "GUIDRMS" in h:
+        items.append((f"Guiding RMS {h['GUIDRMS']:.2f}\"", True))
+    else:
+        items.append(("Guiding: not measured", False))
     return items
 
 
@@ -266,11 +289,11 @@ def _draw_guide(figure: Figure, ctx: _Context) -> None:
         log.warning(f"[SUMMARY] Star position not available on {path.name}: {error}")
     median = float(np.median(image))
     offset = f"star to slit {residual:.1f}\"" if residual is not None else "star to slit: not measured"
-    figure.text(0.5, 0.885, f"{path.name}  |  {offset}  |  image median {median:.0f} ADU", ha="center", fontsize=9)
+    figure.text(0.5, 0.925, f"{path.name}  |  {offset}  |  image median {median:.0f} ADU", ha="center", fontsize=9)
 
     x0, x1 = int(max(0, slit_x - GUIDE_ZOOM_HALF_PX)), int(min(width, slit_x + GUIDE_ZOOM_HALF_PX))
     y0, y1 = int(max(0, slit_y - GUIDE_ZOOM_HALF_PX)), int(min(height, slit_y + GUIDE_ZOOM_HALF_PX))
-    whole = figure.add_axes((0.06, 0.55, 0.44, 0.31))
+    whole = figure.add_axes((0.06, 0.70, 0.44, 0.20))
     low, high = np.percentile(image, [1, 99.5])
     whole.imshow(image, origin="lower", cmap="gray", vmin=low, vmax=high, extent=(-0.5, width - 0.5, -0.5, height - 0.5))
     whole.add_patch(Rectangle((x0 - 0.5, y0 - 0.5), x1 - x0, y1 - y0, fill=False, color="#d68910", lw=1))
@@ -284,7 +307,7 @@ def _draw_guide(figure: Figure, ctx: _Context) -> None:
                                 fill=False, color="#27864a", lw=1.1))
     title = "measured slit boxed in green, " if segment is not None else ""
     whole.set_title(f"Whole guide image ({title}zoomed area in orange)", fontsize=8.5)
-    zoom = figure.add_axes((0.56, 0.55, 0.40, 0.31))
+    zoom = figure.add_axes((0.56, 0.70, 0.40, 0.20))
     # Stretched on the sky around the slit (median + ZOOM_STRETCH_SIGMA noise
     # sigmas): the slit and the background show, the star saturates
     cutout = image[y0:y1, x0:x1]
@@ -356,7 +379,7 @@ def _centred_limits(values: np.ndarray) -> tuple[float, float]:
 
 def _draw_series(figure: Figure, ctx: _Context) -> None:
     times, flux, sky, rejected = _frame_series(ctx)
-    axes = figure.add_axes((0.13, 0.08, 0.72, 0.36))
+    axes = figure.add_axes(SERIES_RECT)
     axes.plot(times, flux, "o-", color="#1d3c6e", label="star flux")
     if rejected.any():
         axes.plot(np.array(times)[rejected], flux[rejected], "x", color="#c0392b", ms=12, mew=2,
@@ -380,13 +403,116 @@ def _draw_series(figure: Figure, ctx: _Context) -> None:
 
 def page_guiding(ctx: _Context) -> Figure:
     figure = _page(f"{ctx.title} - guiding and sky", ctx.subtitle)
-    for draw, rect, what in ((_draw_guide, (0.06, 0.55, 0.90, 0.31), "Guide image"),
-                             (_draw_series, (0.13, 0.08, 0.72, 0.36), "Frame-by-frame flux and sky")):
+    for draw, rect, what in ((_draw_guide, (0.06, 0.70, 0.90, 0.20), "Guide image"),
+                             (_draw_series, SERIES_RECT, "Frame-by-frame flux and sky"),
+                             (_draw_phd2_guiding, (0.11, 0.055, 0.77, 0.37), "PHD2 guiding")):
         try:
             draw(figure, ctx)
         except Exception as error:
             _unavailable(figure, rect, what, str(error))
     return figure
+
+
+def _exposures(ctx: _Context) -> list[tuple]:
+    """(start, end) UT of each science exposure."""
+    spans = []
+    for name in ctx.obs.sequencer_data.get("star_spectra_images", []):
+        header = fits.getheader(ctx.session_dir / name)
+        start = Time(header["DATE-OBS"], format="isot", scale="utc")
+        spans.append((start.datetime, (start + TimeDelta(float(header.get("EXPTIME", 0)), format="sec")).datetime))
+    return spans
+
+
+def _symmetric_limit(values: np.ndarray, minimum: float) -> float:
+    values = np.abs(values[np.isfinite(values)])
+    return max(minimum, 1.1 * float(np.percentile(values, 99))) if values.size else minimum
+
+
+def _draw_phd2_guiding(figure: Figure, ctx: _Context) -> None:
+    name = ctx.obs.sequencer_data.get("guide_log_file")
+    if not name:
+        raise FileNotFoundError("no guide log recorded in the observation")
+    sections = parse_guide_log(ctx.session_dir / name)
+    if not sections or not sections[-1].steps:
+        raise ValueError(f"no guided frame in {name}")
+    section = sections[-1]
+    stats = ctx.obs.reduction_data.get("guiding_stats")
+    scale = (stats or {}).get("pixel_scale") or SUBPLUGIN_PARAMS.get("guiding", {}).get("sampling_arcsec") or 1.0
+    start = section.started_at.replace(tzinfo=None)
+    settled = settled_frame(section)
+    steps = [s for s in section.steps if not s.dropped]
+    times = [start + timedelta(seconds=s.time_s) for s in steps]
+    frame_times = {s.frame: start + timedelta(seconds=s.time_s) for s in section.steps}
+    locks = [frame_times.get(frame + 1) for frame, text in section.infos if text.startswith("SET LOCK POSITION")]
+    dropped = [start + timedelta(seconds=s.time_s) for s in section.steps if s.dropped]
+    # Grey until the last completed settling (the whole section when PHD2 never settled)
+    settling_end = (frame_times.get(settled, start) if settled is not None
+                    else start + timedelta(seconds=section.steps[-1].time_s))
+    after_settling = [settled is not None and s.frame > settled for s in steps]
+    exposures = _exposures(ctx)
+
+    if stats:
+        text = (f"After settling: RMS {stats['total_rms_arcsec']:.2f}\" (RA {stats['ra_rms_arcsec']:.2f}\", "
+                f"Dec {stats['dec_rms_arcsec']:.2f}\")  |  largest error RA {stats['ra_max_arcsec']:.2f}\", "
+                f"Dec {stats['dec_max_arcsec']:.2f}\"  |  {stats['frames']} frames, {stats['dropped']} lost  |  "
+                f"{scale:g}\"/px")
+    else:
+        text = "Guiding statistics: not measured"
+    figure.text(0.5, 0.428, text, ha="center", fontsize=8.5)
+    figure.text(0.5, 0.414, f"{Path(name).name}", ha="center", fontsize=7, color="#444")
+    figure.text(0.5, 0.401, "Curve: star error.  Bars: correction pulse, in the direction it moves the star "
+                            "(East, North up).  Green: science exposures.  Grey: settling, not measured.", ha="center", fontsize=7, color="#444")
+
+    panels = (("RA", [s.ra_raw_px for s in steps], [s.ra_duration_ms if s.ra_direction == "E" else -s.ra_duration_ms
+                                                     for s in steps], (0.11, 0.235, 0.77, 0.14)),
+              ("Dec", [s.dec_raw_px for s in steps], [s.dec_duration_ms if s.dec_direction == "N" else -s.dec_duration_ms
+                                                      for s in steps], (0.11, 0.055, 0.77, 0.14)))
+    for axis, errors_px, pulses, rect in panels:
+        curve, bars = GUIDE_COLOURS[axis]
+        errors = np.array(errors_px, dtype=np.float64) * scale
+        axes = figure.add_axes(rect)
+        twin = axes.twinx()
+        # The bars and bands on the twin axis, drawn under the error curve
+        axes.set_zorder(twin.get_zorder() + 1)
+        axes.patch.set_visible(False)
+        for begin, end in exposures:
+            twin.axvspan(begin, end, color=EXPOSURE_BAND, lw=0, zorder=0)
+        twin.axvspan(start, settling_end, color=SETTLING_BAND, lw=0, zorder=0)
+        twin.vlines(times, 0, pulses, color=bars, lw=1.0, zorder=1)
+        pulses = np.array(pulses, dtype=np.float64)
+        pulse_limit = _symmetric_limit(pulses[after_settling] if any(after_settling) else pulses,
+                                       GUIDE_PULSE_MIN_LIMIT_MS)
+        twin.set_ylim(-pulse_limit, pulse_limit)
+        twin.set_ylabel("correction (ms)", color=bars, fontsize=8.5)
+        axes.plot(times, errors, color=curve, lw=0.7)
+        axes.axhline(0, color="#000", lw=0.5)
+        for when in locks:
+            if when is not None:
+                axes.axvline(when, color="#7f8c8d", ls="--", lw=0.8)
+        measured = errors[after_settling] if any(after_settling) else errors
+        limit = _symmetric_limit(measured, GUIDE_ERROR_MIN_LIMIT_ARCSEC)
+        axes.set_ylim(-limit, limit)
+        # Lost frames: black triangles along the top edge
+        if dropped:
+            axes.plot(dropped, [0.92 * limit] * len(dropped), "v", color="#000", ms=4, ls="none")
+        axes.set_ylabel(f"{axis} error (arcsec)", color=curve, fontsize=8.5)
+        # The axis covers the guiding: an exposure outside it (the demo's replayed
+        # frames keep their recording night's dates) is simply not shown
+        margin = timedelta(seconds=30)
+        axes.set_xlim(min(times[0], start) - margin, times[-1] + margin)
+        short = (times[-1] - times[0]).total_seconds() < SHORT_SERIES_SECONDS
+        axes.xaxis.set_major_formatter(DateFormatter("%H:%M:%S" if short else "%H:%M"))
+        if axis == "Dec":
+            axes.set_xlabel("UT", fontsize=8)
+        axes.tick_params(labelsize=7)
+        twin.tick_params(labelsize=7)
+        if stats:
+            key = axis.lower()
+            axes.set_title(f"{axis}: RMS {stats[f'{key}_rms_arcsec']:.2f}\"  largest {stats[f'{key}_max_arcsec']:.2f}\""
+                           f"  (dashed: lock position moved{', triangles: star lost' if dropped else ''})",
+                           fontsize=9, loc="left")
+        else:
+            axes.set_title(axis, fontsize=9, loc="left")
 
 
 def _spectrum_in_wavelength(ctx: _Context, key: str):

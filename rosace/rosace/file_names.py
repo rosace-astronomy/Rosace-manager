@@ -11,6 +11,7 @@ directory) — so every file of an observation spells the name the same way.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 _SPACES = re.compile(r"\s+")
 _UNSAFE_CHARS = re.compile(r"[^A-Za-z0-9_-]")
@@ -26,3 +27,10 @@ def safe_name(name: str) -> str:
     nothing usable is left; each caller decides what that means."""
     name = _UNSAFE_CHARS.sub("", _SPACES.sub("_", name))
     return _REPEATED_UNDERSCORES.sub("_", name).strip("_")
+
+
+def final_name(obs) -> str:
+    """Common name of the observation's delivered files (final spectrum,
+    plots, summary, PHD2 guide log): the observation file's name without
+    extension, plus the observation ID -- e.g. "20260925T213751_16_Peg_ba79e32c"."""
+    return f"{Path(obs.yaml_file or obs.suggested_filename).stem}_{obs.id}"

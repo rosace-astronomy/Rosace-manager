@@ -25,6 +25,13 @@ otherwise). Any program declaring this step must also declare
 guiding_dark_acquisition -- already true of every program that starts PHD2
 guiding in the first place, since that's the same requirement its own
 guide-image captures already have.
+
+Once PHD2 has stopped, writes the observation's guiding section, rebuilt in
+PHD2's GuideLog format by the PHD2 client (phd2/guide_log.py), to
+"<final name>_PHD2_GuideLog.txt" in the session directory (file_names.
+final_name(): the observation file's name plus the observation ID), under
+the shared key sequencer_data["guide_log_file"]. Never blocking: no section
+started during this observation, or a write error, is only a warning.
 """
 
 from __future__ import annotations
@@ -33,10 +40,12 @@ DISPLAY_NAME = "Stop guiding"
 
 import asyncio
 import logging
+from pathlib import Path
 
 from astropy.coordinates import SkyCoord
 
 from ....config import SUBPLUGIN_PARAMS
+from ....file_names import final_name
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
 from ..acquisition_helpers import capture_guide_image, slit_position
@@ -64,6 +73,10 @@ class StopPhd2GuidingPlugin(SubPlugin):
 
         await phd2.stop_capture()
         log.info("[STOP_PHD2_GUIDING] PHD2 guiding stopped")
+        try:
+            self._write_guide_log(obs, phd2)
+        except Exception as e:
+            log.warning(f"[STOP_PHD2_GUIDING] Guide log not written ({type(e).__name__}: {e})")
 
         await asyncio.sleep(SETTLE_AFTER_STOP_SECONDS)
         log.info(
@@ -82,6 +95,19 @@ class StopPhd2GuidingPlugin(SubPlugin):
                 f"continues ({type(e).__name__}: {e})"
             )
         return obs
+
+    @staticmethod
+    def _write_guide_log(obs: Observation, phd2) -> None:
+        section = phd2.guide_log_section()
+        # Received before the observation began: a previous observation's
+        # section (the receipt time, not PHD2's: the demo replays recorded times)
+        if section is None or (section.received_at or section.started_at) < obs.created_at:
+            log.warning("[STOP_PHD2_GUIDING] Guide log not written: no guiding section started during this observation")
+            return
+        name = f"{final_name(obs)}_PHD2_GuideLog.txt"
+        (Path(obs.obs_dir or "") / name).write_text(section.text, encoding="ascii", errors="replace")
+        obs.sequencer_data["guide_log_file"] = name
+        log.info(f"[STOP_PHD2_GUIDING] Guide log written: {name}")
 
     async def _check_final_pointing(self, obs: Observation) -> None:
         target = obs.scheduler_data.get("target")

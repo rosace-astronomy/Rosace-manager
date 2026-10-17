@@ -38,7 +38,7 @@ from astropy.io import fits
 from numpy.polynomial import Polynomial
 
 from ...config import GUI_PREVIEW_DIR
-from ...file_names import safe_name
+from ...file_names import final_name, safe_name  # noqa: F401 -- final_name re-exported for the reduction steps
 from ...image_broadcast import ws_image_broadcaster
 from ...models import Observation
 from .axes_helpers import FeatureAxes, find_axes
@@ -426,13 +426,6 @@ def law_coverage(law_file: Path) -> tuple[float, float] | None:
         if match:
             return float(match.group(1)), float(match.group(2))
     return None
-
-
-def final_name(obs: Observation) -> str:
-    """Common name of the observation's delivered files (final spectrum,
-    plots, summary): the observation file's name without extension, plus the
-    observation ID -- e.g. "20260925T213751_16_Peg_ba79e32c"."""
-    return f"{Path(obs.yaml_file or obs.suggested_filename).stem}_{obs.id}"
 
 
 def draw_spectrum(axes, wavelengths: np.ndarray, data: np.ndarray, coverage: tuple[float, float] | None,

@@ -76,3 +76,37 @@ class TestFakePhd2:
             await asyncio.wait_for(fake.stop(), timeout=5.0)
         finally:
             await phd2.disconnect()
+
+
+class TestGuideLogReplay:
+
+    async def test_recorded_frames_replayed_into_the_client_guide_log(self, replay_bench, server, client):
+        server.step_seconds = 0.01
+        replay_bench.point_at(10.0, 50.0)
+        await client.start_guiding()
+        await client.set_lock_position(498.5, 403.25)
+        await client.start_guiding()
+        await asyncio.sleep(0.2)
+        await client.stop_capture()
+
+        text = client.guide_log_section().text
+        lines = text.splitlines()
+        assert text.count("Guiding Begins at ") == 1 and lines[-1].startswith("Guiding Ends at ")
+        assert "Pixel scale = 2.88 arc-sec/px" in lines and "Equipment Profile = Replay" in lines
+        assert '1,2.000,"Mount",0.000,0.000,0.500,-0.250,0.400,-0.250,150,W,90,N,,,1000,30.00,0' in lines
+        assert any(line.startswith('3,6.000,"DROP"') for line in lines)
+        assert "INFO: SET LOCK POSITION, new lock pos = 498.500, 403.250" in lines
+        assert lines.count("INFO: SETTLING STATE CHANGE, Settling complete") == 2
+        # The recorded times, so the log lines up with the replayed frames
+        assert "Guiding Begins at 2026-10-14 21:00:00" in lines
+        assert client.guide_log_section().received_at > client.guide_log_section().started_at
+
+    async def test_observation_without_guide_log_replays_no_frame(self, replay_bench, server, client):
+        server.step_seconds = 0.01
+        replay_bench.point_at(80.0, 20.0)
+        await client.start_guiding()
+        await asyncio.sleep(0.1)
+        await client.stop_capture()
+
+        text = client.guide_log_section().text
+        assert '"Mount"' not in text and "Guiding Ends at " in text

@@ -136,6 +136,12 @@ class ReplayBench:
         star = self._star
         return tuple(star["lock_position"]) if star is not None else None
 
+    def guide_log(self) -> Path | None:
+        """The recorded PHD2 guide log section of the observation pointed at
+        (None without one: a dataset built without --guidelog)."""
+        star = self._star
+        return self.path(star["guide_log"]) if star is not None and star.get("guide_log") else None
+
 
 _bench: ReplayBench | None = None
 _bench_lock = threading.Lock()

@@ -280,3 +280,5 @@ Claude peut le suggérer, jamais le faire lui-même.
       seule la seconde compte pour le centrage (2026-10-10)
 - [ ] Summary : placer R (et bientôt le SNR) dans un cadre à droite du titre
       de la page 1, plutôt que dans le bandeau sous le sous-titre (2026-10-17)
+- [ ] Démo : récupérer le GuideLog PHD2 du 14/10 sur le Stellarmate et reconstruire
+      le jeu de données avec `--guidelog` (rejeu du guidage) (2026-10-17)

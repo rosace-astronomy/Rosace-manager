@@ -95,6 +95,8 @@ PHD2_config:
         timeout: 180
     # Seconds between a guide call and the fake PHD2's SettleDone
     replay_settle_seconds: 3
+    # Seconds between two replayed frames of the recorded guide log
+    replay_step_seconds: 0.2
 
 # The 72ED profiles' mandatory steps, without home_sync_am3: the homing aims at
 # a random point of the current sky and plate-solves around it, while replay

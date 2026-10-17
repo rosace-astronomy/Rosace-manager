@@ -21,6 +21,7 @@ frame's cards survive.
   OBSERVER, BSS_SITE and BSS_LAT/BSS_LONG/BSS_ELEV (both forms), BSS_INST and
   TELESCOP/INSTRUME/DETNAM (both forms), BSS_ITRP when resolving_power is set
   (the instrument's typical value).
+  Giving both forms makes BeSS issue a warning, not a rejection.
 - Resolving power measured on the lamp (dispersion_law, read from the
   dispersion law file, shared key dispersion_law_file): BSS_ESRP and the
   wavelength it is given at, BSS_SRPW, in the unit of CUNIT1. Absent when the
@@ -29,7 +30,10 @@ frame's cards survive.
   (BeSS keeps them without using them): SNR1 with its zone SNR1LO-SNR1HI (in
   the unit of CUNIT1), SNR2..., one per measured zone. Absent when not
   measured.
-  Giving both forms makes BeSS issue a warning, not a rejection.
+- Guiding (guiding_stats, shared key guiding_stats), not BeSS keywords
+  either, in arcseconds after PHD2's settling: GUIDRMS (total RMS),
+  GUIDRMSR/GUIDRMSD (RA/Dec RMS), GUIDMAXR/GUIDMAXD (largest RA/Dec error).
+  Absent when not measured.
 - Wavelength axis: CRVAL1, CDELT1, CRPIX1, CTYPE1, CUNIT1.
 - Processing: BSS_VHEL = 0 and BSS_TELL/BSS_COSM/BSS_NORM = 'none' (no
   heliocentric, telluric, cosmic-ray or continuum correction; the scaling is
@@ -123,6 +127,23 @@ def _measured_resolving_power(obs: Observation, session_dir: Path) -> tuple[floa
     return float(law["resolving_power"]), float(law["resolving_power_wavelength"])
 
 
+def _guiding_stats(obs: Observation) -> dict | None:
+    """The guiding statistics (shared key guiding_stats); None when not measured."""
+    try:
+        return find_shared_input(obs, "guiding_stats")
+    except RuntimeError:
+        return None
+
+
+GUIDING_KEYWORDS = (
+    ("GUIDRMS", "total_rms_arcsec", "[arcsec] Guiding RMS, PHD2, after settling"),
+    ("GUIDRMSR", "ra_rms_arcsec", "[arcsec] Guiding RMS in RA"),
+    ("GUIDRMSD", "dec_rms_arcsec", "[arcsec] Guiding RMS in Dec"),
+    ("GUIDMAXR", "ra_max_arcsec", "[arcsec] Largest guiding error in RA"),
+    ("GUIDMAXD", "dec_max_arcsec", "[arcsec] Largest guiding error in Dec"),
+)
+
+
 def _spectrum_snr(obs: Observation) -> list[dict]:
     """The measured SNR zones (shared key spectrum_snr); empty when not measured."""
     try:
@@ -194,6 +215,10 @@ class WriteSpectrumPlugin(SubPlugin):
             h[f"SNR{k}"] = (float(zone["snr"]), "DER_SNR, stacked spectrum before resampling")
             h[f"SNR{k}LO"] = (float(zone["wavelength_min"]), f"Start of the SNR{k} zone")
             h[f"SNR{k}HI"] = (float(zone["wavelength_max"]), f"End of the SNR{k} zone")
+        guiding = _guiding_stats(obs)
+        if guiding:
+            for keyword, key, comment in GUIDING_KEYWORDS:
+                h[keyword] = (float(guiding[key]), comment)
 
         h["CRVAL1"] = (float(old["CRVAL1"]), "Wavelength of the reference point")
         h["CDELT1"] = (float(old["CDELT1"]), "Wavelength step")

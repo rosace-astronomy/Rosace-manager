@@ -7,13 +7,15 @@ sub-plugin's own orchestration.
 Run: pytest plugins/sequencer_plugins/stop_phd2_guiding/test_stop_phd2_guiding.py -v
 """
 
-from datetime import datetime, timezone
+import logging
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from astropy.coordinates import SkyCoord
 
 from rosace.models import Observation, Target
+from rosace.phd2.guide_log import RecordedSection
 from rosace.plugins.sequencer_plugins import acquisition_helpers
 from rosace.plugins.sequencer_plugins.stop_phd2_guiding import stop_phd2_guiding
 from rosace.plugins.sequencer_plugins.stop_phd2_guiding.stop_phd2_guiding import StopPhd2GuidingPlugin
@@ -38,6 +40,7 @@ def _make_obs() -> Observation:
     obs.scheduler_data["target"] = Target(name=TARGET_NAME, ra=TARGET_RA, dec=TARGET_DEC)
     obs.scheduler_data["queried_name"] = QUERIED_NAME
     obs.hardware["phd2"] = AsyncMock()
+    obs.hardware["phd2"].guide_log_section = MagicMock(return_value=None)
     obs.hardware["guiding_camera"] = AsyncMock()
     return obs
 
@@ -177,3 +180,59 @@ class TestStopPhd2GuidingPlugin:
             (TARGET_PIXEL_X - SLIT_X) ** 2 + (TARGET_PIXEL_Y - 15.0) ** 2
         ) ** 0.5 * SAMPLING_ARCSEC
         assert obs.sequencer_data["stop_phd2_guiding"]["residual_arcsec"] == pytest.approx(expected_residual)
+
+
+class TestGuideLog:
+
+    async def test_writes_the_section_started_during_the_observation(self, tmp_path, caplog):
+        obs = _make_obs()
+        obs.obs_dir = str(tmp_path)
+        obs.yaml_file = str(tmp_path / "20261017T012650_Vega.yaml")
+        section = RecordedSection(obs.created_at + timedelta(minutes=2), "Guiding Begins at ...\n")
+        obs.hardware["phd2"].guide_log_section = MagicMock(return_value=section)
+
+        with caplog.at_level(logging.INFO, logger="spectro.subplugin.stop_phd2_guiding"):
+            await StopPhd2GuidingPlugin().execute(obs)
+
+        name = "20261017T012650_Vega_obs12345_PHD2_GuideLog.txt"
+        assert obs.sequencer_data["guide_log_file"] == name
+        assert (tmp_path / name).read_text() == section.text
+        assert f"Guide log written: {name}" in caplog.text
+
+    async def test_a_section_from_before_the_observation_is_not_written(self, tmp_path, caplog):
+        obs = _make_obs()
+        obs.obs_dir = str(tmp_path)
+        section = RecordedSection(obs.created_at - timedelta(minutes=30), "old\n")
+        obs.hardware["phd2"].guide_log_section = MagicMock(return_value=section)
+
+        with caplog.at_level(logging.WARNING, logger="spectro.subplugin.stop_phd2_guiding"):
+            await StopPhd2GuidingPlugin().execute(obs)
+
+        assert "guide_log_file" not in obs.sequencer_data
+        assert list(tmp_path.iterdir()) == []
+        assert "no guiding section started during this observation" in caplog.text
+
+    async def test_the_receipt_time_decides_not_phd2_time(self, tmp_path):
+        # The demo replays a recorded night: PHD2's own start time is in the past
+        obs = _make_obs()
+        obs.obs_dir = str(tmp_path)
+        section = RecordedSection(obs.created_at - timedelta(days=3), "replayed\n",
+                                  received_at=obs.created_at + timedelta(minutes=2))
+        obs.hardware["phd2"].guide_log_section = MagicMock(return_value=section)
+
+        await StopPhd2GuidingPlugin().execute(obs)
+
+        assert "guide_log_file" in obs.sequencer_data
+
+    async def test_a_write_failure_does_not_fail_the_observation(self, caplog):
+        obs = _make_obs()
+        obs.obs_dir = "/nonexistent/directory"
+        section = RecordedSection(obs.created_at + timedelta(minutes=2), "text\n")
+        obs.hardware["phd2"].guide_log_section = MagicMock(return_value=section)
+
+        with caplog.at_level(logging.WARNING, logger="spectro.subplugin.stop_phd2_guiding"):
+            await StopPhd2GuidingPlugin().execute(obs)
+
+        assert "guide_log_file" not in obs.sequencer_data
+        assert "Guide log not written" in caplog.text
+        assert "stop_phd2_guiding" in obs.sequencer_data

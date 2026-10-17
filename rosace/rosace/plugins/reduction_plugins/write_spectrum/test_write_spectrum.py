@@ -39,6 +39,8 @@ BESS_KEYWORDS = {
     "BSS_ESRP": (float, (0, 1e6)), "BSS_SRPW": (float, (0, 1e6)),
     "SNR1": (float, (0, 1e6)), "SNR1LO": (float, (0, 1e6)), "SNR1HI": (float, (0, 1e6)),
     "SNR2": (float, (0, 1e6)), "SNR2LO": (float, (0, 1e6)), "SNR2HI": (float, (0, 1e6)),
+    "GUIDRMS": (float, (0, 1e4)), "GUIDRMSR": (float, (0, 1e4)), "GUIDRMSD": (float, (0, 1e4)),
+    "GUIDMAXR": (float, (0, 1e4)), "GUIDMAXD": (float, (0, 1e4)),
 }
 # Spectra passed to the GUI publication, mocked by _setup()
 PUBLISHED: list = []
@@ -143,7 +145,7 @@ class TestWriteSpectrumPlugin:
             assert camera_card not in h
         assert [str(c) for c in h["COMMENT"]] == ["Sum of 5 1D spectra"]
         assert "BSS_ESRP" not in h and "BSS_SRPW" not in h
-        assert "SNR1" not in h
+        assert "SNR1" not in h and "GUIDRMS" not in h
         assert bess_errors(h) == []
 
     async def test_signal_to_noise_ratio(self, tmp_path, monkeypatch):
@@ -157,6 +159,18 @@ class TestWriteSpectrumPlugin:
         assert (h["SNR1"], h["SNR1LO"], h["SNR1HI"]) == (78.0, 3750.0, 7500.0)
         assert (h["SNR2"], h["SNR2LO"], h["SNR2HI"]) == (38.0, 6000.0, 7000.0)
         assert "SNR3" not in h
+        assert bess_errors(h) == []
+
+    async def test_guiding_statistics(self, tmp_path, monkeypatch):
+        obs = _setup(tmp_path, monkeypatch)
+        obs.reduction_data["guiding_stats"] = {"total_rms_arcsec": 1.24, "ra_rms_arcsec": 0.89, "dec_rms_arcsec": 0.85,
+                                               "ra_max_arcsec": 10.56, "dec_max_arcsec": 10.47}
+
+        result = await WriteSpectrumPlugin().execute(obs)
+
+        h = fits.getheader(tmp_path / result.reduction_data["final_spectrum"])
+        assert (h["GUIDRMS"], h["GUIDRMSR"], h["GUIDRMSD"], h["GUIDMAXR"], h["GUIDMAXD"]) == (
+            1.24, 0.89, 0.85, 10.56, 10.47)
         assert bess_errors(h) == []
 
     async def test_measured_resolving_power(self, tmp_path, monkeypatch):

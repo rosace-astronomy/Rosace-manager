@@ -29,6 +29,11 @@ reconnect on a dropped connection either. A dead connection fails every
 pending call/event wait with DeviceConnectionError and makes any further
 call raise the same immediately; re-establishing the connection only
 happens the next time INIT_SESSION runs (a full session restart).
+
+Every event also goes to a GuideLogRecorder (guide_log.py), which rebuilds
+the current guiding section in PHD2's own GuideLog format -- PHD2's own file
+stays on its machine. Once guiding starts, the header lines are read by RPC
+in the background, best effort. guide_log_section() returns the section.
 """
 
 from __future__ import annotations
@@ -41,10 +46,12 @@ import time
 from typing import Any
 
 from ..hardware.errors import DeviceCommandError, DeviceConnectionError, DeviceTimeoutError
+from .guide_log import GuideLogRecorder, RecordedSection
 
 log = logging.getLogger("spectro.phd2")
 
 _DEFAULT_CALL_TIMEOUT = 10.0
+_HEADER_CALL_TIMEOUT = 5.0
 
 # Events that all signal "PHD2 has stopped capturing", per the Event
 # Monitoring docs -- see stop_capture()'s own docstring.
@@ -72,6 +79,8 @@ class Phd2Client:
         self._pending: dict[int, asyncio.Future] = {}
         self._event_subscribers: dict[str, list[asyncio.Queue]] = {}
         self._last_app_state: str | None = None
+        self._guide_log = GuideLogRecorder()
+        self._header_task: asyncio.Task | None = None
 
     # ── Connection lifecycle ─────────────────────────────────────────
 
@@ -98,6 +107,8 @@ class Phd2Client:
 
     async def disconnect(self) -> None:
         self._connected = False
+        if self._header_task is not None:
+            self._header_task.cancel()
         if self._read_task is not None:
             self._read_task.cancel()
             try:
@@ -139,6 +150,11 @@ class Phd2Client:
         event_name = msg["Event"]
         if event_name == "AppState":
             self._last_app_state = msg["State"]
+        try:
+            if self._guide_log.on_event(msg):
+                self._header_task = asyncio.create_task(self._record_guide_log_header())
+        except Exception as e:
+            log.warning(f"[PHD2] Guide log: could not record a {event_name!r} event: {e}")
         for queue in self._event_subscribers.get(event_name, []):
             queue.put_nowait(msg)
 
@@ -323,6 +339,72 @@ class Phd2Client:
                     return
         finally:
             self._unsubscribe_many(_STOP_EVENTS, queue)
+
+    # ── Guide log ────────────────────────────────────────────────────
+
+    def guide_log_section(self) -> RecordedSection | None:
+        """The current (or last) guiding section, in PHD2's GuideLog format."""
+        return self._guide_log.section()
+
+    async def _header_value(self, method: str, params: Any = None) -> Any:
+        try:
+            return await self._call(method, params, timeout=_HEADER_CALL_TIMEOUT)
+        except Exception as e:
+            log.debug(f"[PHD2] Guide log header: {method!r} failed: {e}")
+            return None
+
+    async def _algorithm_line(self, axis: str, label: str) -> str | None:
+        names = await self._header_value("get_algo_param_names", [axis])
+        if not isinstance(names, list):
+            return None
+        values = []
+        for name in names:
+            value = await self._header_value("get_algo_param", [axis, name])
+            if value is not None:
+                values.append((name, value))
+        algorithm = next((v for n, v in values if n == "algorithmName"), None)
+        parts = [f"{label} guide algorithm = {algorithm or 'Unknown'}"]
+        parts += [f"{n} = {v:.3f}" if isinstance(v, float) else f"{n} = {v}" for n, v in values if n != "algorithmName"]
+        return ", ".join(parts)
+
+    async def _record_guide_log_header(self) -> None:
+        """The section's header lines, as far as PHD2's RPC methods can tell
+        (camera details, mount position and the like have no method: those
+        lines are left out, never invented)."""
+        lines = []
+        try:
+            profile = await self._header_value("get_profile")
+            if isinstance(profile, dict) and profile.get("name"):
+                lines.append(f"Equipment Profile = {profile['name']}")
+            scale = await self._header_value("get_pixel_scale")
+            if isinstance(scale, (int, float)) and scale > 0:
+                lines.append(f"Pixel scale = {scale:.2f} arc-sec/px")
+            equipment = await self._header_value("get_current_equipment")
+            equipment = equipment if isinstance(equipment, dict) else {}
+            camera = (equipment.get("camera") or {}).get("name")
+            if camera:
+                lines.append(f" Camera = {camera}")
+            exposure = await self._header_value("get_exposure")
+            if isinstance(exposure, (int, float)) and exposure > 0:
+                lines.append(f"Exposure = {int(exposure)} ms")
+            mount = (equipment.get("mount") or {}).get("name") or "Unknown"
+            calibration = await self._header_value("get_calibration_data", ["Mount"])
+            if isinstance(calibration, dict) and all(k in calibration for k in ("xAngle", "xRate", "yAngle", "yRate")):
+                mount += (f", xAngle = {calibration['xAngle']:.1f}, xRate = {calibration['xRate']:.3f}, "
+                          f"yAngle = {calibration['yAngle']:.1f}, yRate = {calibration['yRate']:.3f}")
+            lines.append(f"Mount = {mount}")
+            for axis, label in (("ra", "X"), ("dec", "Y")):
+                line = await self._algorithm_line(axis, label)
+                if line:
+                    lines.append(line)
+            lock = await self._header_value("get_lock_position")
+            if isinstance(lock, list) and len(lock) == 2:
+                lines.append(f"Lock position = {lock[0]:.3f}, {lock[1]:.3f}")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.warning(f"[PHD2] Guide log header incomplete: {e}")
+        self._guide_log.set_header(lines)
 
     # ── Lock position ────────────────────────────────────────────────
 

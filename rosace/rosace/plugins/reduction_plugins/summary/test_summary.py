@@ -12,6 +12,7 @@ from astropy.io import fits
 import rosace.plugins.sequencer_plugins.acquisition_helpers as acquisition_helpers
 import rosace.session_log_extractor as session_log_extractor
 from rosace.models import Observation, Target
+from rosace.phd2.guide_log import CSV_HEADER
 from rosace.plugins.reduction_plugins.summary import summary as module
 from rosace.plugins.reduction_plugins.summary.summary import SummaryPlugin, log_events
 
@@ -90,6 +91,11 @@ def _setup(tmp_path, monkeypatch, with_guide=True, log_text=""):
     if with_guide:
         fits.writeto(session / "GUIDING_Vega.fits", np.random.default_rng(0).normal(1000, 10, (100, 120)).astype(np.float32))
         obs.sequencer_data["stop_phd2_guiding"] = {"guide_image": "GUIDING_Vega.fits", "residual_arcsec": 2.8}
+        _guide_log(session / "Vega_PHD2_GuideLog.txt")
+        obs.sequencer_data["guide_log_file"] = "Vega_PHD2_GuideLog.txt"
+        red["guiding_stats"] = {"total_rms_arcsec": 1.04, "ra_rms_arcsec": 0.86, "dec_rms_arcsec": 0.58,
+                                "ra_max_arcsec": 0.86, "dec_max_arcsec": 0.58, "frames": 199, "dropped": 1,
+                                "pixel_scale": 2.88}
     monkeypatch.setattr(module, "SUBPLUGIN_PARAMS", PARAMS)
     monkeypatch.setattr(module, "OBSERVATORY", PARAMS["observatory"])
     monkeypatch.setattr(acquisition_helpers, "SUBPLUGIN_PARAMS", PARAMS)
@@ -99,13 +105,23 @@ def _setup(tmp_path, monkeypatch, with_guide=True, log_text=""):
     return obs, session
 
 
+def _guide_log(path):
+    """A guide log in PHD2's format covering the series (local times, like PHD2's)."""
+    local = datetime(2026, 9, 25, 21, 39, 0, tzinfo=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    rows = [f'{i},{3.0 * i:.3f},"Mount",0.0,0.0,{0.3 * (-1) ** i},{-0.2 * (-1) ** i},{0.2 * (-1) ** i},0.000,'
+            f'{100 if i % 2 else 0},{"W" if i % 2 else ""},0,,,,1000,30.00,0' for i in range(1, 200)]
+    rows.insert(3, "INFO: SET LOCK POSITION, new lock pos = 50.000, 40.000")
+    rows.insert(50, '50,150.500,"DROP",,,,,,,,,,,,,0,0.00,2,"Star lost - low SNR"')
+    path.write_text("\n".join([f"Guiding Begins at {local}", "Pixel scale = 2.88 arc-sec/px", CSV_HEADER, *rows]) + "\n")
+
+
 def _page_count(path):
     return len(re.findall(rb"/Type\s*/Page[^s]", path.read_bytes()))
 
 
 class TestSummaryPlugin:
 
-    async def test_four_pages(self, tmp_path, monkeypatch):
+    async def test_four_pages(self, tmp_path, monkeypatch, caplog):
         obs, session = _setup(tmp_path, monkeypatch)
 
         result = await SummaryPlugin().execute(obs)
@@ -113,6 +129,7 @@ class TestSummaryPlugin:
         name = result.reduction_data["summary_file"]
         assert name == "20260925T213751_Vega_0e37017f_summary.pdf"
         assert _page_count(session / name) == 4
+        assert "PHD2 guiding not available" not in caplog.text
 
     async def test_missing_guide_image_does_not_fail(self, tmp_path, monkeypatch, caplog):
         obs, session = _setup(tmp_path, monkeypatch, with_guide=False)
@@ -121,6 +138,7 @@ class TestSummaryPlugin:
 
         assert _page_count(session / result.reduction_data["summary_file"]) == 4
         assert "Guide image not available" in caplog.text
+        assert "PHD2 guiding not available: no guide log recorded" in caplog.text
 
 
 class TestQualityBand:
@@ -132,7 +150,8 @@ class TestQualityBand:
         fits.setval(final, "BSS_SRPW", value=6563.0)
 
         assert module._quality_items(module._Context(obs)) == [("R = 630 at 6563 Å", True),
-                                                               ("SNR: not measured", False)]
+                                                               ("SNR: not measured", False),
+                                                               ("Guiding: not measured", False)]
 
     def test_signal_to_noise_ratios_from_the_final_header(self, tmp_path, monkeypatch):
         obs, session = _setup(tmp_path, monkeypatch)
@@ -142,13 +161,21 @@ class TestQualityBand:
             fits.setval(final, keyword, value=value)
 
         assert module._quality_items(module._Context(obs)) == [
-            ("R = 630 at 6563 Å", True), ("SNR 78 (3750–7500 Å)", True), ("SNR 38 (6000–7000 Å)", True)]
+            ("R = 630 at 6563 Å", True), ("SNR 78 (3750–7500 Å)", True), ("SNR 38 (6000–7000 Å)", True),
+            ("Guiding: not measured", False)]
 
     def test_resolving_power_not_measured(self, tmp_path, monkeypatch):
         obs, _ = _setup(tmp_path, monkeypatch)
 
         assert module._quality_items(module._Context(obs)) == [("R: not measured", False),
-                                                               ("SNR: not measured", False)]
+                                                               ("SNR: not measured", False),
+                                                               ("Guiding: not measured", False)]
+
+    def test_guiding_rms_from_the_final_header(self, tmp_path, monkeypatch):
+        obs, session = _setup(tmp_path, monkeypatch)
+        fits.setval(session / obs.reduction_data["final_spectrum"], "GUIDRMS", value=1.24)
+
+        assert module._quality_items(module._Context(obs))[-1] == ("Guiding RMS 1.24\"", True)
 
 
 LOG = """2026-09-25 21:37:40 - WARNING - [CROP] warning of the previous observation's reduction

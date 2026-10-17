@@ -477,3 +477,54 @@ class TestDisconnectAndConnectionLoss:
 
         with pytest.raises(DeviceConnectionError):
             await client.get_app_state()
+
+
+class TestGuideLog:
+
+    async def test_events_and_header_build_the_section(self, server, client):
+        server.handlers.update({
+            "get_profile": {"id": 1, "name": "72ED Stellarmate"},
+            "get_pixel_scale": 2.88,
+            "get_current_equipment": {"camera": {"name": "QHY", "connected": True},
+                                      "mount": {"name": "ZWO AM3", "connected": True}},
+            "get_exposure": 2000,
+            "get_calibration_data": {"xAngle": -178.8, "xRate": 2.161, "yAngle": -89.7, "yRate": 2.551},
+            "get_algo_param_names": ["algorithmName", "Aggression"],
+            "get_algo_param": 0.7,
+            "get_lock_position": [546.997, 675.303],
+        })
+        await client.connect()
+
+        await server.push_event({"Event": "StartGuiding", "Timestamp": 1792182000.0})
+        await server.push_event({"Event": "GuideStep", "Frame": 1, "Time": 3.05, "dx": 0.1, "dy": 0.2,
+                                 "RADistanceRaw": 0.5, "DECDistanceRaw": -0.3, "RADistanceGuide": 0.3,
+                                 "DECDistanceGuide": 0.0, "RADuration": 144, "RADirection": "West",
+                                 "StarMass": 1000, "SNR": 30.0, "ErrorCode": 0})
+        await server.push_event({"Event": "GuidingStopped", "Timestamp": 1792182090.0})
+        for _ in range(50):
+            await asyncio.sleep(0.02)
+            if client._header_task is not None and client._header_task.done():
+                break
+
+        lines = client.guide_log_section().text.splitlines()
+        assert "Equipment Profile = 72ED Stellarmate" in lines
+        assert "Pixel scale = 2.88 arc-sec/px" in lines
+        assert " Camera = QHY" in lines and "Exposure = 2000 ms" in lines
+        assert "Mount = ZWO AM3, xAngle = -178.8, xRate = 2.161, yAngle = -89.7, yRate = 2.551" in lines
+        assert "X guide algorithm = 0.7, Aggression = 0.700" in lines
+        assert "Lock position = 546.997, 675.303" in lines
+        assert '1,3.050,"Mount",0.100,0.200,0.500,-0.300,0.300,0.000,144,W,0,,,,1000,30.00,0' in lines
+        assert lines[-1].startswith("Guiding Ends at ")
+
+    async def test_header_failures_leave_lines_out(self, server, client):
+        server.handlers["get_pixel_scale"] = ("error", "no camera")
+        await client.connect()
+
+        await server.push_event({"Event": "StartGuiding"})
+        for _ in range(50):
+            await asyncio.sleep(0.02)
+            if client._header_task is not None and client._header_task.done():
+                break
+
+        text = client.guide_log_section().text
+        assert "Pixel scale" not in text and "Guiding Begins at" in text

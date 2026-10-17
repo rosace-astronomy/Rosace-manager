@@ -13,13 +13,17 @@ files those devices need and describes them in manifest.yaml:
 - the calibration series shared by the night (bias, dark, lamp, flat,
   guiding dark), and the guide image of the mount's homing;
 - the reduction's reference files (lamp lines, instrumental response);
-- the astrometry.net index tiles covering the demo fields.
+- the astrometry.net index tiles covering the demo fields;
+- with --guidelog, PHD2's own GuideLog of that night (copied by hand from
+  the guiding computer): each observation's guiding section, the first one
+  begun after the observation started and before the next one, which the
+  fake PHD2 replays so the demo writes a real guide log.
 
 Everything is read-only on the source side: files are copied, never moved
 or modified. Run by hand, once per new dataset, then again only to change
 the observations:
 
-    python scripts/build_demo_dataset.py [--output DIR]
+    python scripts/build_demo_dataset.py [--output DIR] [--guidelog FILE]
 
 DIR defaults to docker/replay_data/ (ignored by git), where the Docker
 build finds it; for --demo-mode without Docker, use
@@ -32,7 +36,7 @@ import argparse
 import re
 import shutil
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import yaml
@@ -178,6 +182,46 @@ def _star_entry(dossier: dict, locks: list) -> tuple[dict, list[str]]:
     return entry, files
 
 
+GUIDE_BEGINS = "Guiding Begins at "
+GUIDE_ENDS = "Guiding Ends at "
+
+
+def _guide_sections(guidelog: Path) -> list[tuple[datetime, str]]:
+    """(UTC start, text) of every guiding section of a PHD2 GuideLog (local times)."""
+    sections, current = [], None
+    for line in guidelog.read_text(errors="replace").splitlines():
+        if line.startswith(GUIDE_BEGINS):
+            start = datetime.strptime(line[len(GUIDE_BEGINS):].strip(), "%Y-%m-%d %H:%M:%S").astimezone(timezone.utc)
+            current = [line]
+            sections.append((start, current))
+        elif current is not None:
+            current.append(line)
+            if line.startswith(GUIDE_ENDS):
+                current = None
+    return [(start, "\n".join(lines) + "\n") for start, lines in sections]
+
+
+def _created(dossier: dict) -> datetime:
+    created = dossier["created_at"]
+    return created if isinstance(created, datetime) else datetime.fromisoformat(created)
+
+
+def _guide_logs(dossiers: dict[str, dict], guidelog: Path) -> dict[str, str]:
+    """Observation ID -> its guiding section's text, for the observations that have one."""
+    sections = _guide_sections(guidelog)
+    starts = sorted(_created(d) for d in dossiers.values())
+    found = {}
+    for observation_id, dossier in dossiers.items():
+        begin = _created(dossier)
+        end = next((s for s in starts if s > begin), begin + timedelta(hours=3))
+        match = next((text for start, text in sections if begin <= start < end), None)
+        if match is None:
+            print(f"No guiding section for observation {observation_id} in {guidelog.name}")
+        else:
+            found[observation_id] = match
+    return found
+
+
 def _homing_image(dossiers: dict[str, dict]) -> str:
     for observation_id in OBSERVATION_IDS:
         homing = dossiers[observation_id]["sequencer_data"].get("home_sync_am3")
@@ -186,13 +230,16 @@ def _homing_image(dossiers: dict[str, dict]) -> str:
     raise SystemExit("No homing guide image among the observations")
 
 
-def build(output: Path) -> None:
+def build(output: Path, guidelog: Path | None = None) -> None:
     dossiers = _observation_dossiers()
     locks = _lock_positions()
+    guide_logs = _guide_logs(dossiers, guidelog) if guidelog else {}
 
     stars, files = [], []
     for observation_id in OBSERVATION_IDS:
         entry, needed = _star_entry(dossiers[observation_id], locks)
+        if observation_id in guide_logs:
+            entry["guide_log"] = f"guiding/{observation_id}_PHD2_GuideLog.txt"
         stars.append(entry)
         files += needed
 
@@ -236,6 +283,9 @@ def build(output: Path) -> None:
         if not destination.exists() or destination.stat().st_size != source.stat().st_size:
             shutil.copy2(source, destination)
         total += destination.stat().st_size
+    for star in stars:
+        if star.get("guide_log"):
+            (output / star["guide_log"]).write_text(guide_logs[star["observation_id"]])
     (output / "manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True))
     print(f"{len(stars)} observations, {len(copies)} files, {total / 1e6:.0f} MB -> {output}")
 
@@ -244,8 +294,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--output", type=Path, default=REPO_ROOT / "docker" / "replay_data",
                         help="dataset directory (default: docker/replay_data/)")
+    parser.add_argument("--guidelog", type=Path,
+                        help="PHD2's GuideLog of the same night, replayed by the fake PHD2 (optional)")
     args = parser.parse_args()
-    build(args.output.expanduser())
+    build(args.output.expanduser(), args.guidelog.expanduser() if args.guidelog else None)
 
 
 if __name__ == "__main__":
