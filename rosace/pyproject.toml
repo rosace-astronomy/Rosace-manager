@@ -31,8 +31,9 @@ dependencies = [
     # imported directly here).
     "scipy>=1.11",
     # focus SEQUENCER sub-plugin: star detection/shape filtering for the
-    # guiding-camera focus-quality measurement (DAOStarFinder).
-    "photutils>=1.13",
+    # guiding-camera focus-quality measurement (DAOStarFinder; its
+    # sharpness_range/roundness_range arguments need 3.0).
+    "photutils>=3.0",
     # reduction_plugins: diagnostic and spectrum plots (PNG/PDF/SVG), e.g.
     # extract's picture of the spectrum window and sky zones.
     "matplotlib>=3.8",

@@ -74,6 +74,11 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Publier l'image Docker de la démo sur ghcr.io, et le jeu de rejeu en
       pièce jointe d'une release GitHub, pour qu'un autre poste n'ait pas à
       le reconstruire depuis `~/.rosace` (2026-10-16)
+- [ ] Mettre à jour la doc Sphinx (`~/ROSACE/Rosace-docs`, publiée sur
+      rosace-astronomy.github.io, en anglais) au moment où l'image Docker
+      sera publiée sur un dépôt public : « Get started » (démo Docker), et
+      ce qu'a apporté septembre-octobre — partir du manuel utilisateur
+      `~/Téléchargements/Rosace_manuel_utilisateur_v1.0.pdf` (2026-10-18)
 - [ ] Supprimer le backend `internal` (`sequencer_backend: internal`,
       `programs/demo.yaml`, les `_internal.py`) : la démo ne s'en sert plus.
       Basculer d'abord ses tests sur le matériel rejoué (2026-10-16)

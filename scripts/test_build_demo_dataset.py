@@ -55,3 +55,15 @@ def test_check_refuses_a_leftover(tmp_path):
     (tmp_path / "notes.txt").write_text("lat 45.28968\n")
     with pytest.raises(SystemExit, match="45.289"):
         builder.check_anonymized(tmp_path)
+
+
+def test_gzip_frame_is_anonymized_and_stays_compressed(tmp_path):
+    path = tmp_path / "frame.fits.gz"
+    fits.PrimaryHDU(np.zeros((4, 4), dtype=np.uint16),
+                    fits.Header({"SITELAT": 45.28968, "OBSERVER": "F. Cochard"})).writeto(path)
+    builder.anonymize_dataset(tmp_path)
+
+    assert path.read_bytes()[:2] == b"\x1f\x8b"           # still gzip
+    header = fits.getheader(path)
+    assert (header["SITELAT"], header["OBSERVER"]) == (45.0, "rosace")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["frame.fits.gz"]   # no temporary file left

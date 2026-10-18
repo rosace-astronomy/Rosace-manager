@@ -25,6 +25,8 @@ import logging
 import shutil
 from pathlib import Path
 
+from astropy.io import fits
+
 from .auth import auth_db_init, ensure_first_admin
 from .config import BASE_DATA_DIR, GUI_PREVIEW_DIR, SUBPLUGIN_PARAMS
 from .hardware_replay.bench import ReplayBench, dataset_dir_from_profile
@@ -54,6 +56,15 @@ def _copy_if_missing(source: Path, destination: Path) -> None:
         shutil.copyfile(source, destination)
 
 
+def _write_preview_if_missing(source: Path, destination: Path) -> None:
+    """A recorded frame (gzip-compressed in the dataset) as the plain FITS
+    file the GUI's panels read."""
+    if not destination.exists():
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with fits.open(source) as frame:
+            frame.writeto(destination)
+
+
 def _install_files(bench: ReplayBench) -> None:
     reduction = bench.manifest["reduction"]
     if "reference_lines" in reduction:
@@ -63,8 +74,8 @@ def _install_files(bench: ReplayBench) -> None:
         source = bench.path(reduction["response"])
         _copy_if_missing(source, BASE_DATA_DIR / "response" / source.name)
     first = bench.stars[0]
-    _copy_if_missing(bench.path(first["guiding"]["slew"]), GUI_PREVIEW_DIR / "guidage.fits")
-    _copy_if_missing(bench.path(first["science"][0]), GUI_PREVIEW_DIR / "spectre.fits")
+    _write_preview_if_missing(bench.path(first["guiding"]["slew"]), GUI_PREVIEW_DIR / "guidage.fits")
+    _write_preview_if_missing(bench.path(first["science"][0]), GUI_PREVIEW_DIR / "spectre.fits")
 
 
 async def _seed_catalogue(bench: ReplayBench) -> None:

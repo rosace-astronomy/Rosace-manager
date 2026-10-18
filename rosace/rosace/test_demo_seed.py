@@ -100,8 +100,8 @@ subplugin_params:
             "1, Be_stars, Star A, replay of observation obs1",
             "2, Be_stars, Star B, replay of observation obs2",
         ]
-        assert (tmp_path / "data" / "gui_preview" / "guidage.fits").is_file()
-        assert (tmp_path / "data" / "gui_preview" / "spectre.fits").is_file()
+        for preview in ("guidage.fits", "spectre.fits"):     # plain FITS, from the dataset's .fits.gz frames
+            assert (tmp_path / "data" / "gui_preview" / preview).read_bytes()[:6] == b"SIMPLE"
 
     def test_idempotent_on_second_run(self, tmp_path):
         first = self._run(tmp_path)

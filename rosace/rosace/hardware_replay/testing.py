@@ -47,8 +47,8 @@ def make_dataset(directory):
             "ra_deg": ra, "dec_deg": dec, "magnitude_v": 5.0, "spectral_type": "B2Ve",
             "program": "Be_stars", "exposure_time": None, "ambient_temp_c": 10.0 + n,
             "lock_position": [500.0 + n, 400.0 + n],
-            "science": [_frame(directory, f"science/{name}-{i}.fits", base + i, 180.0) for i in (1, 2)],
-            "guiding": {role: _frame(directory, f"guiding/{name}_{role}.fits", base + 10 + k, 10.0)
+            "science": [_frame(directory, f"science/{name}-{i}.fits.gz", base + i, 180.0) for i in (1, 2)],
+            "guiding": {role: _frame(directory, f"guiding/{name}_{role}.fits.gz", base + 10 + k, 10.0)
                         for k, role in enumerate(("slew", "slit", "pointing", "focus", "stop"))},
         })
     stars[0]["guide_log"] = _guide_log(directory, "guiding/obs1_PHD2_GuideLog.txt")

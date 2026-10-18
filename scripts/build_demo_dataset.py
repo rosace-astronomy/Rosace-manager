@@ -41,6 +41,8 @@ build finds it; for --demo-mode without Docker, use
 from __future__ import annotations
 
 import argparse
+import gzip
+import os
 import re
 import shutil
 import sqlite3
@@ -60,17 +62,15 @@ TARGETS_DB = DATA_DIR / "databases" / "targets.db"
 # they share one set of calibration frames. M 57 is replayed through the
 # Be_stars chain, like the stars.
 OBSERVATION_IDS = [
-    "6a794eb7",  # HD 7636
     "8150f3db",  # psi Per
     "1f60c4b7",  # eps Cas
     "0ce4b604",  # M 57
-    "16b63f3c",  # pi02 Ori
-    "824bf7ac",  # ome Ori
     "af2590fb",  # eta Ori
-    "5270a894",  # HD 50820
-    "e164cccb",  # HD 29866
 ]
 DEMO_PROGRAM = "Be_stars"
+# The night's homing guide image, taken before its first observation (HD 7636,
+# not replayed): served when the mount points away from every observation
+HOMING_OBSERVATION_ID = "6a794eb7"
 
 # Calibration series of the session cd096639 (camera at -5 degC)
 CALIBRATION_ROOTS = {
@@ -84,10 +84,11 @@ CALIBRATION_ROOTS = {
 REFERENCE_LINES = DATA_DIR / "reference_lines" / "Alpy600_ArNe.txt"
 RESPONSE = DATA_DIR / "response" / "Vega_Object_C_RI.fit"
 
-# Index tiles that solve every guide image of the observations above,
-# homing included (checked 2026-10-16: 37 images, about 2 s each, 43 MB).
+# Index tiles that solve every guide image of the observations above, with
+# Rosace's scale bounds (checked 2026-10-18, 16 images: psi Per needs 02 and
+# 03, eps Cas 03, M 57 13, eta Ori 21)
 INDEX_DIR = Path("/usr/share/astrometry-5200")
-INDEX_TILES = [f"index-5206-{hp}.fits" for hp in ("01", "02", "03", "13", "21", "22", "23")]
+INDEX_TILES = [f"index-5206-{hp}.fits" for hp in ("02", "03", "13", "21")]
 
 # Anonymization: header cards holding the site's position, the observer, and
 # the private strings the finished dataset must not contain (site name,
@@ -242,12 +243,14 @@ def _guide_logs(dossiers: dict[str, dict], guidelog: Path) -> dict[str, str]:
     return found
 
 
-def _homing_image(dossiers: dict[str, dict]) -> str:
-    for observation_id in OBSERVATION_IDS:
-        homing = dossiers[observation_id]["sequencer_data"].get("home_sync_am3")
-        if homing and homing.get("guide_image"):
-            return _raw_guide_name(homing["guide_image"])
-    raise SystemExit("No homing guide image among the observations")
+def _homing_image() -> str:
+    for path in NIGHT_DIR.glob("*.yaml"):
+        dossier = yaml.safe_load(path.read_text())
+        if isinstance(dossier, dict) and dossier.get("id") == HOMING_OBSERVATION_ID:
+            homing = dossier["sequencer_data"].get("home_sync_am3") or {}
+            if homing.get("guide_image"):
+                return _raw_guide_name(homing["guide_image"])
+    raise SystemExit(f"No homing guide image in observation {HOMING_OBSERVATION_ID}")
 
 
 def build(output: Path, guidelog: Path | None = None) -> None:
@@ -268,7 +271,7 @@ def build(output: Path, guidelog: Path | None = None) -> None:
         calibrations[kind] = [f"calibrations/{name}" for name in _series(root)]
         files += calibrations[kind]
 
-    homing = f"guiding/{_homing_image(dossiers)}"
+    homing = f"guiding/{_homing_image()}"
     files.append(homing)
 
     first = dossiers[OBSERVATION_IDS[0]]
@@ -289,7 +292,8 @@ def build(output: Path, guidelog: Path | None = None) -> None:
         "stars": stars,
     }
 
-    copies = [(NIGHT_DIR / Path(name).name, output / name) for name in files]
+    _compress_frame_paths(manifest)
+    copies = [(NIGHT_DIR / Path(name).name, output / f"{name}.gz") for name in files]
     copies += [(REFERENCE_LINES, output / manifest["reduction"]["reference_lines"]),
                (RESPONSE, output / manifest["reduction"]["response"])]
     copies += [(INDEX_DIR / tile, output / "astrometry" / tile) for tile in INDEX_TILES]
@@ -300,7 +304,11 @@ def build(output: Path, guidelog: Path | None = None) -> None:
     total = 0
     for source, destination in copies:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        if not destination.exists() or destination.stat().st_size != source.stat().st_size:
+        if destination.suffix == ".gz":
+            if not destination.exists():
+                with source.open("rb") as raw, gzip.open(destination, "wb", compresslevel=6) as packed:
+                    shutil.copyfileobj(raw, packed)
+        elif not destination.exists() or destination.stat().st_size != source.stat().st_size:
             shutil.copy2(source, destination)
         total += destination.stat().st_size
     for star in stars:
@@ -311,8 +319,20 @@ def build(output: Path, guidelog: Path | None = None) -> None:
     anonymize_dataset(output)
 
 
+def _compress_frame_paths(manifest: dict) -> None:
+    """The recorded frames are stored gzip-compressed (a guide image 4.6 ->
+    1.1 MB, a science frame 2.9 -> 1.6 MB; astropy reads them as they are);
+    the index tiles and the reduction's reference files stay plain."""
+    manifest["homing"] += ".gz"
+    for kind, names in manifest["calibrations"].items():
+        manifest["calibrations"][kind] = [f"{name}.gz" for name in names]
+    for star in manifest["stars"]:
+        star["science"] = [f"{name}.gz" for name in star["science"]]
+        star["guiding"] = {role: f"{name}.gz" if name else name for role, name in star["guiding"].items()}
+
+
 def _is_fits(path: Path) -> bool:
-    return path.suffix.lower() in (".fits", ".fit", ".fts")
+    return path.name.lower().endswith((".fits", ".fit", ".fts", ".fits.gz"))
 
 
 def _anonymized_value(key: str, value):
@@ -346,7 +366,9 @@ def anonymize_dataset(output: Path) -> None:
     for path in sorted(p for p in output.rglob("*") if p.is_file()):
         if _is_fits(path):
             from astropy.io import fits
-            with fits.open(path, mode="update", memmap=False) as hdul:
+            with fits.open(path, memmap=False) as hdul:
+                hdul.readall()
+                before = changed
                 for hdu in hdul:
                     for key in list(hdu.header.keys()):
                         if not key or key in ("COMMENT", "HISTORY"):
@@ -363,6 +385,10 @@ def anonymize_dataset(output: Path) -> None:
                             for line in lines:
                                 add(line)
                             changed += 1
+                if changed != before:     # written back, gzip-compressed again for a .gz name
+                    temporary = path.with_name(f".{path.name}")
+                    hdul.writeto(temporary, overwrite=True)
+                    os.replace(temporary, path)
         elif path.suffix in (".yaml", ".txt"):
             text = path.read_text()
             new = SITE_NAME.sub(DEMO_SITE, text)

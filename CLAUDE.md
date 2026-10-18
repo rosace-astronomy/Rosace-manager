@@ -813,10 +813,15 @@ Rosace's (see HISTORY.md 2026-10-16).
   observations and calibration series are listed in the script): raw
   science frames, raw guide images by role, calibration series, homing image,
   the reduction's reference files and the astrometry.net index tiles covering
-  the fields (7 tiles of the 5200 series, 43 MB, ~2 s per solve), described by
-  `manifest.yaml`. Default output `docker/replay_data/` (git-ignored, 487 MB
-  for the 9 observations of 2026-10-14, M 57 included, through the Be_stars
-  chain). The replay profile reads it from `replay_dataset_dir:
+  the fields (4 tiles of the 5200 series, 25 MB, ~2 s per solve), described by
+  `manifest.yaml`. The recorded frames are stored **gzip-compressed**
+  (`.fits.gz`, a guide image 4.6 → 1.1 MB; astropy reads them as they are,
+  `demo_seed.py` writes the GUI previews as plain FITS); the index tiles and
+  `reduction/` stay plain. The homing image comes from the night's first
+  observation (`HOMING_OBSERVATION_ID`, HD 7636, not replayed). Default output
+  `docker/replay_data/` (git-ignored, 118 MB for the 4 observations of
+  2026-10-14 — psi Per, eps Cas, M 57, eta Ori — through the Be_stars chain;
+  9 observations and 487 MB until 2026-10-18). The replay profile reads it from `replay_dataset_dir:
   ~/.rosace-demo/replay` — a link to `docker/replay_data/` on this PC
   (`ln -s <repo>/docker/replay_data ~/.rosace-demo/replay`), or
   `--output ~/.rosace-demo/replay`. **Anonymized**: after copying,
@@ -830,9 +835,16 @@ Rosace's (see HISTORY.md 2026-10-16).
   originals in `~/.rosace` are never modified. `config_demo.yaml` uses the
   same approximate site (45° N, 6° E, 1000 m).
 - **The Docker image** (`Dockerfile`, `docker/entrypoint.sh`,
-  `docker/README.md`): `python:3.12-slim` with Debian's `astrometry.net`
-  (solve-field) and the dependencies (installed from `pyproject.toml` alone,
-  their own layer), then the dataset copied to `/opt/rosace-demo/replay`
+  `docker/README.md`): `debian:trixie-slim`, and Rosace runs on **Debian's
+  Python 3.13** — solve-field itself runs it on every image (`/usr/bin/python3
+  -m astrometry.util.image2pnm`), so its numpy/scipy/astropy/matplotlib/dbus
+  (Debian packages) serve Rosace too instead of a second copy from pip; a venv
+  with `--system-site-packages` adds the rest from `pyproject.toml` alone,
+  wheels only (photutils from pip: Rosace needs ≥ 3.0, Debian has 2.2); no
+  compiler in the image; documentation, the libraries' `tests` folders (but
+  astropy's and numpy's core ones, imported at run time), sympy and the
+  Unicode tables (pulled in by fonttools, unused) left out, pip removed after
+  the code's editable install. Then the dataset copied to `/opt/rosace-demo/replay`
   (`/etc/astrometry.cfg` points at its index tiles), then the code (editable
   install) and the GUI built by a Node stage — so a code change only rebuilds
   the last layers. The entrypoint links `~/.rosace-demo/replay` to the
@@ -841,7 +853,11 @@ Rosace's (see HISTORY.md 2026-10-16).
   installation's `config72ED.yaml` and 72ED hardware profiles and every test
   file, so the image names neither the observer nor the site (the packaged
   `config.yaml` and `SessionContext` say `Observatory`). Built locally by
-  hand (`docker build -t rosace-demo .`); not published yet (TODO.md).
+  hand (`docker build -t rosace-demo .`); not published yet (TODO.md). 341 MB
+  to download, ~1.1 GB unpacked (628 MB / 2.4 GB on python:3.12-slim with 9
+  observations). The whole test suite passes on the image's libraries
+  (mount the repository into a throwaway container, `python -m ensurepip`,
+  `pip install pytest-asyncio httpx2`, `pytest rosace`).
 - **`demo_seed.py::seed_demo_data()`**, from the dataset's manifest,
   idempotent: the fixed `rosace`/`rosace` admin account (evaluation only,
   never a real install); the lamp lines and response copied to

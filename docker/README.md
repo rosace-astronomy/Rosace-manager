@@ -5,9 +5,9 @@ This folder, with the `Dockerfile` at the repository root, builds a
 pointing and plate solving, PHD2 guiding, science and calibration exposures,
 the whole reduction down to the final spectrum and its summary PDF — on
 **replayed hardware**. Instead of driving a telescope, the devices hand back
-the frames recorded during a real night (9 observations of 2026-10-14,
-M 57 included), and a fake PHD2 replays that night's guiding. Each exposure
-lasts a few seconds on screen. This is **not** how a real observatory
+the frames recorded during a real night (4 observations of 2026-10-14:
+psi Per, eps Cas, M 57, eta Ori), and a fake PHD2 replays that night's
+guiding. Each exposure lasts a few seconds on screen. This is **not** how a real observatory
 installation is meant to run — it lets someone try Rosace with nothing
 installed but Docker.
 
@@ -26,7 +26,8 @@ one where a name or the exact position is left.
 ## Prerequisites
 
 - Docker (Linux: the distribution's package; Windows / Mac: Docker Desktop).
-- The replay dataset in `docker/replay_data/` (about 490 MB, not in git),
+- The replay dataset in `docker/replay_data/` (about 120 MB, frames
+  gzip-compressed, not in git),
   built once from the observatory's own data:
 
   ```
@@ -60,7 +61,11 @@ docker run -d -p 8001:8000 -v rosace-demo-data:/root/.rosace-demo --name rosace-
 
 Log in with `rosace` / `rosace` — fixed demo credentials: **never expose this
 port on the Internet**. Click START: the scheduler offers the recorded stars
-one after the other, about a minute each, then their reduction runs.
+one after the other, about a minute and a half each, then their reduction
+runs (the 4 in about 6 minutes).
+
+The image is about 340 MB to download, 1.1 GB once installed: it runs on
+Debian's own Python, which astrometry.net needs anyway.
 
 ## Useful commands
 
