@@ -149,7 +149,7 @@ class TestQualityBand:
         fits.setval(final, "BSS_ESRP", value=630.0)
         fits.setval(final, "BSS_SRPW", value=6563.0)
 
-        assert module._quality_items(module._Context(obs)) == [("R = 630 at 6563 Å", True),
+        assert module.quality_items(module.SummaryContext(obs)) == [("R = 630 at 6563 Å", True),
                                                                ("SNR: not measured", False),
                                                                ("Guiding: not measured", False)]
 
@@ -160,14 +160,14 @@ class TestQualityBand:
                                ("SNR1HI", 7500.0), ("SNR2", 38.0), ("SNR2LO", 6000.0), ("SNR2HI", 7000.0)):
             fits.setval(final, keyword, value=value)
 
-        assert module._quality_items(module._Context(obs)) == [
+        assert module.quality_items(module.SummaryContext(obs)) == [
             ("R = 630 at 6563 Å", True), ("SNR 78 (3750–7500 Å)", True), ("SNR 38 (6000–7000 Å)", True),
             ("Guiding: not measured", False)]
 
     def test_resolving_power_not_measured(self, tmp_path, monkeypatch):
         obs, _ = _setup(tmp_path, monkeypatch)
 
-        assert module._quality_items(module._Context(obs)) == [("R: not measured", False),
+        assert module.quality_items(module.SummaryContext(obs)) == [("R: not measured", False),
                                                                ("SNR: not measured", False),
                                                                ("Guiding: not measured", False)]
 
@@ -175,7 +175,7 @@ class TestQualityBand:
         obs, session = _setup(tmp_path, monkeypatch)
         fits.setval(session / obs.reduction_data["final_spectrum"], "GUIDRMS", value=1.24)
 
-        assert module._quality_items(module._Context(obs))[-1] == ("Guiding RMS 1.24\"", True)
+        assert module.quality_items(module.SummaryContext(obs))[-1] == ("Guiding RMS 1.24\"", True)
 
 
 LOG = """2026-09-25 21:37:40 - WARNING - [CROP] warning of the previous observation's reduction

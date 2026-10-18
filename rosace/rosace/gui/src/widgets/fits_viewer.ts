@@ -64,9 +64,13 @@ export interface ImageOverlay {
 	zone?: [ number, number, number, number ] | null;
 	line?: [ number, number, number, number ] | null;
 	point?: [ number, number ] | null;
+	star?: [ number, number ] | null;
 }
 
 export interface FitsViewerProps extends BoxProps {
+	/** The wheel zooms only with Ctrl held, otherwise it scrolls the page
+	 * (a viewer inside a page that scrolls). */
+	ctrlWheel?: boolean;
 }
 
 export class FitsViewer extends VBox {
@@ -253,7 +257,9 @@ export class FitsViewer extends VBox {
 	/** "Aide" button: the mouse gestures, in the middle of the image. */
 
 	private showHelp() {
-		new Menu({ items: HELP_LINES }).displayNear( this.canvas.getBoundingRect(), "center middle", "center middle" );
+		const ctrl = ( this.props as FitsViewerProps ).ctrlWheel;
+		const items = HELP_LINES.map( line => ctrl && line.startsWith( "Molette" ) ? `Ctrl + ${line.toLowerCase()}` : line );
+		new Menu({ items }).displayNear( this.canvas.getBoundingRect(), "center middle", "center middle" );
 	}
 
 	/** Header cards of the displayed image (OBJECT, OBS_ID... for the panel title), null without one. */
@@ -338,7 +344,7 @@ export class FitsViewer extends VBox {
 	}
 
 	private onWheel( ev: WheelEvent ) {
-		if( !this.image ) {
+		if( !this.image || ( ( this.props as FitsViewerProps ).ctrlWheel && !ev.ctrlKey ) ) {
 			return;
 		}
 		ev.preventDefault();
@@ -553,8 +559,9 @@ export class FitsViewer extends VBox {
 
 	/**
 	 * Image overlay: window (solid cyan rectangle), zone (dashed magenta
-	 * rectangle), line (solid red) and point (green cross) -- each colour
-	 * distinct from the yellow "Zone" selection drawn by the user.
+	 * rectangle), line (solid red), point (green cross) and star (orange
+	 * circle) -- each colour distinct from the yellow "Zone" selection drawn
+	 * by the user.
 	 */
 
 	private paintOverlay( ctx: CanvasEx, overlay: ImageOverlay ) {
@@ -603,6 +610,15 @@ export class FitsViewer extends VBox {
 			ctx.lineTo( p.x + arm, p.y );
 			ctx.moveTo( p.x, p.y - arm );
 			ctx.lineTo( p.x, p.y + arm );
+			ctx.stroke();
+		}
+
+		if( overlay.star ) {
+			const p = this.toCanvas( overlay.star[0], overlay.star[1] );
+			ctx.strokeStyle = "#ff9500";
+			ctx.lineWidth = 2;
+			ctx.beginPath();
+			ctx.arc( p.x, p.y, 10, 0, 2 * Math.PI );
 			ctx.stroke();
 		}
 

@@ -605,81 +605,6 @@ body {
 		}
 	}
 
-	// Room for "λ: 6562.8 Å  F: 1.234  (extrapolé)"
-	.spectrum-viewer .fits-toolbar .fits-readout {
-		min-width: 44ch;
-	}
-
-	.fits-viewer {
-		flex: 1;
-		min-height: 0;
-
-		.fits-toolbar {
-			padding: 0.3rem 0.6rem;
-			gap: 0.4rem;
-			border-bottom: 1px solid var(--border);
-			flex-shrink: 0;
-
-			.fits-btn {
-				color: white;
-				background-color: var(--green);
-
-				// "Zone" toggle, while zone-selection mode is on
-				&.active {
-					background-color: var(--amber);
-				}
-			}
-
-			// Pixel readout ("X 613  Y 614  I 1234"), pushed to the right end of the
-			// toolbar. Fixed width + preserved spaces: the buttons never shift while
-			// the digits change.
-			.fits-readout {
-				margin-left: auto;
-				align-self: center;
-				min-width: 32ch;
-				// text-align alone isn't enough if the label lays out its inner text as a
-				// flex item -- justify-content covers that case too
-				display: flex;
-				justify-content: flex-end;
-				text-align: right;
-				white-space: pre;
-				font-family: var(--font-mono);
-				font-weight: bold;
-				color: var(--text);
-			}
-		}
-
-		.fits-canvas {
-			// Canvas (x4js) extends Component, not Box, so it never gets the %box
-			// mixin's position:relative -- without it, its own inner <canvas>
-			// (position:absolute) anchors to the nearest positioned ancestor
-			// instead (this .fits-viewer), landing on top of the toolbar above it.
-			position: relative;
-			flex: 1;
-			min-height: 0;
-			// Light grey rather than black: makes the image's own edges visible
-			// against the frame instead of blending into a black background.
-			background: var(--neutral);
-			// A plain arrow while hovering (easier to aim at one particular pixel,
-			// the pixel readout is right there in the toolbar); a crosshair while
-			// drawing a zone (left button), the closed hand while panning (right
-			// button), up/down arrows for a vertical-only pan (Ctrl)
-			cursor: default;
-
-			&.zone-mode {
-				cursor: crosshair;
-			}
-
-			&.panning {
-				cursor: grabbing;
-			}
-
-			&.v-pan {
-				cursor: ns-resize;
-			}
-		}
-	}
-
 	.placeholder-label {
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
@@ -692,6 +617,95 @@ body {
 
 
 
+
+
+// Tooltips (every page): the page's own beige tones instead of x4js's blue.
+// Set on the tooltip itself, so they win over x4js's :root defaults
+// whatever the order the style sheets load in; dark mode follows.
+.x4tooltip {
+	--tooltip-background: var(--bg-card);
+	--tooltip-color: var(--text);
+	--tooltip-border: var(--border);
+	--tooltip-icon-color: var(--accent);
+	--tooltip-caption-background: var(--accent);
+}
+
+// Image and spectrum viewers (FitsViewer, SpectrumViewer), wherever they are:
+// the main page's right column and the BeSS validation page (be_validation.ts)
+// Room for "λ: 6562.8 Å  F: 1.234  (extrapolé)"
+.spectrum-viewer .fits-toolbar .fits-readout {
+	min-width: 44ch;
+}
+
+.fits-viewer {
+	flex: 1;
+	min-height: 0;
+
+	.fits-toolbar {
+		padding: 0.3rem 0.6rem;
+		gap: 0.4rem;
+		border-bottom: 1px solid var(--border);
+		flex-shrink: 0;
+
+		.fits-btn {
+			color: white;
+			background-color: var(--green);
+
+			// "Zone" toggle, while zone-selection mode is on
+			&.active {
+				background-color: var(--amber);
+			}
+		}
+
+		// Pixel readout ("X 613  Y 614  I 1234"), pushed to the right end of the
+		// toolbar. Fixed width + preserved spaces: the buttons never shift while
+		// the digits change.
+		.fits-readout {
+			margin-left: auto;
+			align-self: center;
+			min-width: 32ch;
+			// text-align alone isn't enough if the label lays out its inner text as a
+			// flex item -- justify-content covers that case too
+			display: flex;
+			justify-content: flex-end;
+			text-align: right;
+			white-space: pre;
+			font-family: var(--font-mono);
+			font-weight: bold;
+			color: var(--text);
+		}
+	}
+
+	.fits-canvas {
+		// Canvas (x4js) extends Component, not Box, so it never gets the %box
+		// mixin's position:relative -- without it, its own inner <canvas>
+		// (position:absolute) anchors to the nearest positioned ancestor
+		// instead (this .fits-viewer), landing on top of the toolbar above it.
+		position: relative;
+		flex: 1;
+		min-height: 0;
+		// Light grey rather than black: makes the image's own edges visible
+		// against the frame instead of blending into a black background.
+		background: var(--neutral);
+		// A plain arrow while hovering (easier to aim at one particular pixel,
+		// the pixel readout is right there in the toolbar); a crosshair while
+		// drawing a zone (left button), the closed hand while panning (right
+		// button), up/down arrows for a vertical-only pan (Ctrl)
+		cursor: default;
+
+		&.zone-mode {
+			cursor: crosshair;
+		}
+
+		&.panning {
+			cursor: grabbing;
+		}
+
+		&.v-pan {
+			cursor: ns-resize;
+		}
+	}
+}
 
 
 @keyframes stage-pulse {

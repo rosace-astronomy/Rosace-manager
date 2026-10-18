@@ -54,6 +54,8 @@ from rosace.database import (
     db_count_observations_for_target,
     db_insert_pointing_error,
     db_insert_spectrum_flux,
+    db_queue_bess_validation,
+    db_get_bess_validations,
     db_record_measurements,
     db_get_last_failure,
     db_get_last_success_per_target,
@@ -843,6 +845,43 @@ class TestDatabase:
         measurement = {column: 1 for column in SPECTRUM_FLUX_MEASUREMENT_COLUMNS if column != "total_adu"}
         with pytest.raises(KeyError, match="total_adu"):
             await db_insert_spectrum_flux("obs", "Vega", 0.0, "Vega-1.fits", 1.0, measurement)
+
+    async def test_bess_validation_list(self):
+        """Queued spectra come back most recent session first, then by
+        observation time; a sent spectrum stays, one validated in BeSS is left
+        out; queuing again keeps the row."""
+        import aiosqlite
+        from datetime import timedelta
+        from rosace.config import DB_PATH
+
+        old_ctx = self._make_ctx()
+        old_ctx.started_at = datetime.now(timezone.utc) - timedelta(days=2)
+        new_ctx = self._make_ctx()
+        await db_insert_session(old_ctx)
+        await db_insert_session(new_ctx)
+        now = datetime.now(timezone.utc)
+        old_obs = self._make_obs(old_ctx.session_id, created_at=now - timedelta(days=2))
+        late_obs = self._make_obs(new_ctx.session_id, created_at=now)
+        early_obs = self._make_obs(new_ctx.session_id, created_at=now - timedelta(hours=1))
+        validated_obs = self._make_obs(new_ctx.session_id, created_at=now - timedelta(hours=2))
+        for obs, ctx in ((old_obs, old_ctx), (late_obs, new_ctx), (early_obs, new_ctx), (validated_obs, new_ctx)):
+            await db_insert_observation(obs, ctx.session_id)
+            assert await db_queue_bess_validation(obs.id, ctx.session_id, "16 Peg", f"{obs.id}.fits")
+        assert not await db_queue_bess_validation(late_obs.id, new_ctx.session_id, "16 Peg", "other.fits")
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("UPDATE bess_validation SET status = 'bess_validated' WHERE observation_id = ?",
+                             (validated_obs.id,))
+            await db.execute("UPDATE bess_validation SET status = 'sent' WHERE observation_id = ?", (late_obs.id,))
+            await db.commit()
+
+        mine = {old_obs.id, late_obs.id, early_obs.id, validated_obs.id}
+        rows = [row for row in await db_get_bess_validations() if row["observation_id"] in mine]
+        assert [row["observation_id"] for row in rows] == [early_obs.id, late_obs.id, old_obs.id]
+        assert rows[0]["status"] == "pending"
+        assert rows[1]["final_spectrum"] == f"{late_obs.id}.fits"
+        assert rows[1]["status"] == "sent"
+        assert rows[0]["session_started_at"] == new_ctx.started_at.isoformat()
+        assert rows[0]["observed_at"] is not None
 
     async def test_insert_pointing_error_allows_multiple_rows_per_observation(self):
         """Successive plate-solve measurements for the same observation each get
@@ -2672,6 +2711,107 @@ class TestAuthRoutes:
         assert res.json()["username"] == TestApiEndpoints._TEST_ADMIN_USER
         assert res.json()["is_admin"] is True
         assert "rosace_session" in res.cookies
+
+    def test_bess_validations_requires_login(self):
+        with self._anon_client() as client:
+            res = client.get("/bess/validations")
+        assert res.status_code == 401
+
+    def test_bess_validations_lists_queued_spectra(self):
+        import asyncio
+        from rosace.database import db_init
+
+        async def _queue():
+            await db_init()
+            await db_queue_bess_validation("bessapi1", "sessapi1", "omi Cas", "omi_Cas_bessapi1.fits")
+
+        asyncio.run(_queue())
+        with self._client() as client:
+            res = client.get("/bess/validations")
+        assert res.status_code == 200
+        row = next(r for r in res.json() if r["observation_id"] == "bessapi1")
+        assert row["star"] == "omi Cas"
+        assert row["status"] == "pending"
+        assert row["session_id"] == "sessapi1"
+
+    def _bess_spectrum(self, tmp_path, obs_id):
+        """A queued spectrum with its page data and one file in a real session directory."""
+        import asyncio, json
+        from rosace.database import db_init
+
+        session = SessionContext(site_name="St-Pancrasse", session_dir=str(tmp_path))
+        (tmp_path / "Vega_x.fits").write_bytes(b"SIMPLE")
+        (tmp_path / "secret.txt").write_text("not for the page")
+        (tmp_path / "Vega_x_validation.json").write_text(json.dumps({"header": {"star": "Vega"},
+                                                                     "files": ["Vega_x.fits"]}))
+
+        async def _queue():
+            await db_init()
+            await db_insert_session(session)
+            await db_queue_bess_validation(obs_id, session.session_id, "Vega", "Vega_x.fits")
+
+        asyncio.run(_queue())
+
+    def test_bess_validation_page_data_and_files(self, tmp_path):
+        self._bess_spectrum(tmp_path, "bessfil1")
+        with self._client() as client:
+            page = client.get("/bess/validations/bessfil1")
+            listed = client.get("/bess/validations/bessfil1/files/Vega_x.fits")
+            other = client.get("/bess/validations/bessfil1/files/secret.txt")
+            unknown = client.get("/bess/validations/nosuchob")
+        with self._anon_client() as client:
+            anonymous = client.get("/bess/validations/bessfil1/files/Vega_x.fits")
+        assert page.status_code == 200
+        assert page.json()["data"]["header"]["star"] == "Vega"
+        assert listed.status_code == 200 and listed.content == b"SIMPLE"
+        assert other.status_code == 404
+        assert unknown.status_code == 404
+        assert anonymous.status_code == 401
+
+    def test_bess_decision(self, tmp_path):
+        import asyncio
+        import aiosqlite
+        from rosace.config import DB_PATH
+
+        self._bess_spectrum(tmp_path, "bessdec1")
+        with self._client() as client:
+            rejected = client.post("/bess/validations/bessdec1/decision",
+                                   json={"decision": "rejected", "comment": "clouds"})
+            accepted = client.post("/bess/validations/bessdec1/decision", json={"decision": "accepted"})
+            invalid = client.post("/bess/validations/bessdec1/decision", json={"decision": "sent"})
+
+            async def _send():
+                async with aiosqlite.connect(DB_PATH) as db:
+                    await db.execute("UPDATE bess_validation SET status = 'sent' WHERE observation_id = 'bessdec1'")
+                    await db.commit()
+
+            asyncio.run(_send())
+            frozen = client.post("/bess/validations/bessdec1/decision", json={"decision": "rejected"})
+            unknown = client.post("/bess/validations/nosuchob/decision", json={"decision": "accepted"})
+        assert rejected.status_code == 200
+        assert rejected.json()["status"] == "rejected" and rejected.json()["comment"] == "clouds"
+        assert rejected.json()["decided_by"] == TestApiEndpoints._TEST_ADMIN_USER
+        assert accepted.json()["status"] == "accepted" and accepted.json()["comment"] is None
+        assert invalid.status_code == 422
+        assert frozen.status_code == 409
+        assert unknown.status_code == 404
+
+    def test_bess_mark_sent(self, tmp_path):
+        self._bess_spectrum(tmp_path, "bessent1")
+        with self._client() as client:
+            too_early = client.post("/bess/validations/bessent1/sent")
+            client.post("/bess/validations/bessent1/decision", json={"decision": "accepted"})
+            sent = client.post("/bess/validations/bessent1/sent")
+            again = client.post("/bess/validations/bessent1/sent")
+            unknown = client.post("/bess/validations/nosuchob/sent")
+        with self._anon_client() as client:
+            anonymous = client.post("/bess/validations/bessent1/sent")
+        assert too_early.status_code == 409
+        assert sent.status_code == 200
+        assert sent.json()["status"] == "sent" and sent.json()["sent_at"] is not None
+        assert again.status_code == 409
+        assert unknown.status_code == 404
+        assert anonymous.status_code == 401
 
     def test_login_wrong_password_returns_401(self):
         with self._anon_client() as client:

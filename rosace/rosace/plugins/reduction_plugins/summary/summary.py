@@ -141,7 +141,7 @@ def _unavailable(figure: Figure, rect, what: str, reason: str) -> None:
     log.warning(f"[SUMMARY] {what} not available: {reason}")
 
 
-class _Context:
+class SummaryContext:
     """What every page reads, gathered once."""
 
     def __init__(self, obs: Observation):
@@ -158,7 +158,7 @@ class _Context:
         self.subtitle = f"Observation {obs.id}  |  session {obs.session_id}  |  {self.final_path.name}"
 
 
-def _conditions(ctx: _Context) -> list[tuple[str, str]]:
+def _conditions(ctx: SummaryContext) -> list[tuple[str, str]]:
     obs, h = ctx.obs, ctx.header
     target = obs.scheduler_data.get("target")
     site = OBSERVATORY
@@ -194,7 +194,7 @@ def _conditions(ctx: _Context) -> list[tuple[str, str]]:
     return rows
 
 
-def _quality_items(ctx: _Context) -> list[tuple[str, bool]]:
+def quality_items(ctx: SummaryContext) -> list[tuple[str, bool]]:
     """The quality indicators shown at the top of page 1, as (text, measured)."""
     h = ctx.header
     unit = "nm" if str(h.get("CUNIT1", "")).lower() == "nm" else "Å"
@@ -215,7 +215,7 @@ def _quality_items(ctx: _Context) -> list[tuple[str, bool]]:
     return items
 
 
-def _draw_header(figure: Figure, ctx: _Context) -> None:
+def _draw_header(figure: Figure, ctx: SummaryContext) -> None:
     """Page 1 header: the title block on the left three quarters (star name,
     date and program, IDs, final file), and on the right quarter a box of the
     same height with the quality indicators, one per line."""
@@ -234,7 +234,7 @@ def _draw_header(figure: Figure, ctx: _Context) -> None:
     bottom = y + 0.004
     figure.add_artist(Rectangle((QUALITY_BOX_LEFT, bottom), 0.96 - QUALITY_BOX_LEFT, HEADER_TOP + 0.006 - bottom,
                                 transform=figure.transFigure, fill=False, edgecolor="#1d3c6e", linewidth=1))
-    items = _quality_items(ctx)
+    items = quality_items(ctx)
     step = (HEADER_TOP + 0.006 - bottom) / len(items)
     for i, (text, measured) in enumerate(items):
         figure.text((QUALITY_BOX_LEFT + 0.96) / 2, HEADER_TOP + 0.006 - step * (i + 0.5), text, ha="center",
@@ -242,7 +242,7 @@ def _draw_header(figure: Figure, ctx: _Context) -> None:
                     color="#1d3c6e" if measured else "#999")
 
 
-def page_summary(ctx: _Context) -> Figure:
+def page_summary(ctx: SummaryContext) -> Figure:
     figure = _page(None)
     _draw_header(figure, ctx)
     text_axes = figure.add_axes((0.06, 0.60, 0.90, 0.28))
@@ -264,7 +264,7 @@ def page_summary(ctx: _Context) -> Figure:
     return figure
 
 
-def _guide_image(ctx: _Context) -> tuple[Path, float | None]:
+def guide_image(ctx: SummaryContext) -> tuple[Path, float | None]:
     data = ctx.obs.sequencer_data
     stop = data.get("stop_phd2_guiding") or {}
     if stop.get("guide_image"):
@@ -275,9 +275,9 @@ def _guide_image(ctx: _Context) -> tuple[Path, float | None]:
     raise FileNotFoundError("no guide image recorded in the observation")
 
 
-def _draw_guide(figure: Figure, ctx: _Context) -> None:
+def _draw_guide(figure: Figure, ctx: SummaryContext) -> None:
     """The whole guide image and a zoom around the slit, side by side."""
-    path, residual = _guide_image(ctx)
+    path, residual = guide_image(ctx)
     image = fits.getdata(path).astype(np.float64)
     height, width = image.shape
     slit_x, slit_y = slit_position(ctx.obs)
@@ -299,7 +299,7 @@ def _draw_guide(figure: Figure, ctx: _Context) -> None:
     whole.add_patch(Rectangle((x0 - 0.5, y0 - 0.5), x1 - x0, y1 - y0, fill=False, color="#d68910", lw=1))
     # A box around the slit as slit_xy measured it (slope and ends), so the
     # slit itself stays visible
-    segment = _slit_segment(ctx)
+    segment = slit_segment(ctx)
     if segment is not None:
         xa, ya, xb, yb = segment
         h = SLIT_BOX_HALF_HEIGHT_PX
@@ -325,7 +325,7 @@ def _draw_guide(figure: Figure, ctx: _Context) -> None:
     zoom.legend(loc="upper right", fontsize=7)
 
 
-def _slit_segment(ctx: _Context) -> list[float] | None:
+def slit_segment(ctx: SummaryContext) -> list[float] | None:
     """The slit measured by slit_xy, [xa, ya, xb, yb]: from its casier, or,
     for an observation recorded before slit_xy kept it, measured again on the
     slit image it recorded, with slit_xy's own function and settings. None
@@ -348,7 +348,7 @@ def _slit_segment(ctx: _Context) -> list[float] | None:
         return None
 
 
-def _frame_series(ctx: _Context):
+def frame_series(ctx: SummaryContext):
     """(UT times, flux, sky level, rejected flags) of the science frames."""
     reduction = ctx.obs.reduction_data
     spectra = reduction["extract_target_spectra"]
@@ -377,9 +377,16 @@ def _centred_limits(values: np.ndarray) -> tuple[float, float]:
     return centre - half, centre + half
 
 
-def _draw_series(figure: Figure, ctx: _Context) -> None:
-    times, flux, sky, rejected = _frame_series(ctx)
-    axes = figure.add_axes(SERIES_RECT)
+def _draw_series(figure: Figure, ctx: SummaryContext) -> None:
+    draw_frame_series(lambda: figure.add_axes(SERIES_RECT), ctx)
+
+
+def draw_frame_series(make_axes, ctx: SummaryContext) -> None:
+    """The star's flux and the sky level frame by frame, on the axes
+    make_axes() returns -- called only once the data is read, so a failure
+    leaves no empty axes behind. Shared with bess_validation."""
+    times, flux, sky, rejected = frame_series(ctx)
+    axes = make_axes()
     axes.plot(times, flux, "o-", color="#1d3c6e", label="star flux")
     if rejected.any():
         axes.plot(np.array(times)[rejected], flux[rejected], "x", color="#c0392b", ms=12, mew=2,
@@ -401,7 +408,7 @@ def _draw_series(figure: Figure, ctx: _Context) -> None:
     axes.grid(alpha=0.25)
 
 
-def page_guiding(ctx: _Context) -> Figure:
+def page_guiding(ctx: SummaryContext) -> Figure:
     figure = _page(f"{ctx.title} - guiding and sky", ctx.subtitle)
     for draw, rect, what in ((_draw_guide, (0.06, 0.70, 0.90, 0.20), "Guide image"),
                              (_draw_series, SERIES_RECT, "Frame-by-frame flux and sky"),
@@ -413,7 +420,7 @@ def page_guiding(ctx: _Context) -> Figure:
     return figure
 
 
-def _exposures(ctx: _Context) -> list[tuple]:
+def exposure_spans(ctx: SummaryContext) -> list[tuple]:
     """(start, end) UT of each science exposure."""
     spans = []
     for name in ctx.obs.sequencer_data.get("star_spectra_images", []):
@@ -428,7 +435,27 @@ def _symmetric_limit(values: np.ndarray, minimum: float) -> float:
     return max(minimum, 1.1 * float(np.percentile(values, 99))) if values.size else minimum
 
 
-def _draw_phd2_guiding(figure: Figure, ctx: _Context) -> None:
+def _draw_phd2_guiding(figure: Figure, ctx: SummaryContext) -> None:
+    rects = {"RA": (0.11, 0.235, 0.77, 0.14), "Dec": (0.11, 0.055, 0.77, 0.14)}
+    name, stats, scale = draw_guiding_axes(lambda axis: figure.add_axes(rects[axis]), ctx)
+    if stats:
+        text = (f"After settling: RMS {stats['total_rms_arcsec']:.2f}\" (RA {stats['ra_rms_arcsec']:.2f}\", "
+                f"Dec {stats['dec_rms_arcsec']:.2f}\")  |  largest error RA {stats['ra_max_arcsec']:.2f}\", "
+                f"Dec {stats['dec_max_arcsec']:.2f}\"  |  {stats['frames']} frames, {stats['dropped']} lost  |  "
+                f"{scale:g}\"/px")
+    else:
+        text = "Guiding statistics: not measured"
+    figure.text(0.5, 0.428, text, ha="center", fontsize=8.5)
+    figure.text(0.5, 0.414, f"{Path(name).name}", ha="center", fontsize=7, color="#444")
+    figure.text(0.5, 0.401, "Curve: star error.  Bars: correction pulse, in the direction it moves the star "
+                            "(East, North up).  Green: science exposures.  Grey: settling, not measured.", ha="center", fontsize=7, color="#444")
+
+
+def draw_guiding_axes(make_axes, ctx: SummaryContext) -> tuple[str, dict | None, float]:
+    """PHD2 guiding from the observation's guide log, one panel per axis on
+    make_axes("RA") / make_axes("Dec") -- called only once the guide log is
+    read, so a failure leaves no empty axes behind. Returns (guide log name,
+    guiding statistics or None, plate scale). Shared with bess_validation."""
     name = ctx.obs.sequencer_data.get("guide_log_file")
     if not name:
         raise FileNotFoundError("no guide log recorded in the observation")
@@ -449,28 +476,16 @@ def _draw_phd2_guiding(figure: Figure, ctx: _Context) -> None:
     settling_end = (frame_times.get(settled, start) if settled is not None
                     else start + timedelta(seconds=section.steps[-1].time_s))
     after_settling = [settled is not None and s.frame > settled for s in steps]
-    exposures = _exposures(ctx)
-
-    if stats:
-        text = (f"After settling: RMS {stats['total_rms_arcsec']:.2f}\" (RA {stats['ra_rms_arcsec']:.2f}\", "
-                f"Dec {stats['dec_rms_arcsec']:.2f}\")  |  largest error RA {stats['ra_max_arcsec']:.2f}\", "
-                f"Dec {stats['dec_max_arcsec']:.2f}\"  |  {stats['frames']} frames, {stats['dropped']} lost  |  "
-                f"{scale:g}\"/px")
-    else:
-        text = "Guiding statistics: not measured"
-    figure.text(0.5, 0.428, text, ha="center", fontsize=8.5)
-    figure.text(0.5, 0.414, f"{Path(name).name}", ha="center", fontsize=7, color="#444")
-    figure.text(0.5, 0.401, "Curve: star error.  Bars: correction pulse, in the direction it moves the star "
-                            "(East, North up).  Green: science exposures.  Grey: settling, not measured.", ha="center", fontsize=7, color="#444")
+    exposures = exposure_spans(ctx)
 
     panels = (("RA", [s.ra_raw_px for s in steps], [s.ra_duration_ms if s.ra_direction == "E" else -s.ra_duration_ms
-                                                     for s in steps], (0.11, 0.235, 0.77, 0.14)),
+                                                     for s in steps]),
               ("Dec", [s.dec_raw_px for s in steps], [s.dec_duration_ms if s.dec_direction == "N" else -s.dec_duration_ms
-                                                      for s in steps], (0.11, 0.055, 0.77, 0.14)))
-    for axis, errors_px, pulses, rect in panels:
+                                                      for s in steps]))
+    for axis, errors_px, pulses in panels:
         curve, bars = GUIDE_COLOURS[axis]
         errors = np.array(errors_px, dtype=np.float64) * scale
-        axes = figure.add_axes(rect)
+        axes = make_axes(axis)
         twin = axes.twinx()
         # The bars and bands on the twin axis, drawn under the error curve
         axes.set_zorder(twin.get_zorder() + 1)
@@ -513,14 +528,15 @@ def _draw_phd2_guiding(figure: Figure, ctx: _Context) -> None:
                            fontsize=9, loc="left")
         else:
             axes.set_title(axis, fontsize=9, loc="left")
+    return name, stats, scale
 
 
-def _spectrum_in_wavelength(ctx: _Context, key: str):
+def _spectrum_in_wavelength(ctx: SummaryContext, key: str):
     data, header = fits.getdata(ctx.session_dir / ctx.obs.reduction_data[key], header=True)
     return wavelength_axis(header), data.astype(np.float64)
 
 
-def page_series(ctx: _Context) -> Figure:
+def page_series(ctx: SummaryContext) -> Figure:
     figure = _page(f"{ctx.title} - extraction and series", ctx.subtitle)
     for draw, rect, what in ((_draw_extraction, (0.11, 0.60, 0.85, 0.29), "Extraction zones"),
                              (_draw_unit_spectra, (0.11, 0.07, 0.85, 0.45), "Spectra of the series")):
@@ -531,7 +547,7 @@ def page_series(ctx: _Context) -> Figure:
     return figure
 
 
-def _draw_extraction(figure: Figure, ctx: _Context) -> None:
+def _draw_extraction(figure: Figure, ctx: SummaryContext) -> None:
     """The whole sum of the corrected 2D target frames, with its true
     proportions, the spectrum window and the sky zones of extract. Stretched
     on the sky zones' pixels, so the sky background shows (the trace
@@ -562,7 +578,7 @@ def _draw_extraction(figure: Figure, ctx: _Context) -> None:
     axes.tick_params(labelsize=7)
 
 
-def _draw_lamp(figure: Figure, ctx: _Context, rect, x_range: tuple[float, float]) -> None:
+def _draw_lamp(figure: Figure, ctx: SummaryContext, rect, x_range: tuple[float, float]) -> None:
     """The stacked lamp in wavelength over x_range, every reference line kept
     (blue, residual) or not (orange), the extrapolated parts shaded as on the
     final spectrum above it."""
@@ -600,7 +616,7 @@ def _draw_lamp(figure: Figure, ctx: _Context, rect, x_range: tuple[float, float]
     axes.grid(alpha=0.25)
 
 
-def _draw_unit_spectra(figure: Figure, ctx: _Context) -> None:
+def _draw_unit_spectra(figure: Figure, ctx: SummaryContext) -> None:
     reduction = ctx.obs.reduction_data
     law = Polynomial(read_law(ctx.law_path)["coefficients"])
     grid_header = fits.getheader(ctx.session_dir / reduction["lambda_target_spectrum"])
@@ -639,7 +655,7 @@ def _draw_unit_spectra(figure: Figure, ctx: _Context) -> None:
     top.set_xlim(grid[shown][0], grid[shown][-1])
 
 
-def page_log(ctx: _Context) -> Figure:
+def page_log(ctx: SummaryContext) -> Figure:
     figure = _page(f"{ctx.title} - warnings and errors", ctx.subtitle)
     try:
         _draw_log(figure, ctx)
@@ -679,7 +695,7 @@ def log_events(obs: Observation) -> list[tuple[str, str, str, str]]:
     return events
 
 
-def _draw_log(figure: Figure, ctx: _Context) -> None:
+def _draw_log(figure: Figure, ctx: SummaryContext) -> None:
     events = log_events(ctx.obs)
     axes = figure.add_axes((0.05, 0.05, 0.9, 0.82))
     axes.set_axis_off()
@@ -703,7 +719,7 @@ class SummaryPlugin(SubPlugin):
     """Writes a few-page PDF showing at a glance how the observation went: the graphic counterpart of its observation file."""
 
     async def execute(self, obs: Observation) -> Observation:
-        ctx = _Context(obs)
+        ctx = SummaryContext(obs)
         name = f"{final_name(obs)}_summary.pdf"
         pages = 0
         with PdfPages(ctx.session_dir / name) as pdf:

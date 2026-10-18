@@ -130,6 +130,21 @@ async def db_init() -> None:
                 hot_pixels_replaced  INTEGER NOT NULL
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS bess_validation (
+                observation_id    TEXT PRIMARY KEY REFERENCES observations(id),
+                session_id        TEXT NOT NULL REFERENCES sessions(id),
+                star              TEXT NOT NULL,
+                final_spectrum    TEXT NOT NULL,
+                created_at        TEXT NOT NULL,
+                status            TEXT NOT NULL DEFAULT 'pending',
+                decided_at        TEXT,
+                decided_by        TEXT,
+                comment           TEXT,
+                sent_at           TEXT,
+                bess_validated_at TEXT
+            )
+        """)
         await db.commit()
     log.info(f"[DB] Database initialised: {DB_PATH}")
 
@@ -577,3 +592,101 @@ async def db_insert_spectrum_flux(
             ),
         )
         await db.commit()
+
+# ─────────────────────────────────────────────────────────────
+# BeSS validation (spectra waiting for the observer's decision)
+# ─────────────────────────────────────────────────────────────
+
+# Life of a spectrum meant for BeSS: pending (waiting for the observer) →
+# accepted (by the observer) → sent (to BeSS by hand, marked by the observer)
+# → bess_validated (accepted by BeSS, to be found by Rosace); or rejected by
+# the observer. The observer's decision can change until it is sent.
+BESS_DECIDABLE_STATUSES = ("pending", "accepted", "rejected")
+
+
+async def db_queue_bess_validation(
+    observation_id: str, session_id: str, star: str, final_spectrum: str
+) -> bool:
+    """Adds a spectrum to the BeSS validation list, status 'pending'. A row that
+    already exists is left untouched (a reduction run again never undoes a
+    decision). Returns True when a row was added."""
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO bess_validation "
+            "(observation_id, session_id, star, final_spectrum, created_at) VALUES (?, ?, ?, ?, ?)",
+            (observation_id, session_id, star, final_spectrum, datetime.now(timezone.utc).isoformat()),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def db_get_bess_validations() -> list[dict]:
+    """Spectra not validated in BeSS yet -- sent ones included, so the observer
+    keeps an eye on BeSS's validation --, with their observation's start and
+    their session's start: most recent session first, then by observation time."""
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT v.observation_id, v.session_id, v.star, v.final_spectrum, v.status,
+                   v.decided_at, v.decided_by, v.comment, v.sent_at,
+                   o.created_at AS observed_at, s.started_at AS session_started_at
+            FROM bess_validation v
+            LEFT JOIN observations o ON o.id = v.observation_id
+            LEFT JOIN sessions s ON s.id = v.session_id
+            WHERE v.status != 'bess_validated'
+            ORDER BY s.started_at DESC, v.session_id, o.created_at
+            """
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def db_get_bess_validation(observation_id: str) -> dict | None:
+    """One spectrum of the BeSS validation list, whatever its status, with its
+    observation's start and its session's start and directory; None when
+    unknown."""
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT v.*, o.created_at AS observed_at, s.started_at AS session_started_at, s.session_dir
+            FROM bess_validation v
+            LEFT JOIN observations o ON o.id = v.observation_id
+            LEFT JOIN sessions s ON s.id = v.session_id
+            WHERE v.observation_id = ?
+            """,
+            (observation_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def db_set_bess_decision(observation_id: str, decision: str, user: str, comment: str | None) -> int:
+    """The observer's decision ('accepted' or 'rejected'), replacing any
+    earlier one, as long as the spectrum has not been sent to BeSS. Returns
+    the number of rows changed (0: unknown, or already sent)."""
+    if decision not in ("accepted", "rejected"):
+        raise ValueError(f"Unknown decision: {decision!r}")
+    placeholders = ", ".join("?" * len(BESS_DECIDABLE_STATUSES))
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        cursor = await db.execute(
+            f"UPDATE bess_validation SET status = ?, decided_at = ?, decided_by = ?, comment = ? "
+            f"WHERE observation_id = ? AND status IN ({placeholders})",
+            (decision, datetime.now(timezone.utc).isoformat(), user, comment or None, observation_id,
+             *BESS_DECIDABLE_STATUSES),
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
+async def db_mark_bess_sent(observation_id: str) -> int:
+    """Records that the observer sent an accepted spectrum to BeSS (by hand,
+    for now): status 'sent', sent_at now. Returns the number of rows changed
+    (0: unknown, or not 'accepted')."""
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        cursor = await db.execute(
+            "UPDATE bess_validation SET status = 'sent', sent_at = ? WHERE observation_id = ? AND status = 'accepted'",
+            (datetime.now(timezone.utc).isoformat(), observation_id),
+        )
+        await db.commit()
+        return cursor.rowcount

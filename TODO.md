@@ -50,6 +50,11 @@ Claude peut le suggérer, jamais le faire lui-même.
       validation (un état « à valider / validé / envoyé » par spectre,
       conservé en base) — à cadrer avec la ligne « SHARING pour le
       programme Be » (2026-10-17)
+- [ ] Page de validation Be, suite : la page d'un spectre (spectre, résumé
+      PDF, R / SNR / guidage), boutons Accepter / Refuser avec commentaire
+      (`decided_at`, `decided_by`), puis l'envoi à BeSS (`sent`) et le suivi
+      de la validation BeSS (`bess_validated`). La liste, la table et
+      l'étape `bess_validation` sont faites (2026-10-18)
 - [ ] Simplifier CLAUDE.md (232 ko, ~940 lignes ; traduction française
       dans `~/Téléchargements/CLAUDE_fr_2026-10-17_v1.0.pdf`) : y garder les
       règles, conventions et l'architecture ; déplacer l'histoire (dates,
@@ -107,9 +112,6 @@ Claude peut le suggérer, jamais le faire lui-même.
       la température du focuser, pas seulement de l'heure/date — le focus
       dépend surtout de la température, un historique chronologique seul
       ne le montre pas (2026-09-25)
-- [ ] Réduction : option pour garder ou non le répertoire des fichiers
-      intermédiaires de chaque observation, et purge de ces répertoires
-      (ARCHIVE ou CLOSE, à voir) — reconstructibles, rien de perdu (2026-10-06)
 - [ ] Retraiter une observation ou toute une session (réduction relancée sur
       les fichiers existants) : un point d'entrée API REST, appelé depuis
       le GUI (2026-10-06)
@@ -145,16 +147,7 @@ Claude peut le suggérer, jamais le faire lui-même.
       critères de qualité avant envoi (spectre complet, transparence, flux
       suffisant), suivi de ce qui a été envoyé et accepté, et conformité de
       l'en-tête FITS (déjà vérifiée par `write_spectrum`) (2026-10-14)
-- [ ] Graphe de guidage PHD2 par observation (écart en AD et en Déc, pose
-      par pose, comme le graphe de PHD2). Étape 1, sans toucher à Rosace :
-      lire le journal de guidage de PHD2 (`PHD2_GuideLog_*.txt`, sur la
-      machine de PHD2, à copier sur le PC), le découper par observation avec
-      les heures de début et de fin de guidage du log de Rosace, tracer un
-      graphe par observation. Étape 2, si ça vaut la peine : Rosace enregistre
-      lui-même les événements `GuideStep` reçus de PHD2 pendant chaque
-      observation, graphe dans le résumé PDF et chiffres (dispersion du
-      guidage) dans la base — à faire avec la ligne « pertes d'étoile de
-      PHD2 » (2026-10-14)
+
 - [ ] Étoile de guidage PHD2 loin de la fente et des bords : le 14 au soir,
       NGC 6543 a échoué parce que PHD2 guidait sur l'objet lui-même, à 5 px
       au-dessus de la fente ; amené dans la fente, il a disparu en partie et
@@ -177,25 +170,8 @@ Claude peut le suggérer, jamais le faire lui-même.
 
 ## GUI
 
-- [ ] GUI : indiquer « arrêt en cours » dans la zone start/stop, entre la
-      demande d'arrêt (manuelle ou programmée) et la fin de CLOSE_SESSION —
-      l'observation en cours va à son terme, ce qui peut prendre plus d'une
-      demi-heure (2026-10-13)
-      Revu 2026-10-17 : afficher clairement « Arrêt demandé » tant que
-      l'observation en cours continue après la demande d'arrêt — à ce
-      moment l'écran ne donne presque plus d'information sur ce qui se passe
 - [ ] Étape SEQUENCER en jaune (avertissement) quand une étape non
       bloquante échoue — backend + GUI
-- [ ] GUI : refaire l'ajustement automatique des seuils (étirement 1 %/99 %)
-      quand une nouvelle image d'un autre type que la précédente arrive sur
-      un panneau (science → dark → flat…) — aujourd'hui seule la 1re image
-      reçue est ajustée, la suite se fait à la main ; le type peut se lire
-      dans l'en-tête FITS (`IMAGETYP`) ou le préfixe du nom (2026-10-12)
-- [ ] GUI web : l'affichage d'une nouvelle image (au moins panneau Spectre)
-      repart en taille pleine à chaque nouvelle capture au lieu de garder
-      le zoom courant (constaté 2026-09-19)
-- [ ] GUI : inverser les panneaux Spectre 2D (gauche aujourd'hui) et
-      Guidage (droite) — pas urgent (2026-10-11)
 - [ ] Responsive design sur la GUI web (X4) pour tablette et téléphone
       (2026-09-20)
 - [ ] GUI : version anglaise de l'interface (libellés, messages, menus d'aide),
@@ -254,18 +230,9 @@ Claude peut le suggérer, jamais le faire lui-même.
       mesuré dépend du poids donné au bout bleu (axes d'inertie −0,09°,
       bandes −0,14°). Étudier une correction courbe, ou ignorer le bout bleu
       (2026-10-16)
-
-- [ ] tilt : le décalage s'applique pour l'instant à toute la hauteur de la
-      colonne. À optimiser si c'est trop lent : se limiter à une bande autour
-      de la trace (par exemple 200 px, assez pour garder le fond de ciel de
-      la zone éclairée par le flat) (idée 2026-10-08)
 - [ ] Rayons cosmiques : les traiter au prétraitement (détection sur l'image
       2D seule), en vérifiant que les raies de la lampe ne sont pas touchées
       (2026-10-09)
-- [ ] Pouvoir de résolution R = λ / Δλ : le mesurer (par exemple sur la
-      largeur à mi-hauteur des raies de la lampe étalonnée), étape encore à
-      choisir ; Demetra écrit BSS_ITRP = 600 (valeur indicative de
-      l'instrument) (2026-10-09)
 - [ ] Summary : ajouter une image grand champ (avec la position de l'étoile
       observée) et une image Fripon, qui montreraient toutes deux s'il y
       avait des nuages — pour plus tard (2026-10-10)
@@ -278,7 +245,4 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Summary et log : séparer l'écart étoile–fente en composante le long de
       la fente (sans effet sur le flux) et en travers (pertes de lumière) ;
       seule la seconde compte pour le centrage (2026-10-10)
-- [ ] Summary : placer R (et bientôt le SNR) dans un cadre à droite du titre
-      de la page 1, plutôt que dans le bandeau sous le sous-titre (2026-10-17)
-- [ ] Démo : récupérer le GuideLog PHD2 du 14/10 sur le Stellarmate et reconstruire
-      le jeu de données avec `--guidelog` (rejeu du guidage) (2026-10-17)
+

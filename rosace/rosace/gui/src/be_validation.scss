@@ -1,0 +1,300 @@
+// BeSS validation page: the main page's colours, header, panels and login
+// form, plus the few rules of its own list.
+@use "./main.scss";
+
+.validation-view {
+	height: 100vh;
+
+	// Every button of the page in the main page's green (x4js's default is blue);
+	// the decision buttons below set their own colours
+	.x4button {
+		background-color: var(--green);
+		color: white;
+	}
+}
+
+.validation-list {
+	overflow-y: auto;
+	padding: 1rem 1.5rem;
+	gap: 1rem;
+
+	.list-message {
+		color: var(--muted);
+		padding: 1rem;
+
+		&.error {
+			color: var(--red);
+		}
+	}
+
+	.panel.session {
+		flex-shrink: 0;
+
+		// session IDs keep their case
+		&>.title {
+			text-transform: none;
+		}
+	}
+
+	// One spectrum per row, in fixed-width columns so that every row of every
+	// session lines up: [Ouvrir] star, ID, status chip, [Envoyé]
+	.spectrum-row {
+		align-items: center;
+		gap: 1.2rem;
+		padding: 0.2rem 1.1rem;
+		color: var(--text);
+
+		&:nth-child(odd) {
+			background: var(--bg-card);
+		}
+
+		.x4button {
+			font-size: 1.15rem;
+			padding: 0.15rem 0.9rem;
+		}
+
+		.open {
+			flex: 0 0 7rem;
+			justify-content: center;
+		}
+
+		.star {
+			flex: 0 0 16rem;
+			font-size: 1.4rem;
+			font-weight: 600;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.obs-id {
+			flex: 0 0 7rem;
+			font-size: 1.15rem;
+			color: var(--muted);
+			font-family: var(--font-mono);
+		}
+
+		.status {
+			flex: 0 0 11rem;
+			box-sizing: border-box;
+			border-radius: 6px;
+			border-width: 2px;
+			border-style: solid;
+			padding: 0 0.5rem;
+			font-weight: 600;
+			font-size: 1.15rem;
+		}
+
+		// Holds the "Envoyé" button on an accepted row; same width when empty
+		.row-action {
+			flex: 0 0 8rem;
+
+			// Beige, tone on tone: an action still to do (green would read as done)
+			.sent {
+				width: 100%;
+				justify-content: center;
+				background-color: var(--neutral);
+				color: var(--text-dk);
+				border: 1px solid var(--muted);
+			}
+		}
+	}
+}
+
+// Status chips, in the list and on a spectrum's page (only the colours
+// here: the border's width and style come with each layout above and below)
+.status {
+	border-color: var(--neutral);
+
+	&.pending {
+		border-color: var(--amber);
+		background: var(--amber);
+		color: var(--text-dk);
+	}
+
+	&.accepted {
+		border-color: var(--green);
+		background: var(--green);
+		color: white;
+	}
+
+	&.rejected {
+		border-color: var(--red);
+		background: var(--red);
+		color: white;
+	}
+
+	// sent to BeSS, waiting for BeSS's own validation
+	&.sent {
+		border-color: var(--accent);
+		background: transparent;
+		color: var(--accent);
+	}
+}
+
+// ::: One spectrum (/be/#<obs_id>) :::::::::::::::::::::::::::::::::::::::::::
+
+// Always visible above the scrolling page: the decision is never more than one click away
+.decision-bar {
+	align-items: center;
+	gap: 0.75rem;
+	padding: 0.6rem 1.5rem;
+	border-bottom: 1px solid var(--border);
+	background: var(--bg-panel);
+	flex-shrink: 0;
+
+	.comment-label {
+		color: var(--muted);
+		font-weight: 600;
+	}
+
+	.comment {
+		min-width: 10rem;
+	}
+
+	.decide {
+		font-weight: 700;
+		padding: 0.35rem 1.2rem;
+
+		&.accept:not([disabled]) {
+			background: var(--green);
+			color: white;
+		}
+
+		&.reject:not([disabled]) {
+			background: var(--red);
+			color: white;
+		}
+
+		&.cancel {
+			background: var(--neutral);
+			color: var(--text-dk);
+		}
+	}
+}
+
+.decision-message {
+	padding: 0.4rem 1.5rem;
+	color: var(--red);
+	flex-shrink: 0;
+}
+
+.spectrum-page {
+	overflow-y: auto;
+	padding: 1rem 1.5rem;
+	gap: 1rem;
+
+	.panel {
+		flex-shrink: 0;
+	}
+
+	// the star's name keeps its case
+	.panel.keep-case > .title {
+		text-transform: none;
+		font-size: 1.1rem;
+	}
+
+	.list-message {
+		color: var(--muted);
+		padding: 1rem;
+	}
+
+	.header-columns {
+		gap: 2rem;
+		padding: 0.6rem 1.1rem;
+		align-items: flex-start;
+		flex-wrap: wrap;
+
+		.quality {
+			flex: 0 1 34rem;
+			border: 1px solid var(--accent);
+			border-radius: 6px;
+			padding: 0.4rem 0.8rem;
+		}
+	}
+
+	.info-line {
+		gap: 0.8rem;
+		align-items: baseline;
+		padding: 0.12rem 0;
+
+		.info-label {
+			flex: 0 0 11rem;
+			color: var(--muted);
+		}
+
+		.info-value {
+			color: var(--text);
+			font-weight: 600;
+
+			&.missing {
+				color: var(--muted);
+				font-weight: normal;
+			}
+		}
+
+		&.decision {
+			padding: 0.4rem 1.1rem 0.7rem;
+			align-items: center;
+		}
+
+		.pdf-link {
+			color: var(--accent);
+			font-weight: 600;
+		}
+	}
+
+	.status {
+		flex: 0 0 auto;
+		border-radius: 6px;
+		border-width: 2px;
+		border-style: solid;
+		padding: 0.1rem 0.6rem;
+		font-weight: 600;
+		font-size: 0.85rem;
+	}
+
+	// the interactive viewers need a height of their own
+	.viewer-box {
+		padding: 4px;
+
+		&.spectrum-box {
+			height: 380px;
+		}
+
+		&.guide-box {
+			height: 440px;
+		}
+	}
+
+	.two-panels {
+		gap: 1rem;
+		align-items: stretch;
+		flex-wrap: wrap;
+
+		.panel {
+			flex: 1 1 30rem;
+		}
+	}
+
+	.plot {
+		padding: 6px;
+		background: white;		// the plots are drawn on white, in both themes
+
+		img {
+			max-width: 100%;
+			height: auto;
+		}
+	}
+
+	.log-line {
+		font-family: var(--font-mono);
+		font-size: 0.8rem;
+		padding: 0.1rem 1.1rem;
+		white-space: pre-wrap;
+
+		&.error {
+			color: var(--red);
+		}
+	}
+}

@@ -34,3 +34,12 @@ def final_name(obs) -> str:
     plots, summary, PHD2 guide log): the observation file's name without
     extension, plus the observation ID -- e.g. "20260925T213751_16_Peg_ba79e32c"."""
     return f"{Path(obs.yaml_file or obs.suggested_filename).stem}_{obs.id}"
+
+
+def validation_file_name(final_spectrum: str, part: str) -> str:
+    """Name of one file of the BeSS validation page, next to the final
+    spectrum in the session directory: part "data" -> "<final>_validation.json",
+    "guiding"/"frames" -> "<final>_validation_<part>.png". Written by the
+    bess_validation REDUCTION step, read by the BeSS validation API."""
+    stem = Path(final_spectrum).stem
+    return f"{stem}_validation.json" if part == "data" else f"{stem}_validation_{part}.png"

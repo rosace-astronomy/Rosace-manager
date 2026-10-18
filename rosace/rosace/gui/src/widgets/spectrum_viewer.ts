@@ -50,6 +50,9 @@ export interface SpectrumOverlay {
 }
 
 export interface SpectrumViewerProps extends BoxProps {
+	/** The wheel zooms only with Ctrl held, otherwise it scrolls the page
+	 * (a viewer inside a page that scrolls). */
+	ctrlWheel?: boolean;
 }
 
 export class SpectrumViewer extends VBox {
@@ -175,7 +178,9 @@ export class SpectrumViewer extends VBox {
 	/** "Aide" button: the mouse gestures, in the middle of the plot. */
 
 	private showHelp() {
-		new Menu({ items: HELP_LINES }).displayNear( this.canvas.getBoundingRect(), "center middle", "center middle" );
+		const ctrl = ( this.props as SpectrumViewerProps ).ctrlWheel;
+		const items = HELP_LINES.map( line => ctrl && line.startsWith( "Molette" ) ? `Ctrl + ${line.toLowerCase()}` : line );
+		new Menu({ items }).displayNear( this.canvas.getBoundingRect(), "center middle", "center middle" );
 	}
 
 	private firstWavelength() {
@@ -255,7 +260,7 @@ export class SpectrumViewer extends VBox {
 	}
 
 	private onWheel( ev: WheelEvent ) {
-		if( !this.spectrum ) {
+		if( !this.spectrum || ( ( this.props as SpectrumViewerProps ).ctrlWheel && !ev.ctrlKey ) ) {
 			return;
 		}
 		ev.preventDefault();

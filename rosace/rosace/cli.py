@@ -20,7 +20,7 @@ import os
 import sys
 
 _HELP_TEXT = """\
-Usage: python -m rosace.main [config_path] [--demo-mode] [--check-config [config_path]] [--create-admin username] [--list-subplugins [family]] [--purge-simulated [--apply]] [--purge-demo [--apply]]
+Usage: python -m rosace.main [config_path] [--demo-mode] [--check-config [config_path]] [--create-admin username] [--list-subplugins [family]] [--purge-simulated [--apply]] [--purge-demo [--apply]] [--build-validation-data [--apply]]
 
   (no arguments)            Start the server using the active config, resolved in
                             priority order: ROSACE_CONFIG env var > <base_data_dir>/
@@ -78,14 +78,23 @@ Usage: python -m rosace.main [config_path] [--demo-mode] [--check-config [config
                             while a demo server runs. Without --apply, only lists
                             what would go. Never starts the server.
 
+  --build-validation-data [--apply]
+                            (Re)write the BeSS validation page's data (JSON and
+                            plots, next to each final spectrum) of every spectrum
+                            in the validation list, from its observation file --
+                            for spectra reduced before the bess_validation step
+                            existed. Never touches the database. Refused while a
+                            session runs. Without --apply, only checks each
+                            observation file can be read. Never starts the server.
+
   --help, -h                Show this message and exit.
 """
 
 
 def run_cli(argv: list[str]) -> None:
     """Handles argv (sys.argv[1:]). The tool options (--help, --check-config,
-    --create-admin, --list-subplugins, --purge-simulated, --purge-demo) exit
-    the process;
+    --create-admin, --list-subplugins, --purge-simulated, --purge-demo,
+    --build-validation-data) exit the process;
     --demo-mode, a config path or no argument at all set ROSACE_CONFIG where
     needed and return, so main.py goes on to start the server."""
     if "--help" in argv or "-h" in argv:
@@ -169,6 +178,21 @@ def run_cli(argv: list[str]) -> None:
         print("[OK] purged -- the next demo start seeds a fresh demo" if apply
               else "Dry run: nothing deleted (add --apply to delete)")
         sys.exit(0)
+    elif "--build-validation-data" in argv:
+        apply = "--apply" in argv
+        from rosace.plugins.reduction_plugins.bess_validation.bess_validation import rebuild_validation_data
+        try:
+            results = rebuild_validation_data(apply=apply)
+        except RuntimeError as error:
+            print(f"[FAIL] {error}")
+            sys.exit(1)
+        for obs_id, star, outcome in results:
+            print(f"{obs_id}  {star:<16}  {outcome}")
+        failed = sum(outcome.startswith("FAILED") for _, _, outcome in results)
+        print(f"{len(results)} spectra, {failed} failed")
+        if not apply:
+            print("Dry run: nothing written (add --apply to write)")
+        sys.exit(1 if failed else 0)
     elif "--purge-simulated" in argv:
         apply = "--apply" in argv
         from rosace.simulated_data import purge_simulated, report

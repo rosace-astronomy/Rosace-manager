@@ -130,3 +130,25 @@ session_cookie_secure: false
         assert "Dry run: nothing deleted" in result.stdout
         with sqlite3.connect(self._db(tmp_path)) as db:
             assert db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 1
+
+
+class TestBuildValidationDataCLI(TestPurgeSimulatedCLI):
+    """Same temporary installation as --purge-simulated (its _env)."""
+
+    def test_empty_list(self, tmp_path):
+        result = _run("--build-validation-data", env=self._env(tmp_path))
+        assert result.returncode == 0, result.stderr
+        assert "0 spectra, 0 failed" in result.stdout
+        assert "Dry run: nothing written" in result.stdout
+
+    def test_refused_while_a_session_runs(self, tmp_path):
+        from datetime import datetime, timezone
+        env = self._env(tmp_path)
+        with sqlite3.connect(self._db(tmp_path)) as db:
+            db.execute("INSERT INTO sessions (id, started_at, status) VALUES (?, ?, ?)",
+                       ("run00001", datetime.now(timezone.utc).isoformat(), "running"))
+
+        result = _run("--build-validation-data", "--apply", env=env)
+
+        assert result.returncode == 1
+        assert "[FAIL] a session is running" in result.stdout

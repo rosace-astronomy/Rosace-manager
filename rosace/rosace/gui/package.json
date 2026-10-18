@@ -23,7 +23,15 @@
 			{
 				"from": "src/index.html",
 				"to": "index.html"
+			},
+			{
+				"from": "src/be_validation.html",
+				"to": "be/index.html"
 			}
+		],
+		"entryPoints": [
+			"src/main.ts",
+			"src/be_validation.ts"
 		]
 	},
 	"allowScripts": {

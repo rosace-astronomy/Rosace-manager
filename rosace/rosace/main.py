@@ -70,6 +70,7 @@ from .database import (
     db_stamp_stage, db_set_error,
     db_set_stage_status, db_get_recent_observations, db_record_measurements,
 )
+from .bess_validation_api import router as bess_validation_router
 from .demo_seed import seed_demo_data
 from .hardware_replay.fake_phd2 import start_fake_phd2
 from .control_schedule import next_occurrence
@@ -993,6 +994,7 @@ async def delete_user(username: str, current: UserOut = Depends(require_admin)):
 
 app.include_router(protected)
 app.include_router(admin_router)
+app.include_router(bess_validation_router)
 
 # ─────────────────────────────────────────────────────────────
 # Web interface (GUI static files)

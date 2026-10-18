@@ -465,15 +465,11 @@ def draw_spectrum(axes, wavelengths: np.ndarray, data: np.ndarray, coverage: tup
 SPECTRUM_PANEL = "spectre1d"
 
 
-async def publish_spectrum_preview(obs: Observation, spectrum_path: Path) -> None:
-    """Shows a 1D spectrum on the GUI's "Spectre 1D" panel, the same way
-    acquisition_helpers.publish_guide_preview() shows a guide image: copies it
-    to GUI_PREVIEW_DIR/"spectre1d.fits" and notifies connected clients. Its
-    overlay -- title (object and observation ID, shown in the panel's title
-    bar), dispersion-law coverage (the rest is drawn as
-    extrapolated) and Balmer lines within the spectrum, angstrom spectra only
-    -- is sent with the message and also written next to the file,
-    "spectre1d.json", so a reloaded page finds it again (GET /images/{panel}/overlay)."""
+def spectrum_overlay(obs: Observation, spectrum_path: Path, extra_lines: dict[str, float] | None = None) -> dict:
+    """What the GUI's SpectrumViewer draws over a 1D spectrum: title (object
+    and observation ID), dispersion-law coverage (the rest is drawn as
+    extrapolated), and the Balmer lines -- plus extra_lines, {name:
+    wavelength in angstrom} -- within the spectrum, angstrom spectra only."""
     header = fits.getheader(spectrum_path)
     wavelengths = wavelength_axis(header)
     low, high = float(np.min(wavelengths)), float(np.max(wavelengths))
@@ -483,15 +479,27 @@ async def publish_spectrum_preview(obs: Observation, spectrum_path: Path) -> Non
     coverage = law_coverage(session_dir / law_name) if law_name else None
     lines = []
     if header.get("CUNIT1", "Angstrom") == "Angstrom":
-        lines = [{"name": name, "wavelength": line} for name, line in BALMER_LINES_A.items() if low <= line <= high]
+        known = {**BALMER_LINES_A, **(extra_lines or {})}
+        lines = [{"name": name, "wavelength": line} for name, line in known.items() if low <= line <= high]
 
     name = obs.scheduler_data.get("queried_name") or header.get("OBJNAME", "")
-    overlay = {
+    return {
         "title": " — ".join(p for p in (name, obs.id) if p),
         "coverage": list(coverage) if coverage else None,
         "lines": lines,
     }
 
+
+async def publish_spectrum_preview(obs: Observation, spectrum_path: Path) -> None:
+    """Shows a 1D spectrum on the GUI's "Spectre 1D" panel, the same way
+    acquisition_helpers.publish_guide_preview() shows a guide image: copies it
+    to GUI_PREVIEW_DIR/"spectre1d.fits" and notifies connected clients. Its
+    overlay -- title (object and observation ID, shown in the panel's title
+    bar), dispersion-law coverage (the rest is drawn as
+    extrapolated) and Balmer lines within the spectrum, angstrom spectra only
+    -- is sent with the message and also written next to the file,
+    "spectre1d.json", so a reloaded page finds it again (GET /images/{panel}/overlay)."""
+    overlay = spectrum_overlay(obs, spectrum_path)
     GUI_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(spectrum_path, GUI_PREVIEW_DIR / f"{SPECTRUM_PANEL}.fits")
     (GUI_PREVIEW_DIR / f"{SPECTRUM_PANEL}.json").write_text(json.dumps(overlay, ensure_ascii=False))
