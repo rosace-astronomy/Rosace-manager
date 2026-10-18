@@ -15,8 +15,10 @@ validation web page (gui/src/be_validation.ts, served at /be/). This step:
    spectrum and its overlay (law coverage, Balmer and He I lines), the
    post-science guide image and its overlay (measured slit, slit position
    in force, star from the astrometric solution), the last corrected 2D
-   target frame with extract's spectrum window and sky zones, the FRIPON
-   all-sky image as fripon_image annotated it, the two plots below, the
+   target frame with extract's spectrum window and sky zones, the sky --
+   the FRIPON all-sky image as fripon_image annotated it and the pointing
+   camera's wide-field image as wide_field_image annotated it, each one
+   on its own (null and its reason when missing) --, the two plots below, the
    observation's warnings and errors, the summary PDF's name, and "files",
    the only files the page may fetch; and two plots,
    "<final>_validation_guiding.png" (PHD2 guiding, RA and Dec) and
@@ -153,16 +155,30 @@ def _frame2d(ctx: SummaryContext) -> dict:
     }
 
 
-def _sky(ctx: SummaryContext) -> dict:
+def _fripon(ctx: SummaryContext) -> dict:
     """The FRIPON image of the observation, as fripon_image annotated it
-    (shared key sky_camera); the wide-field image will sit beside it."""
+    (shared key sky_camera)."""
     sky = ctx.obs.reduction_data.get("sky_camera")
     if not sky:
         raise ValueError("no FRIPON image for this observation")
     if not (ctx.session_dir / sky["annotated_file"]).exists():
         raise FileNotFoundError(f"{sky['annotated_file']} not found")
-    return {"fripon": {"file": sky["annotated_file"], "station": sky["station"], "capture_time": sky["capture_time"],
-                       "offset_s": sky["offset_s"], "model": sky.get("model"), "matched_stars": sky.get("matched_stars")}}
+    return {"file": sky["annotated_file"], "station": sky["station"], "capture_time": sky["capture_time"],
+            "offset_s": sky["offset_s"], "model": sky.get("model"), "matched_stars": sky.get("matched_stars")}
+
+
+def _wide_field(ctx: SummaryContext) -> dict:
+    """The pointing camera's wide-field image, as wide_field_image annotated
+    it (shared key wide_field)."""
+    wide = ctx.obs.reduction_data.get("wide_field")
+    if not wide:
+        raise ValueError("no wide-field image for this observation")
+    if not (ctx.session_dir / wide["annotated_file"]).exists():
+        raise FileNotFoundError(f"{wide['annotated_file']} not found")
+    return {"file": wide["annotated_file"], "capture_time": wide.get("capture_time"),
+            "exposure_s": wide.get("exposure_s"), "solved": bool(wide.get("solved")),
+            "scale_arcsec": wide.get("scale_arcsec"), "field_deg": wide.get("field_deg"),
+            "target_offset_arcmin": wide.get("target_offset_arcmin")}
 
 
 def _save(figure: Figure, path: Path) -> None:
@@ -204,7 +220,7 @@ def build_validation_data(obs: Observation) -> dict:
                 "overlay": part("spectrum_overlay", lambda: spectrum_overlay(obs, ctx.final_path, HELIUM_LINES_A))}
     guide = part("guide", lambda: _guide(ctx))
     frame2d = part("frame2d", lambda: _frame2d(ctx))
-    sky = part("sky", lambda: _sky(ctx))
+    sky = {"fripon": part("sky", lambda: _fripon(ctx)), "wide_field": part("wide_field", lambda: _wide_field(ctx))}
     plots = {
         "guiding": part("guiding_plot", lambda: _guiding_plot(ctx, validation_file_name(final, "guiding"))),
         "frames": part("frames_plot", lambda: _frames_plot(ctx, validation_file_name(final, "frames"))),
@@ -220,8 +236,7 @@ def build_validation_data(obs: Observation) -> dict:
         files.append(guide["file"])
     if frame2d:
         files.append(frame2d["file"])
-    if sky:
-        files.append(sky["fripon"]["file"])
+    files += [image["file"] for image in sky.values() if image]
     if summary_pdf:
         files.append(summary_pdf)
     data = {

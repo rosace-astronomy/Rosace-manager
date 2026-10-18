@@ -103,6 +103,12 @@ def _setup(tmp_path, monkeypatch, with_guide=True, log_text="", with_sky=True):
         red["sky_camera"] = {"station": "FRRA12", "capture_time": "2026-09-25T21:45:17+00:00", "offset_s": 125,
                              "file": "FRRA12_20260925T214517_UT.jpg", "annotated_file": "Vega_fripon_annotated.png",
                              "model": "fitted", "matched_stars": 80, "rms_px": 1.1, "target_pixel": [20.0, 15.0]}
+        # wide-field image, as wide_field_image leaves it
+        imsave(session / "Vega_wide_field.png", np.full((30, 40), 0.4), cmap="gray")
+        red["wide_field"] = {"file": "WIDEFIELD_Vega_5s_20260925_214000.fits", "annotated_file": "Vega_wide_field.png",
+                             "capture_time": "2026-09-25T21:40:00+00:00", "exposure_s": 5.0, "solved": True,
+                             "scale_arcsec": 31.2, "field_deg": [5.65, 4.23], "target_offset_arcmin": 12.0,
+                             "target_pixel": [20.0, 15.0]}
     monkeypatch.setattr(module, "SUBPLUGIN_PARAMS", PARAMS)
     monkeypatch.setattr(module, "OBSERVATORY", PARAMS["observatory"])
     monkeypatch.setattr(acquisition_helpers, "SUBPLUGIN_PARAMS", PARAMS)
@@ -138,6 +144,7 @@ class TestSummaryPlugin:
         assert _page_count(session / name) == 5
         assert "PHD2 guiding not available" not in caplog.text
         assert "FRIPON sky image not available" not in caplog.text
+        assert "Wide-field image not available" not in caplog.text
 
     async def test_missing_guide_image_does_not_fail(self, tmp_path, monkeypatch, caplog):
         obs, session = _setup(tmp_path, monkeypatch, with_guide=False)
@@ -156,6 +163,17 @@ class TestSummaryPlugin:
 
         assert _page_count(session / result.reduction_data["summary_file"]) == 5
         assert "FRIPON sky image not available: no FRIPON image" in caplog.text
+        assert "Wide-field image not available: no wide-field image" in caplog.text
+
+    async def test_unsolved_wide_field_image_is_drawn(self, tmp_path, monkeypatch, caplog):
+        obs, session = _setup(tmp_path, monkeypatch)
+        obs.reduction_data["wide_field"].update(solved=False, scale_arcsec=None, field_deg=None,
+                                                target_offset_arcmin=None, target_pixel=None)
+
+        result = await SummaryPlugin().execute(obs)
+
+        assert _page_count(session / result.reduction_data["summary_file"]) == 5
+        assert "Wide-field image not available" not in caplog.text
 
 
 class TestQualityBand:

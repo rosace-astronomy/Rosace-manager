@@ -231,8 +231,10 @@ class TestLoadPipelines:
 
         assert len(pipeline) == len(program["reduction"])
         assert program["reduction"][:2] == ["calculate_flux", "master_bias"]
-        assert program["reduction"][-6:] == ["write_spectrum", "plot_spectrum", "fripon_image", "summary",
-                                             "bess_validation", "export_demetra"]
+        assert program["reduction"][-7:] == ["write_spectrum", "plot_spectrum", "fripon_image", "wide_field_image",
+                                             "summary", "bess_validation", "export_demetra"]
+        science = program["sequencer"].index("star_spectra_acquisition")
+        assert program["sequencer"][science + 1:science + 3] == ["wide_field_acquisition", "stop_phd2_guiding"]
 
     def test_raises_on_unknown_program(self):
         with pytest.raises(FileNotFoundError):

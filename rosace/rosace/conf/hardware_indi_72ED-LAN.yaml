@@ -74,11 +74,10 @@ INDI_drivers:
             indi_host : 192.168.144.50
             indi_port : 7624
         cooling : false
-        # Same CMOS gain/offset story as guiding_camera above -- not
-        # currently connectable (USB3 cable/port fault, see TODO.md) so
-        # these values are untested on the real ASI224MC, reused from the
-        # ASI120MM Mini's own confirmed-live values pending a real check
-        # once this camera is repaired and actually used by a sub-plugin.
+        # Colour camera of the wide-field image (wide_field_acquisition).
+        # Connects again since 2026-10-12 (the USB3 cable fault is gone).
+        # Gain/offset reused from the former ASI120MM Mini, not yet checked
+        # on a real image of this camera.
         gain : 50
         offset : 15
 

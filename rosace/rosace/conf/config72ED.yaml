@@ -330,6 +330,15 @@ subplugin_params:
     # a stored one (scripts/fit_fripon_lens.py) only helps on cloudy images,
     # where it still places the target.
 
+  wide_field:
+    # Wide-field image of the target with the pointing camera
+    # (wide_field_acquisition, right after the science exposures), plate-solved
+    # and marked by wide_field_image.
+    exposure_seconds: 5
+    # sampling_arcsec: optional, arcsec per pixel of the 2x2-binned image --
+    # the scale the first plate solves give in the log; once set, the solve
+    # only tries that scale (+/-5 %) and is faster.
+
   export_demetra:
     # Demetra export: one ZIP per observation and/or one ZIP per session
     # (both false: no export).

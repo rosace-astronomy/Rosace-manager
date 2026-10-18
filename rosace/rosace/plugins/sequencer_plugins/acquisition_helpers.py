@@ -26,15 +26,16 @@ from ...image_broadcast import ws_image_broadcaster
 from ...models import Observation
 from .guiding_chain_recovery import run_with_guiding_recovery
 
-ALLOWED_IMAGE_TYPES = {"STAR", "BIAS", "DARK", "FLAT", "CALIB", "GUIDING", "GUIDINGDARK"}
+ALLOWED_IMAGE_TYPES = {"STAR", "BIAS", "DARK", "FLAT", "CALIB", "GUIDING", "GUIDINGDARK", "WIDEFIELD"}
 
 _TEMP_ALLOWED_TYPES = {"DARK", "BIAS"}
 
 # STAR's target_name *replaces* the literal "STAR" prefix (e.g. "V831_Cas_...");
-# GUIDING's *follows* the literal "GUIDING" prefix instead (e.g. "GUIDING_Vega_...")
-# -- kept as its own type, not folded into STAR, since GUIDING's own image_type
-# still needs to appear in the name (it's not itself the science target).
-_TARGET_NAME_APPEND_TYPES = {"GUIDING"}
+# GUIDING's and WIDEFIELD's *follow* their literal prefix instead (e.g.
+# "GUIDING_Vega_...") -- kept as their own types, not folded into STAR, since
+# the image_type still needs to appear in the name (it's not itself the
+# science target's own file).
+_TARGET_NAME_APPEND_TYPES = {"GUIDING", "WIDEFIELD"}
 
 
 def _raw_variant_filename(filename: str) -> str:
@@ -379,7 +380,8 @@ def build_fits_root_name(
 
     image_type is one fixed keyword from an explicit, extensible allow-list
     (ALLOWED_IMAGE_TYPES) checked at call time, case-insensitive, normalized
-    to upper: STAR (any science image)/BIAS/DARK/FLAT/CALIB/GUIDING.
+    to upper: STAR (any science image)/BIAS/DARK/FLAT/CALIB/GUIDING/
+    GUIDINGDARK/WIDEFIELD (the pointing camera's wide-field image).
 
     target_name (the observer-entered target name — the queried name as
     typed in the observation list, e.g. scheduler_data["queried_name"],
@@ -389,7 +391,7 @@ def build_fits_root_name(
       — e.g. image_type="STAR", target_name="V831 Cas" -> "V831_Cas...".
       Without a target_name, image_type="STAR" alone falls back to the
       literal "STAR" prefix (handy for a quick dev/debug call).
-    - GUIDING: target_name, if given, is inserted as its own field right
+    - GUIDING (and WIDEFIELD, the same way): target_name, if given, is inserted as its own field right
       after the "GUIDING" prefix instead of replacing it — e.g.
       image_type="GUIDING", target_name="Vega" -> "GUIDING_Vega_...". The
       prefix stays literal here (unlike STAR) since GUIDING is itself

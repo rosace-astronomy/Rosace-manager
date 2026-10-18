@@ -55,8 +55,11 @@ class TestBuildValidationData:
         assert data["sky"]["fripon"] == {"file": "Vega_fripon_annotated.png", "station": "FRRA12",
                                          "capture_time": "2026-09-25T21:45:17+00:00", "offset_s": 125,
                                          "model": "fitted", "matched_stars": 80}
+        assert data["sky"]["wide_field"] == {"file": "Vega_wide_field.png", "capture_time": "2026-09-25T21:40:00+00:00",
+                                             "exposure_s": 5.0, "solved": True, "scale_arcsec": 31.2,
+                                             "field_deg": [5.65, 4.23], "target_offset_arcmin": 12.0}
         assert set(data["files"]) == {f"{FINAL}.fits", "GUIDING_Vega.fits", frame2d, "Vega_fripon_annotated.png",
-                                      *data["plots"].values()}
+                                      "Vega_wide_field.png", *data["plots"].values()}
         assert data["unavailable"] == {}
 
     def test_missing_parts_never_raise(self, tmp_path, monkeypatch, caplog):
@@ -69,6 +72,27 @@ class TestBuildValidationData:
         assert "no guide log recorded" in data["unavailable"]["guiding_plot"]
         assert data["plots"]["frames"] == f"{FINAL}_validation_frames.png"
         assert "guide not available" in caplog.text
+
+    def test_one_sky_image_missing_keeps_the_other(self, tmp_path, monkeypatch):
+        obs, session = _setup(tmp_path, monkeypatch)
+        del obs.reduction_data["sky_camera"]
+
+        data = build_validation_data(obs)
+
+        assert data["sky"]["fripon"] is None
+        assert "no FRIPON image" in data["unavailable"]["sky"]
+        assert data["sky"]["wide_field"]["file"] == "Vega_wide_field.png"
+        assert "Vega_wide_field.png" in data["files"] and "Vega_fripon_annotated.png" not in data["files"]
+
+    def test_missing_wide_field_image_is_reported(self, tmp_path, monkeypatch):
+        obs, session = _setup(tmp_path, monkeypatch)
+        (session / "Vega_wide_field.png").unlink()
+
+        data = build_validation_data(obs)
+
+        assert data["sky"]["wide_field"] is None
+        assert "Vega_wide_field.png not found" in data["unavailable"]["wide_field"]
+        assert data["sky"]["fripon"] is not None
 
     def test_missing_frame_never_raises(self, tmp_path, monkeypatch):
         obs, session = _setup(tmp_path, monkeypatch)

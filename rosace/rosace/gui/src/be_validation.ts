@@ -75,7 +75,11 @@ interface PageData {
 		fripon: {
 			file: string; station: string; capture_time: string; offset_s: number;
 			model: "fitted" | "stored" | null; matched_stars: number | null;
-		};
+		} | null;
+		wide_field?: {		// absent from page data prepared before it existed
+			file: string; capture_time: string | null; exposure_s: number | null; solved: boolean;
+			scale_arcsec: number | null; field_deg: [ number, number ] | null; target_offset_arcmin: number | null;
+		} | null;
 	} | null;
 	plots: { guiding: string | null, frames: string | null };
 	warnings: { phase: string, time: string, level: string, message: string }[] | null;
@@ -497,26 +501,49 @@ class SpectrumView extends VBox {
 		] );
 	}
 
-	/** The FRIPON all-sky image (target and bright stars marked by
-	 * fripon_image); the wide-field image will take the second column. */
+	/** Two columns: the FRIPON all-sky image (target and bright stars marked
+	 * by fripon_image) and the pointing camera's wide-field image (marked by
+	 * wide_field_image); each one says why when it is missing. */
 	private skyRow( data: PageData ): HBox {
-		const fripon = data.sky?.fripon;
-		if( !fripon ) {
-			return new HBox( { content: [ data.sky === undefined
-				? new Label( { cls: "list-message", text: "Non disponible (page préparée avant ce panneau : commande --build-validation-data --apply)" } )
-				: this.unavailable( data, "sky" ) ] } );
+		const tooOld = () => new Label( { cls: "list-message", text: "Non disponible (page préparée avant ce panneau : commande --build-validation-data --apply)" } );
+		if( !data.sky ) {
+			return new HBox( { content: [ data.sky === undefined ? tooOld() : this.unavailable( data, "sky" ) ] } );
 		}
-		const minutes = Math.round( fripon.offset_s / 60 );
-		const positions = fripon.model === "fitted" ? `cible et étoiles placées par le modèle d'objectif ajusté sur ${fripon.matched_stars} étoiles`
-			: fripon.model === "stored" ? "cible et étoiles placées par le modèle d'objectif enregistré (trop peu d'étoiles sur l'image)"
-			: "trop peu d'étoiles sur l'image et pas de modèle d'objectif enregistré : cible non placée";
-		return new HBox( { cls: "sky-row", content: [
-			new VBox( { cls: "sky-column", content: [
-				new Image( { cls: "sky-image", src: fileUrl( this.obsId, fripon.file ), fit: "contain" } ),
-				new Label( { cls: "sky-caption", text: `FRIPON ${fripon.station} — ${fripon.capture_time.slice( 0, 19 ).replace( "T", " " )} UT `
-					+ `(${minutes >= 0 ? "+" : ""}${minutes} min du milieu de l'observation) — ${positions}` } ),
-			] } ),
-		] } );
+		const column = ( content: any[] ) => new VBox( { cls: "sky-column", content } );
+		const image = ( file: string, caption: string ) => column( [
+			new Image( { cls: "sky-image", src: fileUrl( this.obsId, file ), fit: "contain" } ),
+			new Label( { cls: "sky-caption", text: caption } ),
+		] );
+
+		const fripon = data.sky.fripon;
+		let left;
+		if( fripon ) {
+			const minutes = Math.round( fripon.offset_s / 60 );
+			const positions = fripon.model === "fitted" ? `cible et étoiles placées par le modèle d'objectif ajusté sur ${fripon.matched_stars} étoiles`
+				: fripon.model === "stored" ? "cible et étoiles placées par le modèle d'objectif enregistré (trop peu d'étoiles sur l'image)"
+				: "trop peu d'étoiles sur l'image et pas de modèle d'objectif enregistré : cible non placée";
+			left = image( fripon.file, `FRIPON ${fripon.station} — ${fripon.capture_time.slice( 0, 19 ).replace( "T", " " )} UT `
+				+ `(${minutes >= 0 ? "+" : ""}${minutes} min du milieu de l'observation) — ${positions}` );
+		}
+		else {
+			left = column( [ this.unavailable( data, "sky" ) ] );
+		}
+
+		const wide = data.sky.wide_field;
+		let right;
+		if( wide ) {
+			const when = wide.capture_time ? `${wide.capture_time.slice( 0, 19 ).replace( "T", " " )} UT, ` : "";
+			const fmt = ( value: number, digits: number ) => value.toFixed( digits ).replace( ".", "," );
+			const solved = wide.solved && wide.field_deg && wide.scale_arcsec !== null && wide.target_offset_arcmin !== null
+				? `champ ${fmt( wide.field_deg[0], 1 )} × ${fmt( wide.field_deg[1], 1 )}°, ${fmt( wide.scale_arcsec, 1 )}"/px, `
+					+ `cible à ${Math.round( wide.target_offset_arcmin )}′ du centre`
+				: "image non résolue (astrométrie) : cible non placée";
+			right = image( wide.file, `Grand champ (caméra de pointage) — ${when}pose ${wide.exposure_s ?? "?"} s — ${solved}` );
+		}
+		else {
+			right = column( [ wide === undefined ? tooOld() : this.unavailable( data, "wide_field" ) ] );
+		}
+		return new HBox( { cls: "sky-row", content: [ left, right ] } );
 	}
 
 	private plot( data: PageData, key: "guiding" | "frames", part: string ) {

@@ -49,7 +49,9 @@ shared key summary_file:
    shape as the others).
 4. Sky: the FRIPON all-sky image of the observation as fripon_image
    annotated it (shared key sky_camera: target, bright stars, N/E/S/W), in
-   the left half -- the right half is kept for a wide-field image.
+   the left half; the pointing camera's wide-field image as
+   wide_field_image annotated it (shared key wide_field: target, bright
+   stars, N/E), in the right half. Each one says so when it is missing.
 5. The observation's WARNING and ERROR log lines -- during the acquisition,
    between "[DB] Observation inserted: <id>" and "[DB] sequencer_done stamped
    for <id>" (lines tagged by a reduction step left out: the previous
@@ -659,7 +661,8 @@ def _draw_unit_spectra(figure: Figure, ctx: SummaryContext) -> None:
     top.set_xlim(grid[shown][0], grid[shown][-1])
 
 
-SKY_IMAGE_RECT = (0.04, 0.50, 0.45, 0.40)   # left half: the right half is kept for the wide-field image
+SKY_IMAGE_RECT = (0.04, 0.50, 0.45, 0.40)   # left half: FRIPON
+WIDE_IMAGE_RECT = (0.53, 0.50, 0.43, 0.40)  # right half: the wide-field image
 
 
 def _draw_sky(figure: Figure, ctx: SummaryContext) -> None:
@@ -683,12 +686,39 @@ def _draw_sky(figure: Figure, ctx: SummaryContext) -> None:
                 fontsize=7, va="top", color="#444")
 
 
+def _draw_wide_field(figure: Figure, ctx: SummaryContext) -> None:
+    """The pointing camera's wide-field image, as wide_field_image annotated it."""
+    wide = ctx.obs.reduction_data.get("wide_field")
+    if not wide:
+        raise ValueError("no wide-field image for this observation (see the log of wide_field_image)")
+    path = ctx.session_dir / wide["annotated_file"]
+    if not path.exists():
+        raise FileNotFoundError(f"{path.name} not found")
+    axes = figure.add_axes(WIDE_IMAGE_RECT)
+    axes.imshow(imread(path))
+    axes.set_axis_off()
+    when = f"{wide['capture_time'][:19].replace('T', ' ')} UT, " if wide.get("capture_time") else ""
+    axes.set_title(f"Wide field, {when}{wide['exposure_s']:g} s", fontsize=8.5)
+    if wide.get("solved"):
+        width, height = wide["field_deg"]
+        text = (f"plate-solved: field {width:.1f} x {height:.1f} deg, {wide['scale_arcsec']:.1f}\"/px, "
+                f"target {wide['target_offset_arcmin']:.0f}' from the centre")
+    else:
+        text = "not plate-solved: target not placed"
+    figure.text(WIDE_IMAGE_RECT[0], WIDE_IMAGE_RECT[1] - 0.015, f"{text}\nImage: pointing camera",
+                fontsize=7, va="top", color="#444")
+
+
 def page_sky(ctx: SummaryContext) -> Figure:
     figure = _page(f"{ctx.title} - sky", ctx.subtitle)
     try:
         _draw_sky(figure, ctx)
     except Exception as error:
         _unavailable(figure, SKY_IMAGE_RECT, "FRIPON sky image", str(error))
+    try:
+        _draw_wide_field(figure, ctx)
+    except Exception as error:
+        _unavailable(figure, WIDE_IMAGE_RECT, "Wide-field image", str(error))
     return figure
 
 

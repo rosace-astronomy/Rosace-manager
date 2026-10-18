@@ -645,6 +645,11 @@ class TestBuildFitsRootName:
 
         assert result == "GUIDINGDARK_7x10s_20260807_143022"
 
+    def test_widefield_keeps_its_prefix_before_the_target_name(self):
+        result = build_fits_root_name("WIDEFIELD", target_name="8 Lac A", exposure_time=5, timestamp=self.FIXED_TS)
+
+        assert result == "WIDEFIELD_8_Lac_A_5s_20260807_143022"
+
     def test_strips_unsafe_characters_from_target_name(self):
         result = build_fits_root_name("STAR", target_name="HD 12345*", exposure_time=30, timestamp=self.FIXED_TS)
 
