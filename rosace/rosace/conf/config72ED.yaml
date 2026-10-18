@@ -321,6 +321,14 @@ subplugin_params:
     svg: true
     balmer_lines: true                # mark the Balmer lines
 
+  fripon:
+    # FRIPON all-sky camera whose image of the observation is shown, with the
+    # target marked (fripon_image). FRRA12 is at the observatory itself.
+    station: FRRA12
+    max_offset_minutes: 15            # capture farther than this from mid-observation: not used
+    # lens: the camera's lens model, from scripts/fit_fripon_lens.py on a
+    # clear-night image (to be fitted for FRRA12); without it, no marks.
+
   export_demetra:
     # Demetra export: one ZIP per observation and/or one ZIP per session
     # (both false: no export).

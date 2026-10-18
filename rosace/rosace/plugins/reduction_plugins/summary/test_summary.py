@@ -45,7 +45,7 @@ def _lamp():
     return lamp
 
 
-def _setup(tmp_path, monkeypatch, with_guide=True, log_text=""):
+def _setup(tmp_path, monkeypatch, with_guide=True, log_text="", with_sky=True):
     session = tmp_path / "session"
     (session / SUB).mkdir(parents=True)
     obs = Observation(id="0e37017f", created_at=datetime(2026, 9, 25, 21, 37, 51, tzinfo=timezone.utc),
@@ -96,6 +96,13 @@ def _setup(tmp_path, monkeypatch, with_guide=True, log_text=""):
         red["guiding_stats"] = {"total_rms_arcsec": 1.04, "ra_rms_arcsec": 0.86, "dec_rms_arcsec": 0.58,
                                 "ra_max_arcsec": 0.86, "dec_max_arcsec": 0.58, "frames": 199, "dropped": 1,
                                 "pixel_scale": 2.88}
+    # FRIPON image, as fripon_image leaves it
+    if with_sky:
+        from matplotlib.image import imsave
+        imsave(session / "Vega_fripon_annotated.png", np.full((30, 40), 0.5), cmap="gray")
+        red["sky_camera"] = {"station": "FRRA12", "capture_time": "2026-09-25T21:45:17+00:00", "offset_s": 125,
+                             "file": "FRRA12_20260925T214517_UT.jpg", "annotated_file": "Vega_fripon_annotated.png",
+                             "model": "fitted", "matched_stars": 80, "rms_px": 1.1, "target_pixel": [20.0, 15.0]}
     monkeypatch.setattr(module, "SUBPLUGIN_PARAMS", PARAMS)
     monkeypatch.setattr(module, "OBSERVATORY", PARAMS["observatory"])
     monkeypatch.setattr(acquisition_helpers, "SUBPLUGIN_PARAMS", PARAMS)
@@ -121,24 +128,34 @@ def _page_count(path):
 
 class TestSummaryPlugin:
 
-    async def test_four_pages(self, tmp_path, monkeypatch, caplog):
+    async def test_five_pages(self, tmp_path, monkeypatch, caplog):
         obs, session = _setup(tmp_path, monkeypatch)
 
         result = await SummaryPlugin().execute(obs)
 
         name = result.reduction_data["summary_file"]
         assert name == "20260925T213751_Vega_0e37017f_summary.pdf"
-        assert _page_count(session / name) == 4
+        assert _page_count(session / name) == 5
         assert "PHD2 guiding not available" not in caplog.text
+        assert "FRIPON sky image not available" not in caplog.text
 
     async def test_missing_guide_image_does_not_fail(self, tmp_path, monkeypatch, caplog):
         obs, session = _setup(tmp_path, monkeypatch, with_guide=False)
 
         result = await SummaryPlugin().execute(obs)
 
-        assert _page_count(session / result.reduction_data["summary_file"]) == 4
+        assert _page_count(session / result.reduction_data["summary_file"]) == 5
         assert "Guide image not available" in caplog.text
         assert "PHD2 guiding not available: no guide log recorded" in caplog.text
+
+
+    async def test_missing_sky_image_does_not_fail(self, tmp_path, monkeypatch, caplog):
+        obs, session = _setup(tmp_path, monkeypatch, with_sky=False)
+
+        result = await SummaryPlugin().execute(obs)
+
+        assert _page_count(session / result.reduction_data["summary_file"]) == 5
+        assert "FRIPON sky image not available: no FRIPON image" in caplog.text
 
 
 class TestQualityBand:

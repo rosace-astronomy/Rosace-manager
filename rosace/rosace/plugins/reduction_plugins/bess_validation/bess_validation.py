@@ -15,7 +15,8 @@ validation web page (gui/src/be_validation.ts, served at /be/). This step:
    spectrum and its overlay (law coverage, Balmer and He I lines), the
    post-science guide image and its overlay (measured slit, slit position
    in force, star from the astrometric solution), the last corrected 2D
-   target frame with extract's spectrum window and sky zones, the two plots below, the
+   target frame with extract's spectrum window and sky zones, the FRIPON
+   all-sky image as fripon_image annotated it, the two plots below, the
    observation's warnings and errors, the summary PDF's name, and "files",
    the only files the page may fetch; and two plots,
    "<final>_validation_guiding.png" (PHD2 guiding, RA and Dec) and
@@ -152,6 +153,18 @@ def _frame2d(ctx: SummaryContext) -> dict:
     }
 
 
+def _sky(ctx: SummaryContext) -> dict:
+    """The FRIPON image of the observation, as fripon_image annotated it
+    (shared key sky_camera); the wide-field image will sit beside it."""
+    sky = ctx.obs.reduction_data.get("sky_camera")
+    if not sky:
+        raise ValueError("no FRIPON image for this observation")
+    if not (ctx.session_dir / sky["annotated_file"]).exists():
+        raise FileNotFoundError(f"{sky['annotated_file']} not found")
+    return {"fripon": {"file": sky["annotated_file"], "station": sky["station"], "capture_time": sky["capture_time"],
+                       "offset_s": sky["offset_s"], "model": sky.get("model"), "matched_stars": sky.get("matched_stars")}}
+
+
 def _save(figure: Figure, path: Path) -> None:
     figure.savefig(path, dpi=PLOT_DPI)
 
@@ -191,6 +204,7 @@ def build_validation_data(obs: Observation) -> dict:
                 "overlay": part("spectrum_overlay", lambda: spectrum_overlay(obs, ctx.final_path, HELIUM_LINES_A))}
     guide = part("guide", lambda: _guide(ctx))
     frame2d = part("frame2d", lambda: _frame2d(ctx))
+    sky = part("sky", lambda: _sky(ctx))
     plots = {
         "guiding": part("guiding_plot", lambda: _guiding_plot(ctx, validation_file_name(final, "guiding"))),
         "frames": part("frames_plot", lambda: _frames_plot(ctx, validation_file_name(final, "frames"))),
@@ -206,6 +220,8 @@ def build_validation_data(obs: Observation) -> dict:
         files.append(guide["file"])
     if frame2d:
         files.append(frame2d["file"])
+    if sky:
+        files.append(sky["fripon"]["file"])
     if summary_pdf:
         files.append(summary_pdf)
     data = {
@@ -214,6 +230,7 @@ def build_validation_data(obs: Observation) -> dict:
         "spectrum": spectrum,
         "guide": guide,
         "frame2d": frame2d,
+        "sky": sky,
         "plots": plots,
         "warnings": warnings,
         "summary_pdf": summary_pdf,

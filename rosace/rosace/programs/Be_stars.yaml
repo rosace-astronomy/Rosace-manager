@@ -52,6 +52,7 @@ reduction:
   - crop                # Wavelength bounds
   - write_spectrum      # Final 1D FITS with BeSS keywords
   - plot_spectrum       # PNG / PDF / SVG plot
+  - fripon_image        # FRIPON all-sky image of the observation, target marked, never blocking
   - summary             # Few-page PDF showing how the observation went
   - bess_validation     # Queues the final spectrum for the observer's validation before BeSS
   - export_demetra      # Demetra .obs.srl + ZIP export, in parallel with the chain above

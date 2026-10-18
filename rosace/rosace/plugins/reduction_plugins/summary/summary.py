@@ -47,7 +47,10 @@ shared key summary_file:
    with the law, set to 1 on the scaling zone and limited to the crop range,
    overlaid; below, each one divided by the mean of the frames (1 = same
    shape as the others).
-4. The observation's WARNING and ERROR log lines -- during the acquisition,
+4. Sky: the FRIPON all-sky image of the observation as fripon_image
+   annotated it (shared key sky_camera: target, bright stars, N/E/S/W), in
+   the left half -- the right half is kept for a wide-field image.
+5. The observation's WARNING and ERROR log lines -- during the acquisition,
    between "[DB] Observation inserted: <id>" and "[DB] sequencer_done stamped
    for <id>" (lines tagged by a reduction step left out: the previous
    observation's reduction may run meanwhile); during the reduction, after
@@ -77,6 +80,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.dates import DateFormatter
 from matplotlib.figure import Figure
+from matplotlib.image import imread
 from matplotlib.patches import Polygon, Rectangle
 from numpy.polynomial import Polynomial
 
@@ -655,6 +659,39 @@ def _draw_unit_spectra(figure: Figure, ctx: SummaryContext) -> None:
     top.set_xlim(grid[shown][0], grid[shown][-1])
 
 
+SKY_IMAGE_RECT = (0.04, 0.50, 0.45, 0.40)   # left half: the right half is kept for the wide-field image
+
+
+def _draw_sky(figure: Figure, ctx: SummaryContext) -> None:
+    """The FRIPON all-sky image of the observation, as fripon_image annotated it."""
+    sky = ctx.obs.reduction_data.get("sky_camera")
+    if not sky:
+        raise ValueError("no FRIPON image for this observation (see the log of fripon_image)")
+    path = ctx.session_dir / sky["annotated_file"]
+    if not path.exists():
+        raise FileNotFoundError(f"{path.name} not found")
+    axes = figure.add_axes(SKY_IMAGE_RECT)
+    axes.imshow(imread(path))
+    axes.set_axis_off()
+    minutes = round(sky["offset_s"] / 60)
+    positions = {"fitted": f"target and stars placed by the lens model fitted on {sky['matched_stars']} stars",
+                 "stored": "target and stars placed by the stored lens model (too few stars on the image)",
+                 None: "no lens model: target not placed"}.get(sky.get("model"), "")
+    axes.set_title(f"FRIPON {sky['station']}, {sky['capture_time'][:19].replace('T', ' ')} UT "
+                   f"({'+' if minutes >= 0 else ''}{minutes} min from mid-observation)", fontsize=8.5)
+    figure.text(SKY_IMAGE_RECT[0], SKY_IMAGE_RECT[1] - 0.015, f"{positions}\nImage: FRIPON network (fripon.org)",
+                fontsize=7, va="top", color="#444")
+
+
+def page_sky(ctx: SummaryContext) -> Figure:
+    figure = _page(f"{ctx.title} - sky", ctx.subtitle)
+    try:
+        _draw_sky(figure, ctx)
+    except Exception as error:
+        _unavailable(figure, SKY_IMAGE_RECT, "FRIPON sky image", str(error))
+    return figure
+
+
 def page_log(ctx: SummaryContext) -> Figure:
     figure = _page(f"{ctx.title} - warnings and errors", ctx.subtitle)
     try:
@@ -723,7 +760,7 @@ class SummaryPlugin(SubPlugin):
         name = f"{final_name(obs)}_summary.pdf"
         pages = 0
         with PdfPages(ctx.session_dir / name) as pdf:
-            for build in (page_summary, page_guiding, page_series, page_log):
+            for build in (page_summary, page_guiding, page_series, page_sky, page_log):
                 try:
                     figure = build(ctx)
                 except Exception as error:

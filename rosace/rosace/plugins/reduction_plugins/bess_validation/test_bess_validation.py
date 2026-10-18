@@ -52,7 +52,11 @@ class TestBuildValidationData:
         assert data["frame2d"]["file"] == frame2d
         assert data["frame2d"]["overlay"] == {"window": [-0.5, 44.5, 299.5, 65.5],
                                               "zones": [[-0.5, 9.5, 299.5, 30.5], [-0.5, 79.5, 299.5, 100.5]]}
-        assert set(data["files"]) == {f"{FINAL}.fits", "GUIDING_Vega.fits", frame2d, *data["plots"].values()}
+        assert data["sky"]["fripon"] == {"file": "Vega_fripon_annotated.png", "station": "FRRA12",
+                                         "capture_time": "2026-09-25T21:45:17+00:00", "offset_s": 125,
+                                         "model": "fitted", "matched_stars": 80}
+        assert set(data["files"]) == {f"{FINAL}.fits", "GUIDING_Vega.fits", frame2d, "Vega_fripon_annotated.png",
+                                      *data["plots"].values()}
         assert data["unavailable"] == {}
 
     def test_missing_parts_never_raise(self, tmp_path, monkeypatch, caplog):

@@ -71,6 +71,12 @@ interface PageData {
 	spectrum: { file: string, overlay: SpectrumOverlay | null };
 	guide: { file: string, overlay: ImageOverlay } | null;
 	frame2d?: { file: string, overlay: ImageOverlay } | null;	// absent from page data prepared before it existed
+	sky?: {
+		fripon: {
+			file: string; station: string; capture_time: string; offset_s: number;
+			model: "fitted" | "stored" | null; matched_stars: number | null;
+		};
+	} | null;
 	plots: { guiding: string | null, frames: string | null };
 	warnings: { phase: string, time: string, level: string, message: string }[] | null;
 	summary_pdf: string | null;
@@ -411,6 +417,7 @@ class SpectrumView extends VBox {
 				: [ data.frame2d === undefined
 					? new Label( { cls: "list-message", text: "Non disponible (page préparée avant ce panneau : commande --build-validation-data --apply)" } )
 					: this.unavailable( data, "frame2d" ) ] ),
+			panel( "Ciel", "sky", [ this.skyRow( data ) ] ),
 			new HBox( { cls: "two-panels", content: [
 				panel( "Image de guidage", "guide", [ guide
 					? new VBox( { cls: "viewer-box guide-box", content: [ guide ] } )
@@ -488,6 +495,28 @@ class SpectrumView extends VBox {
 			] } ),
 			new HBox( { cls: "info-line decision", content: decision } ),
 		] );
+	}
+
+	/** The FRIPON all-sky image (target and bright stars marked by
+	 * fripon_image); the wide-field image will take the second column. */
+	private skyRow( data: PageData ): HBox {
+		const fripon = data.sky?.fripon;
+		if( !fripon ) {
+			return new HBox( { content: [ data.sky === undefined
+				? new Label( { cls: "list-message", text: "Non disponible (page préparée avant ce panneau : commande --build-validation-data --apply)" } )
+				: this.unavailable( data, "sky" ) ] } );
+		}
+		const minutes = Math.round( fripon.offset_s / 60 );
+		const positions = fripon.model === "fitted" ? `cible et étoiles placées par le modèle d'objectif ajusté sur ${fripon.matched_stars} étoiles`
+			: fripon.model === "stored" ? "cible et étoiles placées par le modèle d'objectif enregistré (trop peu d'étoiles sur l'image)"
+			: "pas de modèle d'objectif : cible non placée";
+		return new HBox( { cls: "sky-row", content: [
+			new VBox( { cls: "sky-column", content: [
+				new Image( { cls: "sky-image", src: fileUrl( this.obsId, fripon.file ), fit: "contain" } ),
+				new Label( { cls: "sky-caption", text: `FRIPON ${fripon.station} — ${fripon.capture_time.slice( 0, 19 ).replace( "T", " " )} UT `
+					+ `(${minutes >= 0 ? "+" : ""}${minutes} min du milieu de l'observation) — ${positions}` } ),
+			] } ),
+		] } );
 	}
 
 	private plot( data: PageData, key: "guiding" | "frames", part: string ) {
