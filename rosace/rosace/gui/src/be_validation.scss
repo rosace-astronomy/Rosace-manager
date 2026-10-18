@@ -262,8 +262,10 @@
 			height: 380px;
 		}
 
+		// fills its panel, as tall as the frame-by-frame plot beside it
 		&.guide-box {
-			height: 440px;
+			flex: 1;
+			min-height: 440px;
 		}
 	}
 

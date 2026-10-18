@@ -465,6 +465,17 @@ class SpectrumView extends VBox {
 			}
 			viewer.loadFits( await res.arrayBuffer( ), "guide" );
 			viewer.setOverlay( data.guide.overlay );
+
+			// The panel grows once the plot beside it has loaded: fit the image
+			// again whenever its frame changes size, until the observer zooms or pans it
+			let touched = false;
+			viewer.dom.addEventListener( "pointerdown", ( ) => { touched = true; } );
+			viewer.dom.addEventListener( "wheel", ( ev: WheelEvent ) => { touched ||= ev.ctrlKey; } );
+			new ResizeObserver( ( ) => {
+				if( !touched ) {
+					viewer.zoomFit( );
+				}
+			} ).observe( viewer.dom );
 		}
 		catch( e ) {
 			this.showMessage( `Image de guidage non chargée : ${e}` );

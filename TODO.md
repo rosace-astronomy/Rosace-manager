@@ -139,15 +139,6 @@ Claude peut le suggérer, jamais le faire lui-même.
       refaire la mesure par une nuit claire (trace 25 % plus large la nuit
       du 13 que la veille, focuser inchangé — focus ou turbulence ?)
       (2026-10-14)
-- [ ] SHARING pour le programme Be (gros chantier) : aujourd'hui tous les
-      programmes utilisent `blank_share`, qui ne fait que logger. Écrire le
-      sous-plugin de partage de `Be_stars.yaml` pour transmettre les spectres
-      à BeSS. Points à cadrer d'abord : mode de dépôt accepté par BeSS (à
-      vérifier), envoi automatique ou après validation par l'observateur,
-      critères de qualité avant envoi (spectre complet, transparence, flux
-      suffisant), suivi de ce qui a été envoyé et accepté, et conformité de
-      l'en-tête FITS (déjà vérifiée par `write_spectrum`) (2026-10-14)
-
 - [ ] Étoile de guidage PHD2 loin de la fente et des bords : le 14 au soir,
       NGC 6543 a échoué parce que PHD2 guidait sur l'objet lui-même, à 5 px
       au-dessus de la fente ; amené dans la fente, il a disparu en partie et
