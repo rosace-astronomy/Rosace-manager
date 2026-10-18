@@ -43,18 +43,7 @@ Claude peut le suggérer, jamais le faire lui-même.
       `slit_x`/`slit_y`/échantillonnage, bornes de réduction, réponse
       instrumentale, raies de la lampe), étapes propres à la monture
       (`sequencer_prefix`), et validation sur le ciel (2026-10-17)
-- [ ] Page de validation des spectres Be avant envoi à BeSS : l'observateur
-      voit chaque spectre (et son résumé PDF), l'accepte ou le refuse, et
-      seuls les spectres acceptés partent vers BeSS. Pose la question du
-      SHARING : envoi automatique en fin d'observation, ou différé après
-      validation (un état « à valider / validé / envoyé » par spectre,
-      conservé en base) — à cadrer avec la ligne « SHARING pour le
-      programme Be » (2026-10-17)
-- [ ] Page de validation Be, suite : la page d'un spectre (spectre, résumé
-      PDF, R / SNR / guidage), boutons Accepter / Refuser avec commentaire
-      (`decided_at`, `decided_by`), puis l'envoi à BeSS (`sent`) et le suivi
-      de la validation BeSS (`bess_validated`). La liste, la table et
-      l'étape `bess_validation` sont faites (2026-10-18)
+- [ ] Faut-il supprimer le plugin "Sharing" ?
 - [ ] Simplifier CLAUDE.md (232 ko, ~940 lignes ; traduction française
       dans `~/Téléchargements/CLAUDE_fr_2026-10-17_v1.0.pdf`) : y garder les
       règles, conventions et l'architecture ; déplacer l'histoire (dates,
@@ -115,13 +104,6 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Retraiter une observation ou toute une session (réduction relancée sur
       les fichiers existants) : un point d'entrée API REST, appelé depuis
       le GUI (2026-10-06)
-- [ ] Tracer les pertes d'étoile de PHD2 : l'événement `StarLost` arrive déjà
-      au client (`phd2_client.py::_dispatch_event()`) mais est ignoré. Un
-      WARNING à la première perte, un INFO à la reprise (nombre de poses /
-      durée perdues), un seul message par épisode. Ensuite : compter les
-      poses de guidage perdues pendant chaque pose de science et l'enregistrer
-      dans `obs.measurements` — indicateur de nuages, avec le fond de ciel
-      (2026-10-14)
 - [ ] Relire la configuration sans redémarrer le serveur. Aujourd'hui
       `config.py` la lit une seule fois au démarrage, 43 modules en copient
       les valeurs à leur import, et une quarantaine de sous-plugins figent
@@ -224,9 +206,6 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Rayons cosmiques : les traiter au prétraitement (détection sur l'image
       2D seule), en vérifiant que les raies de la lampe ne sont pas touchées
       (2026-10-09)
-- [ ] Summary : ajouter une image grand champ (avec la position de l'étoile
-      observée) et une image Fripon, qui montreraient toutes deux s'il y
-      avait des nuages — pour plus tard (2026-10-10)
 - [ ] Mouvement propre : le pointage (slew_72ed, pointing_72ed) place sur la
       fente la position J2000 du catalogue, sans mouvement propre. Pour Vega
       (0,35"/an), l'étoile réelle est à 9,4" de ce point en 2026 ; pour la

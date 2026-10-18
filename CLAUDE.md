@@ -253,7 +253,7 @@ For a sub-plugin whose own work spans several internal steps (e.g. `star_spectra
 
 - Sequencer sub-plugins: `plugins/sequencer_plugins/<name>/` (`slew`, `focus`, `star_spectra_acquisition`, `dark_acquisition`, `bias_acquisition`, `calib_acquisition`, `flat_acquisition`, `guiding_dark_acquisition`, `home_sync_am3`, `slew_72ed`, `slit_xy`, `pointing_72ed`, `spectro_light_source_to_sky`, `stop_phd2_guiding`, `wide_field_acquisition`) — read/write `obs.sequencer_data`, read `obs.scheduler_data` for target/exposure. The only sub-plugin family with a backend axis (`SEQUENCER_BACKEND`, `config.py`), resolved **inside each sub-plugin's own directory** rather than as a separate directory tree:
   - `<name>/<name>.py` — the canonical, no-suffix filename, used whenever there's no backend ambiguity: always for REDUCTION, and for SEQUENCER when `SEQUENCER_BACKEND="indi"`. `focus.py` measures the guiding camera's own focus sharpness (mean FWHM over a handful of clean stars, see below) — `indi`-only, no `_internal.py` counterpart, same reasoning as `guiding_dark_acquisition`/`home_sync_am3` (no real guiding camera to measure in simulation).
-  - `<name>/<name>_internal.py` — a **deliberate, narrow exception**, not a first-class backend: used only when `SEQUENCER_BACKEND="internal"` (simulation, level-1 demonstrator). The demo no longer uses it (it runs the real `indi` sub-plugins on replayed hardware, see "Trying Rosace without hardware"); `internal` remains for the automated tests and the not-yet-converted Docker image, and is to be removed later (TODO.md). **Only the sub-plugins needed for `programs/demo.yaml` have an `_internal.py` file** — its absence for a given sub-plugin is normal, not a gap. Nesting `internal`/`indi` as a subdirectory inside each sub-plugin (`slew/internal/slew.py`) was explicitly rejected (see HISTORY.md). `star_spectra_acquisition_internal.py` still names its produced files via `acquisition_helpers.py::build_fits_root_name()` — same convention as the `indi` backend (see below) — even though it only `touch()`s an empty placeholder file, not a real FITS image; a plain simulation-only filename was tried first and dropped once `--demo-mode` made these files visible to an actual observer trying the app (see HISTORY.md).
+  - `<name>/<name>_internal.py` — a **deliberate, narrow exception**, not a first-class backend: used only when `SEQUENCER_BACKEND="internal"` (simulation, level-1 demonstrator). The demo no longer uses it (it runs the real `indi` sub-plugins on replayed hardware, see "Trying Rosace without hardware"); `internal` remains for the automated tests only, and is to be removed later (TODO.md). **Only the sub-plugins needed for `programs/demo.yaml` have an `_internal.py` file** — its absence for a given sub-plugin is normal, not a gap. Nesting `internal`/`indi` as a subdirectory inside each sub-plugin (`slew/internal/slew.py`) was explicitly rejected (see HISTORY.md). `star_spectra_acquisition_internal.py` still names its produced files via `acquisition_helpers.py::build_fits_root_name()` — same convention as the `indi` backend (see below) — even though it only `touch()`s an empty placeholder file, not a real FITS image; a plain simulation-only filename was tried first and dropped once `--demo-mode` made these files visible to an actual observer trying the app (see HISTORY.md).
   - `pipeline_loader.py::_resolve_module_and_class()` does this resolution; `SequencerPlugin.run()` itself stays agnostic of the backend.
 - Reduction sub-plugins: `plugins/reduction_plugins/<name>/` — read/write `obs.reduction_data`. The native chain (`master_bias` → … → `summary`, all implemented) is described in "Native reduction chain" below; `calculate_flux` (relative flux of each raw frame, see "Spectrum trace axes and relative flux") is real. No backend axis at all: these steps process already-acquired files, no hardware dependency — the INDI/ASCOM axis never concerns them, and their module name is never suffixed. `export_demetra` runs in **parallel** with the native chain rather than continuing it — it reads directly from `obs.sequencer_data` (the raw science and calibration files, under the shared keys `star_spectra_images`, `bias_images`, `dark_images`, `flat_images` and `calib_images`), never from `obs.reduction_data`, so it never depends on the native chain having run. It writes a Demetra-compatible `.obs.srl` project file (XML) into `obs.obs_dir` (the session directory) and adds it, with every raw FITS file it references, flat, to a ZIP — `subplugin_params.export_demetra.global` (default `true`) and/or `.individual` (default `false`, one ZIP per observation, `<observation file>_demetra.zip`; both `false`: nothing exported). Its installation names (observer, site, equipment, telescope, spectrograph, camera...) come from the configuration's Core `observatory` block (`config.OBSERVATORY`), shared with `write_spectrum`. The global option writes **one ZIP per session** (`<session dir>_<session_id>_demetra.zip`, opened in append mode: created by the session's first observation, completed by each next one; a name already in the ZIP is skipped, so the calibration frames shared by the whole session are stored once — Demetra reads a ZIP holding several observations; a server killed mid-append can damage the ZIP, rebuildable from the files left in the session directory) — an alternative reduction path for Shelyak's own Demetra software, offered alongside Rosace's native pipeline while that pipeline matures, not a replacement for it. Most of the generated XML (the entire `<Process>` element — extraction geometry, wavelength-calibration reference lines, etc.) is a **static, per-instrument template** (`plugins/reduction_plugins/export_demetra/demetra_process_template.xml`), copied byte-for-byte into every export: these are instrument-profile facts Demetra itself fills in progressively as it reduces, never observation-specific values Rosace could or should compute.
 
@@ -741,9 +741,8 @@ hardware_indi_simu`, needs a real INDI server and PHD2 running) → **real
 hardware** (`active_hardware` pointed at the real profile, e.g.
 `hardware_indi_72ED-LAN`). Only the last two share one evolving config/
 catalogue — the demo is deliberately isolated under `~/.rosace-demo`, so it
-can never interfere with a real installation. The Docker image still runs the
-former `internal`-backend demo (`docker/config.demo.yaml`); switching it to
-the replay demo below is pending (TODO.md).
+can never interfere with a real installation. The Docker image runs the same
+replay demo (below), packaged: see "The Docker image".
 
 **The demo runs the real process on replayed hardware.** `conf/config_demo.yaml`
 uses `sequencer_backend: indi` and the real `programs/Be_stars.yaml`: every
@@ -820,7 +819,29 @@ Rosace's (see HISTORY.md 2026-10-16).
   chain). The replay profile reads it from `replay_dataset_dir:
   ~/.rosace-demo/replay` — a link to `docker/replay_data/` on this PC
   (`ln -s <repo>/docker/replay_data ~/.rosace-demo/replay`), or
-  `--output ~/.rosace-demo/replay`.
+  `--output ~/.rosace-demo/replay`. **Anonymized**: after copying,
+  `anonymize_dataset()` rounds the site's position in every FITS header to
+  the degree (`SITELAT`/`SITELONG`, `SITEELEV` → 1000 m), sets `OBSERVER`
+  to `rosace` and any mention of the site's name to `Rosace-Demo` (the
+  manifest's `source:` keeps only the night's date); `check_anonymized()`
+  then refuses a dataset where the observer's or site's name or the exact
+  position is left. `--anonymize-only` applies both to an existing dataset
+  (tests: `scripts/test_build_demo_dataset.py`, run explicitly). The
+  originals in `~/.rosace` are never modified. `config_demo.yaml` uses the
+  same approximate site (45° N, 6° E, 1000 m).
+- **The Docker image** (`Dockerfile`, `docker/entrypoint.sh`,
+  `docker/README.md`): `python:3.12-slim` with Debian's `astrometry.net`
+  (solve-field) and the dependencies (installed from `pyproject.toml` alone,
+  their own layer), then the dataset copied to `/opt/rosace-demo/replay`
+  (`/etc/astrometry.cfg` points at its index tiles), then the code (editable
+  install) and the GUI built by a Node stage — so a code change only rebuilds
+  the last layers. The entrypoint links `~/.rosace-demo/replay` to the
+  image's copy (once, in the `/root/.rosace-demo` volume; `--purge-demo`
+  keeps it) and runs `--demo-mode`. `.dockerignore` leaves out the real
+  installation's `config72ED.yaml` and 72ED hardware profiles and every test
+  file, so the image names neither the observer nor the site (the packaged
+  `config.yaml` and `SessionContext` say `Observatory`). Built locally by
+  hand (`docker build -t rosace-demo .`); not published yet (TODO.md).
 - **`demo_seed.py::seed_demo_data()`**, from the dataset's manifest,
   idempotent: the fixed `rosace`/`rosace` admin account (evaluation only,
   never a real install); the lamp lines and response copied to
@@ -881,7 +902,7 @@ would go. Each demo session is also recorded as simulated
 | `ACTIVE_HARDWARE` | `active_hardware` | `"hardware_indi_simu"` | Name (no extension) of the hardware YAML file to use |
 | `HARDWARE_CONFIG_PATH` | *(derived)* | `conf/hardware_indi_simu.yaml` | Full path to the active hardware YAML, parsed by `plugins/hardware_connectivity.py` (`sequencer_backend=indi` only) |
 | `ACTIVE_SCHEDULER` | `active_scheduler` | `"scheduler_rosace_2026"` | Name (registry in `plugins/schedulers/__init__.py`) of the active SCHEDULER plugin: `"scheduler_rosace_2026"` (real target selection) or `"blank"` (minimal hardcoded example) |
-| `SEQUENCER_BACKEND` | `sequencer_backend` | `"indi"` | Which SEQUENCER sub-plugin family to load: `"internal"` (simulation, no external dependency — tests and the Docker image only, to be removed) or `"indi"` (real INDI/PHD2 protocol) |
+| `SEQUENCER_BACKEND` | `sequencer_backend` | `"indi"` | Which SEQUENCER sub-plugin family to load: `"internal"` (simulation, no external dependency — tests only, to be removed) or `"indi"` (real INDI/PHD2 protocol) |
 | `SCHEDULER_RETRY_SECONDS` | `scheduler_retry_seconds` | `60` | Delay before `main.py` asks SCHEDULER again after it reports nothing to observe (`target=None`) |
 | `HARDWARE_CONNECT_TIMEOUT_SECONDS` | `hardware_connect_timeout_seconds` | `5` | `INIT_SESSION` (`sequencer_backend=indi` only): max time to wait for each INDI device / PHD2 to answer |
 | `CAMERA_COOLDOWN_TIMEOUT_SECONDS` | `camera_cooldown_timeout_seconds` | `300` | `INIT_SESSION` (`sequencer_backend=indi` only): max time to wait for the science camera to reach its computed cooldown target temperature — see `plugins/camera_cooldown.py` below. |

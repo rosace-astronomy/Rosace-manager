@@ -4,7 +4,7 @@ The all-sky image of a FRIPON camera at the time of the observation, with the ta
 
 FRIPON (Fireball Recovery and InterPlanetary Observation Network) runs
 all-sky cameras that take one image every 10 minutes; station FRRA12 is at
-St-Pancrasse. This step picks the image of subplugin_params.fripon.station
+the observatory itself. This step picks the image of subplugin_params.fripon.station
 nearest the middle of the science exposures, and draws on it the target (a
 red open cross) and the bright stars (fisheye.py), so one sees at once
 whether the sky was clear and where the target was. Shown on its own page of

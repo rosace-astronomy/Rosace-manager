@@ -20,10 +20,18 @@ files those devices need and describes them in manifest.yaml:
   fake PHD2 replays so the demo writes a real guide log.
 
 Everything is read-only on the source side: files are copied, never moved
-or modified. Run by hand, once per new dataset, then again only to change
-the observations:
+or modified. The copy is then anonymized (anonymize_dataset()), so that the
+dataset -- and the Docker image built with it -- names neither the observer
+nor the site: the site's coordinates in the FITS headers are rounded to the
+degree, the observer becomes "rosace", any mention of the site's name
+becomes "Rosace-Demo"; check_anonymized() then refuses a dataset where one
+is left. Run by hand, once per new dataset, then again only to change the
+observations:
 
     python scripts/build_demo_dataset.py [--output DIR] [--guidelog FILE]
+    python scripts/build_demo_dataset.py --anonymize-only [--output DIR]
+
+--anonymize-only anonymizes an existing dataset without rebuilding it.
 
 DIR defaults to docker/replay_data/ (ignored by git), where the Docker
 build finds it; for --demo-mode without Docker, use
@@ -80,6 +88,18 @@ RESPONSE = DATA_DIR / "response" / "Vega_Object_C_RI.fit"
 # homing included (checked 2026-10-16: 37 images, about 2 s each, 43 MB).
 INDEX_DIR = Path("/usr/share/astrometry-5200")
 INDEX_TILES = [f"index-5206-{hp}.fits" for hp in ("01", "02", "03", "13", "21", "22", "23")]
+
+# Anonymization: header cards holding the site's position, the observer, and
+# the private strings the finished dataset must not contain (site name,
+# observer name, the site's exact coordinates)
+POSITION_CARDS = ("SITELAT", "SITELONG", "LAT-OBS", "LONG-OBS")
+ELEVATION_CARDS = ("SITEELEV", "ALT-OBS")
+DEMO_ELEVATION_M = 1000
+DEMO_OBSERVER = "rosace"
+DEMO_SITE = "Rosace-Demo"
+SITE_NAME = re.compile(r"\bSt[-_ ]?Pan(crasse)?\b", re.IGNORECASE)
+PRIVATE = [re.compile(p, re.IGNORECASE) for p in
+           (r"Cochard", r"Pancrasse", r"\bSt[-_ ]?Pan\b", r"(?<![\d.])45\.289", r"(?<![\d.])5\.855")]
 
 LOCK_LINE = re.compile(
     r"^(\S+ \S+) - \S+ - \[POINTING_72ED\] PHD2 lock position for (.+): \(([-\d.]+), ([-\d.]+)\)$"
@@ -288,6 +308,93 @@ def build(output: Path, guidelog: Path | None = None) -> None:
             (output / star["guide_log"]).write_text(guide_logs[star["observation_id"]])
     (output / "manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True))
     print(f"{len(stars)} observations, {len(copies)} files, {total / 1e6:.0f} MB -> {output}")
+    anonymize_dataset(output)
+
+
+def _is_fits(path: Path) -> bool:
+    return path.suffix.lower() in (".fits", ".fit", ".fts")
+
+
+def _anonymized_value(key: str, value):
+    """The card's anonymized value, or None when it needs no change."""
+    if key in POSITION_CARDS:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        rounded = float(round(number))
+        return None if number == rounded else (rounded if not isinstance(value, str) else f"{rounded:g}")
+    if key in ELEVATION_CARDS:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return None if number in (0, DEMO_ELEVATION_M) else DEMO_ELEVATION_M
+    if key == "OBSERVER":
+        return None if str(value).strip() == DEMO_OBSERVER else DEMO_OBSERVER
+    if isinstance(value, str) and SITE_NAME.search(value):
+        return SITE_NAME.sub(DEMO_SITE, value)
+    return None
+
+
+def anonymize_dataset(output: Path) -> None:
+    """Rounds the site's coordinates to the degree, replaces the observer by
+    "rosace" and the site's name by "Rosace-Demo", in every FITS header and
+    text file of the dataset (in place, only where needed), then checks
+    nothing private is left."""
+    changed = 0
+    for path in sorted(p for p in output.rglob("*") if p.is_file()):
+        if _is_fits(path):
+            from astropy.io import fits
+            with fits.open(path, mode="update", memmap=False) as hdul:
+                for hdu in hdul:
+                    for key in list(hdu.header.keys()):
+                        if not key or key in ("COMMENT", "HISTORY"):
+                            continue
+                        new = _anonymized_value(key, hdu.header[key])
+                        if new is not None:
+                            hdu.header[key] = new
+                            changed += 1
+                    for kind in ("COMMENT", "HISTORY"):
+                        if kind in hdu.header and any(SITE_NAME.search(str(c)) for c in hdu.header[kind]):
+                            lines = [SITE_NAME.sub(DEMO_SITE, str(c)) for c in hdu.header[kind]]
+                            del hdu.header[kind]
+                            add = hdu.header.add_comment if kind == "COMMENT" else hdu.header.add_history
+                            for line in lines:
+                                add(line)
+                            changed += 1
+        elif path.suffix in (".yaml", ".txt"):
+            text = path.read_text()
+            new = SITE_NAME.sub(DEMO_SITE, text)
+            if path.name == "manifest.yaml":
+                new = re.sub(r"^source: (\d{4}-\d{2}-\d{2})_\S+?,", r"source: night \1,", new, flags=re.MULTILINE)
+            if new != text:
+                path.write_text(new)
+                changed += 1
+    print(f"Anonymized: {changed} change(s) in {output}")
+    check_anonymized(output)
+
+
+def check_anonymized(output: Path) -> None:
+    """Refuses (SystemExit) a dataset where the observer's name, the site's
+    name or its exact coordinates are left, in a FITS header or a text file."""
+    leftovers = []
+    for path in sorted(p for p in output.rglob("*") if p.is_file()):
+        if _is_fits(path):
+            from astropy.io import fits
+            with fits.open(path, memmap=False) as hdul:
+                text = "\n".join(repr(hdu.header) for hdu in hdul)
+        elif path.suffix in (".yaml", ".txt"):
+            text = path.read_text()
+        else:
+            continue
+        for pattern in PRIVATE:
+            match = pattern.search(text)
+            if match:
+                leftovers.append(f"{path.relative_to(output)}: {match.group(0)!r}")
+    if leftovers:
+        raise SystemExit("Private data left in the dataset:\n  " + "\n  ".join(leftovers))
+    print("Anonymization check: nothing private left")
 
 
 def main() -> None:
@@ -296,7 +403,12 @@ def main() -> None:
                         help="dataset directory (default: docker/replay_data/)")
     parser.add_argument("--guidelog", type=Path,
                         help="PHD2's GuideLog of the same night, replayed by the fake PHD2 (optional)")
+    parser.add_argument("--anonymize-only", action="store_true",
+                        help="anonymize the existing dataset in --output, without rebuilding it")
     args = parser.parse_args()
+    if args.anonymize_only:
+        anonymize_dataset(args.output.expanduser())
+        return
     build(args.output.expanduser(), args.guidelog.expanduser() if args.guidelog else None)
 
 

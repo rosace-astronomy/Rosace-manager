@@ -1,9 +1,10 @@
 #!/bin/sh
 set -e
 
-# Demo-only step: populate targets.db with an illustrative catalogue the
-# first time /data is empty (see seed_demo_data.py). No-op on every
-# subsequent start, so it's safe to leave in the normal startup path.
-python /app/docker/seed_demo_data.py
+# The demo reads its replay dataset from ~/.rosace-demo/replay
+# (conf/hardware_replay.yaml): a link to the copy in the image, made once in
+# the data volume (--purge-demo keeps it).
+mkdir -p "$HOME/.rosace-demo"
+[ -e "$HOME/.rosace-demo/replay" ] || ln -s /opt/rosace-demo/replay "$HOME/.rosace-demo/replay"
 
-exec python -m rosace.main
+exec python -m rosace.main --demo-mode

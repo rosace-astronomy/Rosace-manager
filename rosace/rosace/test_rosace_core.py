@@ -499,7 +499,7 @@ class TestSessionContext:
 
     def test_default_values(self):
         ctx = SessionContext()
-        assert ctx.site_name == "St-Pancrasse"
+        assert ctx.site_name == "Observatory"
         assert ctx.session_dir is None
         assert len(ctx.session_id) == 8      # UUID[:8]
 

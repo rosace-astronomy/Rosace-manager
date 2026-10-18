@@ -35,12 +35,13 @@ observations_dir: observations
 
 dark_library_dir: dark_library
 
-# The 72ED's site; neutral names in the spectra the demo writes.
+# An approximate site (to the degree) and neutral names: the demo, and the
+# Docker image built from it, name neither the observer nor the site.
 observatory:
   site_name: Rosace-Demo
-  latitude_deg: 45.2895
-  longitude_deg: 5.855 # East positive
-  elevation_m: 955
+  latitude_deg: 45.0
+  longitude_deg: 6.0 # East positive
+  elevation_m: 1000
   observer: Rosace demo
   site: Rosace demo
   equipment: Rosace demo

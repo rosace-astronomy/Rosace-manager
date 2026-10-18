@@ -5,7 +5,7 @@ answers "how high is the obstruction at this azimuth?".
 File format (KStars export, one profile per file):
 
     # comment lines start with '#'
-    Horizon Observatoire St-Pancrasse      <- profile name, free text, ignored
+    Horizon My Observatory                 <- profile name, free text, ignored
     220 0                                   <- "azimuth altitude", degrees
     230 9
     ...

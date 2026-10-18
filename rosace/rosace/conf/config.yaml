@@ -32,7 +32,7 @@ dark_library_dir: dark_library
 # The installation's own facts, in one required block. Exposed as OBSERVATORY.
 observatory:
   # Human-readable site name, used to name session directories (SITE_NAME).
-  site_name: St-Pancrasse
+  site_name: Observatory
   # Site location — a physical fact about the installation, not a plugin
   # setting. Longitude is signed, East positive (e.g. 5.0 = 5° East).
   # Exposed as SITE_LATITUDE_DEG / SITE_LONGITUDE_DEG / SITE_ELEVATION_M.
@@ -46,7 +46,7 @@ observatory:
   # Absent = no local horizon, only the flat minimum altitude applies. Read on
   # every SCHEDULER call; a missing or malformed file is fatal. Validate it
   # with `python -m rosace.main --check-config`. Exposed as HORIZON_FILE.
-  # horizon_file: ~/.rosace/horizon/Horizon St-Pan.txt
+  # horizon_file: ~/.rosace/horizon/horizon.txt
   # The observatory's names (observer, BeSS site and equipment names, the
   # equipment's parts) — optional, needed only to write BeSS spectra; see
   # the same block in config72ED.yaml.

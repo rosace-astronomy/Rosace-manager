@@ -108,7 +108,6 @@ PHD2_config:
     host: 127.0.0.1 # localhost (but integers expected)
     port: 4400
     do_calibration: False
-    # profile_name: St-Pancrasse
     # profile_name: Nomade 72ED Alpy
     profile_name: Simulators
     exposure_time_sec: 0.3

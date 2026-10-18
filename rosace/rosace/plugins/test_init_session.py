@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from rosace.config import SITE_NAME
+from rosace.file_names import safe_name
 from rosace.models import SessionContext
 from rosace.plugins.hardware_connectivity import ConnectedHardware
 from rosace.plugins.init_session import InitSessionPlugin
@@ -54,7 +56,7 @@ class TestInitSessionPlugin:
         await InitSessionPlugin().run(ctx)
 
         date_str = astronomical_day_local_date()
-        assert f"{date_str}_St-Pancrasse" in ctx.session_dir
+        assert f"{date_str}_{safe_name(SITE_NAME)}" in ctx.session_dir
 
     async def test_idempotent_if_called_twice(self):
         """mkdir(exist_ok=True): a second call must not raise."""
@@ -95,7 +97,7 @@ class TestSessionDirectoryUsesAstronomicalDay:
         await InitSessionPlugin().run(ctx)
 
         expected_date = (local_date - timedelta(days=1)).strftime("%Y-%m-%d")
-        assert f"{expected_date}_St-Pancrasse" in ctx.session_dir
+        assert f"{expected_date}_{safe_name(SITE_NAME)}" in ctx.session_dir
 
 
 class TestHardwareConnectivityDispatch:

@@ -1,8 +1,15 @@
 # Rosace — demo container.
 #
-# This image is for evaluation/demo purposes (SEQUENCER_BACKEND=internal,
-# no real hardware) — see docker/config.demo.yaml. It is not how a real
-# observatory deployment is meant to run.
+# Runs Rosace's demo mode (python -m rosace.main --demo-mode): the real Be
+# stars process -- pointing, plate solving, guiding, acquisition, the whole
+# native reduction -- on replayed hardware, which hands back the frames of a
+# real night instead of driving a telescope (see conf/config_demo.yaml,
+# conf/hardware_replay.yaml and CLAUDE.md, "Trying Rosace without
+# hardware"). Not how a real observatory installation is meant to run.
+#
+# The replay dataset (docker/replay_data/, git-ignored) must be built first
+# with scripts/build_demo_dataset.py; it is anonymized (approximate site, no
+# names), and so is everything else copied here (see .dockerignore).
 
 # ── Stage 1: build the GUI (x4js, esbuild via x4build) ─────────────────
 FROM node:20-slim AS gui-builder
@@ -23,57 +30,44 @@ FROM python:3.12-slim AS app
 
 WORKDIR /app
 
-# pyindi-client (a mandatory rosace dependency, even though this demo's
-# SEQUENCER_BACKEND=internal never touches it at runtime — see
-# hardware_indi/) itself pulls in dbus-python, which has no prebuilt wheel
-# and needs a C compiler + libdbus/glib headers to build from source. Without
-# these, pip's build step fails outright (meson can't find a compiler).
-# Kept simple deliberately: not removed afterward, so the final image carries
-# the compiler toolchain it no longer needs (~150-250MB) — fine for a demo
-# image, worth trimming with a proper build stage if that ever matters.
+# - astrometry.net: solve-field, the plate solver of the pointing steps (its
+#   index tiles come with the replay dataset, see /etc/astrometry.cfg below);
+# - pyindi-client (a mandatory rosace dependency, never used by the replay
+#   devices) pulls in dbus-python, which has no prebuilt wheel and needs a C
+#   compiler + libdbus/glib headers to build. Kept in the final image (a few
+#   hundred MB) for simplicity.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential pkg-config libdbus-1-dev libglib2.0-dev \
+        astrometry.net build-essential pkg-config libdbus-1-dev libglib2.0-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Dependencies first, from pyproject.toml alone: this layer is rebuilt only
+# when the dependencies change, not at every code change.
 COPY rosace/pyproject.toml /app/rosace/pyproject.toml
-COPY rosace/rosace /app/rosace/rosace
+RUN python -c "import tomllib; print('\n'.join(tomllib.load(open('/app/rosace/pyproject.toml', 'rb'))['project']['dependencies']))" \
+        > /tmp/requirements.txt \
+    && pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Editable install, deliberately: pyproject.toml has no package_data/
-# MANIFEST.in for the non-Python files (conf/*.yaml, programmes/*.yaml,
-# gui/bin/*) — a regular `pip install` would silently drop them from
-# site-packages. Editable install keeps the source tree itself as what's
-# imported, sidestepping that gap entirely (same as the documented dev
-# workflow: `pip install -e "rosace/[dev]"`).
-RUN pip install --no-cache-dir -e /app/rosace
+# The replay dataset (~490 MB): its own layer, before the code, so a code
+# change does not copy it again. solve-field reads its index tiles there.
+COPY docker/replay_data /opt/rosace-demo/replay
+RUN printf 'inparallel\nadd_path /opt/rosace-demo/replay/astrometry\nautoindex\n' > /etc/astrometry.cfg
+
+# The application. Editable install, deliberately: pyproject.toml has no
+# package_data for the non-Python files (conf/*.yaml, programs/*.yaml,
+# data/*.csv, gui/bin/*) — a regular install would drop them.
+COPY rosace/rosace /app/rosace/rosace
+RUN pip install --no-cache-dir --no-deps -e /app/rosace
 
 COPY --from=gui-builder /gui/bin /app/rosace/rosace/gui/bin
 
-# Demo-only overrides — kept in their own directory, outside rosace/, so
-# they're obviously not part of the real application.
-COPY docker/config.demo.yaml docker/seed_demo_data.py docker/entrypoint.sh /app/docker/
+COPY docker/entrypoint.sh /app/docker/entrypoint.sh
 RUN chmod +x /app/docker/entrypoint.sh
 
-# Real sample images shown in the GUI's image panels (copied to /data by
-# seed_demo_data.py on first start).
-COPY docker/preview /app/docker/preview
-
-# seed_demo_data.py seeds targets.db programs named "Be_stars"/"PN" (a
-# realistic catalogue) — pipeline_loader.py resolves a program name directly
-# to a programs/<name>.yaml file, which must be backend-agnostic since this
-# image runs sequencer_backend=internal (no real hardware). The real
-# programs/Be_stars.yaml drives the actual 72ED pipeline (pointing_72ed) and
-# is unusable here; programs/PN.yaml doesn't exist at all in the real app.
-# These demo-only overrides (same steps as demo.yaml) replace/add them in the
-# image only — the real files on disk are untouched.
-COPY docker/demo_programs/Be_stars.yaml docker/demo_programs/PN.yaml /app/rosace/rosace/programs/
-
-ENV ROSACE_CONFIG=/app/docker/config.demo.yaml
 ENV PYTHONUNBUFFERED=1
 
-# Databases, log, and observation files — see config.demo.yaml's
-# base_data_dir. Mount a named volume here to keep the demo catalogue and
-# observation history across restarts.
-VOLUME /data
+# The demo's data (databases, log, observations): config_demo.yaml's
+# base_data_dir. A named volume here keeps them across restarts.
+VOLUME /root/.rosace-demo
 
 EXPOSE 8000
 
