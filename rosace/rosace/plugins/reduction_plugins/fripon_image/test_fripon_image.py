@@ -118,12 +118,37 @@ async def test_recent_local_capture_skips_fripon(tmp_path, fripon):
     """A capture already in the session directory within 5 min of
     mid-observation: neither the list nor a download."""
     capture = _capture(WHEN + timedelta(minutes=3))
-    (tmp_path / capture.file_name).write_bytes(_jpeg(synthetic_sky()))
+    (tmp_path / capture.file_name).write_bytes(_jpeg(synthetic_sky(stars=False)))
     fake = fripon(FakeFripon([capture], image=None, unreachable=True))     # any request would fail
     obs = await FriponImagePlugin().execute(_obs(tmp_path))
     assert fake.lists == 0 and fake.downloads == 0
     assert obs.reduction_data["sky_camera"]["file"] == capture.file_name
-    assert obs.reduction_data["sky_camera"]["model"] is None      # no lens configured: image alone
+    assert obs.reduction_data["sky_camera"]["model"] is None      # clouds and no stored lens: image alone
+
+
+async def test_fitted_live_without_a_stored_lens(tmp_path, fripon):
+    """Nothing configured but the station: the lens is searched on the image itself."""
+    fripon(FakeFripon([_capture(WHEN)], image=synthetic_sky()))
+    sky = (await FriponImagePlugin().execute(_obs(tmp_path))).reduction_data["sky_camera"]
+    assert sky["model"] == "fitted" and sky["matched_stars"] > 50 and sky["rms_px"] < 1.0
+    from rosace.astro_math import altitude_deg, azimuth_deg
+    (x,), (y,) = TRUE.project([altitude_deg(97.63724, 5.86700, LAT, LON, WHEN)], [azimuth_deg(97.63724, 5.86700, LAT, LON, WHEN)])
+    assert sky["target_pixel"] == pytest.approx([x, y], abs=0.5)
+
+
+async def test_poor_fit_is_not_trusted(tmp_path, fripon, monkeypatch, caplog):
+    """A fit off by more than MAX_RMS_PX: the stored lens as is (no stored lens: no marks)."""
+    real_fit = module.fit
+
+    def poor(*args, **kwargs):
+        result = real_fit(*args, **kwargs)
+        result.rms_px = module.MAX_RMS_PX + 1
+        return result
+    monkeypatch.setattr(module, "fit", poor)
+    caplog.set_level(logging.INFO)
+    fripon(FakeFripon([_capture(WHEN)], image=synthetic_sky()), lens=TRUE.to_config())
+    sky = (await FriponImagePlugin().execute(_obs(tmp_path))).reduction_data["sky_camera"]
+    assert sky["model"] == "stored" and "not trusted" in caplog.text
 
 
 async def test_older_local_capture_reads_the_list(tmp_path, fripon):

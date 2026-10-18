@@ -676,7 +676,7 @@ def _draw_sky(figure: Figure, ctx: SummaryContext) -> None:
     minutes = round(sky["offset_s"] / 60)
     positions = {"fitted": f"target and stars placed by the lens model fitted on {sky['matched_stars']} stars",
                  "stored": "target and stars placed by the stored lens model (too few stars on the image)",
-                 None: "no lens model: target not placed"}.get(sky.get("model"), "")
+                 None: "too few stars on the image and no stored lens model: target not placed"}.get(sky.get("model"), "")
     axes.set_title(f"FRIPON {sky['station']}, {sky['capture_time'][:19].replace('T', ' ')} UT "
                    f"({'+' if minutes >= 0 else ''}{minutes} min from mid-observation)", fontsize=8.5)
     figure.text(SKY_IMAGE_RECT[0], SKY_IMAGE_RECT[1] - 0.015, f"{positions}\nImage: FRIPON network (fripon.org)",

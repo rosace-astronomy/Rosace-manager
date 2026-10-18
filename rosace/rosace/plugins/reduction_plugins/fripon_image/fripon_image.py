@@ -29,10 +29,13 @@ list is not even read; one found in the list is not downloaded again; and
 its lens fit is kept next to it ("<capture>.json") and read back -- only
 the annotated image, which marks this observation's target, is drawn again.
 
-Positions: the lens model stored in subplugin_params.fripon.lens
-(scripts/fit_fripon_lens.py), refined on the image's own stars when there
-are enough of them; the stored model as is otherwise (clouds); no lens
-stored, no marks (the image alone).
+Positions: the lens model is fitted on each image's own stars (fisheye.fit,
+a few seconds): from the model stored in subplugin_params.fripon.lens when
+there is one (scripts/fit_fripon_lens.py), searched over every orientation
+otherwise -- so nothing needs configuring. A fit is kept only with at least
+15 stars and an rms under MAX_RMS_PX; failing that (clouds), the stored
+model is used as is, which places the target even through clouds; with no
+stored model either, no marks (the image alone).
 
 Writes, in the session directory, the capture (FRIPON's name) and
 "<final name>_fripon_annotated.png"; shared key reduction_data["sky_camera"].
@@ -42,7 +45,7 @@ unreachable, no capture close enough, an unreadable image are WARNINGs.
 
 from __future__ import annotations
 
-DISPLAY_NAME = "Ciel"
+DISPLAY_NAME = "FRIPON"
 
 import io
 import json
@@ -82,6 +85,7 @@ LABELLED_STARS = 12
 LABEL_SPACING_PX = 70
 POLARIS = "* alf UMi"
 CROSS_GAP_PX, CROSS_ARM_PX = 7, 22          # the open centre keeps the target itself visible
+MAX_RMS_PX = 2.0                            # a fit farther off is not trusted (about 1 px on clear images)
 
 _IMAGE_SOURCE = re.compile(r"img=(capture/[^\"']+?)-500x500\.jpg")
 _CAPTURE_NAME = re.compile(r"[A-Z0-9]+_(\d{8}T\d{6})_UT\.jpg")
@@ -234,26 +238,31 @@ def _positions(raw: Path, image: np.ndarray, when: datetime, latitude: float, lo
     the capture ("<capture>.json") so the next observation of the same
     10 minutes reads them instead of fitting again -- as long as the stored
     lens model has not changed. Returns (model, method, matched star names,
-    rms, matched count, read from the file)."""
-    if stored is None:
-        return None, None, None, None, 0, False
+    rms, matched count, read from the file); method "fitted", "stored" (too
+    few stars, the stored model as is) or None (too few stars, no stored model)."""
+    stored_config = stored.to_config() if stored else None
     cache = raw.with_suffix(".json")
     try:
         kept = json.loads(cache.read_text())
-        if kept.get("stored_lens") == stored.to_config():
+        if kept.get("stored_lens") == stored_config:
+            if kept["method"] is None:
+                return None, None, None, None, 0, True
             model = LensModel.from_config(kept["lens"])
             matched = set(kept["matched"]) if kept["method"] == "fitted" else None
             return model, kept["method"], matched, kept["rms_px"], kept["matched_stars"], True
     except (OSError, ValueError, KeyError):
         pass
     result = fit(image, when, latitude, longitude, start=stored)
-    if result is not None:
+    if result is not None and result.rms_px <= MAX_RMS_PX:
         model, method, rms, count = result.model, "fitted", round(result.rms_px, 2), result.matched_count
         matched = {s.simbad_name for s, m in zip(result.positions.stars, result.matched) if m}
     else:
-        model, method, rms, count, matched = stored, "stored", None, 0, None
-    cache.write_text(json.dumps({"stored_lens": stored.to_config(), "lens": model.to_config(), "method": method,
-                                 "rms_px": rms, "matched_stars": count, "matched": sorted(matched or [])}, indent=1))
+        if result is not None:
+            log.info(f"[FRIPON] Lens fit not trusted on {raw.name}: rms {result.rms_px:.1f} px > {MAX_RMS_PX} px")
+        model, method, rms, count, matched = stored, ("stored" if stored else None), None, 0, None
+    cache.write_text(json.dumps({"stored_lens": stored_config, "lens": model.to_config() if model else None,
+                                 "method": method, "rms_px": rms, "matched_stars": count,
+                                 "matched": sorted(matched or [])}, indent=1))
     return model, method, matched, rms, count, False
 
 
@@ -301,7 +310,7 @@ class FriponImagePlugin(SubPlugin):
         sign = "+" if offset_s >= 0 else "-"
         positions_text = {"fitted": f"positions fitted on {matched_count} stars",
                           "stored": "positions from the stored lens model (too few stars)",
-                          None: "no lens model: no positions"}[method]
+                          None: "too few stars and no stored lens model: no positions"}[method]
         caption = (f"FRIPON {station} {capture.time:%Y-%m-%d %H:%M:%S} UT, "
                    f"{sign}{_duration(offset_s)} from mid-observation -- {positions_text}")
         annotated = f"{final_name(obs)}_fripon_annotated.png"

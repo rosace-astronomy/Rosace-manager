@@ -509,7 +509,7 @@ class SpectrumView extends VBox {
 		const minutes = Math.round( fripon.offset_s / 60 );
 		const positions = fripon.model === "fitted" ? `cible et étoiles placées par le modèle d'objectif ajusté sur ${fripon.matched_stars} étoiles`
 			: fripon.model === "stored" ? "cible et étoiles placées par le modèle d'objectif enregistré (trop peu d'étoiles sur l'image)"
-			: "pas de modèle d'objectif : cible non placée";
+			: "trop peu d'étoiles sur l'image et pas de modèle d'objectif enregistré : cible non placée";
 		return new HBox( { cls: "sky-row", content: [
 			new VBox( { cls: "sky-column", content: [
 				new Image( { cls: "sky-image", src: fileUrl( this.obsId, fripon.file ), fit: "contain" } ),
