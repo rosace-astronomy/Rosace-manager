@@ -85,7 +85,7 @@ def _setup(tmp_path, monkeypatch, with_guide=True, log_text=""):
         spectra.append(f"{SUB}/t-{i}_1d.fits")
         frames.append(f"{SUB}/t-{i}_smile.fits")
     red["extract_target_spectra"], red["smile_target_images"] = spectra, frames
-    red["extract"] = {"sky_zones": [[10, 30], [80, 100]]}
+    red["extract"] = {"window": [45, 65], "sky_zones": [[10, 30], [80, 100]]}
     red["stack"] = {"rejected": [{"file": spectra[2], "flux_fraction": 0.2}]}
     # Guide image after the science exposures (no astrometric solution here)
     if with_guide:

@@ -48,7 +48,11 @@ class TestBuildValidationData:
                                  "frames": f"{FINAL}_validation_frames.png"}
         for name in data["plots"].values():
             assert (session / name).read_bytes()[:4] == b"\x89PNG"
-        assert set(data["files"]) == {f"{FINAL}.fits", "GUIDING_Vega.fits", *data["plots"].values()}
+        frame2d = obs.reduction_data["smile_target_images"][-1]           # the last corrected frame
+        assert data["frame2d"]["file"] == frame2d
+        assert data["frame2d"]["overlay"] == {"window": [-0.5, 44.5, 299.5, 65.5],
+                                              "zones": [[-0.5, 9.5, 299.5, 30.5], [-0.5, 79.5, 299.5, 100.5]]}
+        assert set(data["files"]) == {f"{FINAL}.fits", "GUIDING_Vega.fits", frame2d, *data["plots"].values()}
         assert data["unavailable"] == {}
 
     def test_missing_parts_never_raise(self, tmp_path, monkeypatch, caplog):
@@ -61,6 +65,15 @@ class TestBuildValidationData:
         assert "no guide log recorded" in data["unavailable"]["guiding_plot"]
         assert data["plots"]["frames"] == f"{FINAL}_validation_frames.png"
         assert "guide not available" in caplog.text
+
+    def test_missing_frame_never_raises(self, tmp_path, monkeypatch):
+        obs, session = _setup(tmp_path, monkeypatch)
+        (session / obs.reduction_data["smile_target_images"][-1]).unlink()
+
+        data = build_validation_data(obs)
+
+        assert data["frame2d"] is None
+        assert "corrected frame not found" in data["unavailable"]["frame2d"]
 
 
 class TestBessValidationPlugin:

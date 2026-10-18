@@ -14,7 +14,8 @@ validation web page (gui/src/be_validation.ts, served at /be/). This step:
    statistics, star-to-slit offset, frames rejected by stack), the final
    spectrum and its overlay (law coverage, Balmer and He I lines), the
    post-science guide image and its overlay (measured slit, slit position
-   in force, star from the astrometric solution), the two plots below, the
+   in force, star from the astrometric solution), the last corrected 2D
+   target frame with extract's spectrum window and sky zones, the two plots below, the
    observation's warnings and errors, the summary PDF's name, and "files",
    the only files the page may fetch; and two plots,
    "<final>_validation_guiding.png" (PHD2 guiding, RA and Dec) and
@@ -47,6 +48,7 @@ from pathlib import Path
 import yaml
 
 from astropy.coordinates import SkyCoord
+from astropy.io import fits
 from matplotlib.figure import Figure
 
 from ....config import DB_PATH
@@ -132,6 +134,24 @@ def _guide(ctx: SummaryContext) -> dict:
     }
 
 
+def _frame2d(ctx: SummaryContext) -> dict:
+    """The last corrected 2D target frame -- the one extract measured on, once
+    preprocessed and corrected for tilt and smile -- with extract's spectrum
+    window and sky zones: rows as outer pixel edges, the whole width."""
+    reduction = ctx.obs.reduction_data
+    name = reduction["smile_target_images"][-1]
+    path = ctx.session_dir / name
+    if not path.exists():
+        raise FileNotFoundError(f"corrected frame not found: {path.name}")
+    width = fits.getheader(path)["NAXIS1"]
+    rows = lambda first, last: [-0.5, first - 0.5, width - 0.5, last + 0.5]
+    return {
+        "file": name,
+        "overlay": {"window": rows(*reduction["extract"]["window"]),
+                    "zones": [rows(*zone) for zone in reduction["extract"]["sky_zones"]]},
+    }
+
+
 def _save(figure: Figure, path: Path) -> None:
     figure.savefig(path, dpi=PLOT_DPI)
 
@@ -170,6 +190,7 @@ def build_validation_data(obs: Observation) -> dict:
     spectrum = {"file": ctx.final_path.name,
                 "overlay": part("spectrum_overlay", lambda: spectrum_overlay(obs, ctx.final_path, HELIUM_LINES_A))}
     guide = part("guide", lambda: _guide(ctx))
+    frame2d = part("frame2d", lambda: _frame2d(ctx))
     plots = {
         "guiding": part("guiding_plot", lambda: _guiding_plot(ctx, validation_file_name(final, "guiding"))),
         "frames": part("frames_plot", lambda: _frames_plot(ctx, validation_file_name(final, "frames"))),
@@ -183,6 +204,8 @@ def build_validation_data(obs: Observation) -> dict:
     files = [spectrum["file"], *(p for p in plots.values() if p)]
     if guide:
         files.append(guide["file"])
+    if frame2d:
+        files.append(frame2d["file"])
     if summary_pdf:
         files.append(summary_pdf)
     data = {
@@ -190,6 +213,7 @@ def build_validation_data(obs: Observation) -> dict:
         "quality": part("quality", lambda: _quality(ctx)),
         "spectrum": spectrum,
         "guide": guide,
+        "frame2d": frame2d,
         "plots": plots,
         "warnings": warnings,
         "summary_pdf": summary_pdf,

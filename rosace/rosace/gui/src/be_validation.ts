@@ -70,6 +70,7 @@ interface PageData {
 	} | null;
 	spectrum: { file: string, overlay: SpectrumOverlay | null };
 	guide: { file: string, overlay: ImageOverlay } | null;
+	frame2d?: { file: string, overlay: ImageOverlay } | null;	// absent from page data prepared before it existed
 	plots: { guiding: string | null, frames: string | null };
 	warnings: { phase: string, time: string, level: string, message: string }[] | null;
 	summary_pdf: string | null;
@@ -387,6 +388,7 @@ class SpectrumView extends VBox {
 		// The wheel scrolls the page; Ctrl + wheel zooms
 		const spectrum = new SpectrumViewer( { flex: 1, ctrlWheel: true } );
 		const guide = data.guide ? new FitsViewer( { flex: 1, ctrlWheel: true } ) : null;
+		const frame2d = data.frame2d ? new FitsViewer( { flex: 1, ctrlWheel: true } ) : null;
 		const previousViewer = new SpectraCompareViewer( { flex: 1 } );
 		const previousMessage = new Label( { cls: "previous-message", text: "Recherche des spectres précédents dans BeSS…" } );
 		const previousLegend = new VBox( { cls: "previous-legend" } );
@@ -403,6 +405,12 @@ class SpectrumView extends VBox {
 			this.headerPanel( page, data ),
 			panel( "Spectre 1D", "spectrum", [ new VBox( { cls: "viewer-box spectrum-box", content: [ spectrum ] } ) ] ),
 			previous,
+			panel( "Spectre 2D (dernière pose corrigée)", "frame2d", frame2d
+				? [ new VBox( { cls: "viewer-box frame2d-box", content: [ frame2d ] } ),
+					new Label( { cls: "frame2d-legend", text: "Cyan : fenêtre du spectre — magenta pointillé : zones de ciel" } ) ]
+				: [ data.frame2d === undefined
+					? new Label( { cls: "list-message", text: "Non disponible (page préparée avant ce panneau : commande --build-validation-data --apply)" } )
+					: this.unavailable( data, "frame2d" ) ] ),
 			new HBox( { cls: "two-panels", content: [
 				panel( "Image de guidage", "guide", [ guide
 					? new VBox( { cls: "viewer-box guide-box", content: [ guide ] } )
@@ -416,7 +424,10 @@ class SpectrumView extends VBox {
 		this.loadSpectrum( spectrum, data );
 		this.loadPrevious( previousViewer, previousEw, previousMessage, previousLegend );
 		if( guide ) {
-			this.loadGuide( guide, data );
+			this.loadImage( guide, data.guide, "guide", "Image de guidage" );
+		}
+		if( frame2d ) {
+			this.loadImage( frame2d, data.frame2d, "science", "Image 2D" );
 		}
 	}
 
@@ -595,16 +606,17 @@ class SpectrumView extends VBox {
 		} ) );
 	}
 
-	private async loadGuide( viewer: FitsViewer, data: PageData ) {
+	/** An image of the page (guide image, 2D frame) with its overlay. */
+	private async loadImage( viewer: FitsViewer, image: { file: string, overlay: ImageOverlay }, kind: string, what: string ) {
 		try {
-			const res = await fetch( fileUrl( this.obsId, data.guide.file ), { cache: "no-store" } );
+			const res = await fetch( fileUrl( this.obsId, image.file ), { cache: "no-store" } );
 			if( !res.ok ) {
 				throw new Error( `${res.status} ${res.statusText}` );
 			}
-			viewer.loadFits( await res.arrayBuffer( ), "guide" );
-			viewer.setOverlay( data.guide.overlay );
+			viewer.loadFits( await res.arrayBuffer( ), kind );
+			viewer.setOverlay( image.overlay );
 
-			// The panel grows once the plot beside it has loaded: fit the image
+			// The panel may grow once what is beside it has loaded: fit the image
 			// again whenever its frame changes size, until the observer zooms or pans it
 			let touched = false;
 			viewer.dom.addEventListener( "pointerdown", ( ) => { touched = true; } );
@@ -616,7 +628,7 @@ class SpectrumView extends VBox {
 			} ).observe( viewer.dom );
 		}
 		catch( e ) {
-			this.showMessage( `Image de guidage non chargée : ${e}` );
+			this.showMessage( `${what} non chargée : ${e}` );
 		}
 	}
 

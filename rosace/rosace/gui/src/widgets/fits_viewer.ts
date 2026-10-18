@@ -55,13 +55,15 @@ interface SelectionRect {
 /**
  * Overlay sent by a sub-plugin with its image (see image_broadcast.py), in
  * Rosace's pixel convention: window and zone = [x0, y0, x1, y1] outer pixel
- * edges (solid / dashed rectangle), line = [xa, ya, xb, yb], point = [x, y].
+ * edges (solid / dashed rectangle), zones = several such dashed rectangles,
+ * line = [xa, ya, xb, yb], point = [x, y].
  * Every element is optional; the viewer draws whatever is present, without
  * knowing which sub-plugin sent it.
  */
 export interface ImageOverlay {
 	window?: [ number, number, number, number ] | null;
 	zone?: [ number, number, number, number ] | null;
+	zones?: [ number, number, number, number ][] | null;
 	line?: [ number, number, number, number ] | null;
 	point?: [ number, number ] | null;
 	star?: [ number, number ] | null;
@@ -558,8 +560,8 @@ export class FitsViewer extends VBox {
 	}
 
 	/**
-	 * Image overlay: window (solid cyan rectangle), zone (dashed magenta
-	 * rectangle), line (solid red), point (green cross) and star (orange
+	 * Image overlay: window (solid cyan rectangle), zone and zones (dashed
+	 * magenta rectangles), line (solid red), point (green cross) and star (orange
 	 * circle) -- each colour distinct from the yellow "Zone" selection drawn
 	 * by the user.
 	 */
@@ -577,8 +579,11 @@ export class FitsViewer extends VBox {
 			ctx.strokeRect( a.x, a.y, b.x - a.x, b.y - a.y );
 		}
 
-		if( overlay.zone ) {
-			const [ x0, y0, x1, y1 ] = overlay.zone;
+		for( const zone of [ overlay.zone, ...( overlay.zones ?? [] ) ] ) {
+			if( !zone ) {
+				continue;
+			}
+			const [ x0, y0, x1, y1 ] = zone;
 			// zone values are pixel edges (e.g. -0.5 = left edge of column 0), which
 			// toCanvas() maps exactly onto the drawn pixel boundaries; y1 is the top
 			const a = this.toCanvas( x0, y1 );

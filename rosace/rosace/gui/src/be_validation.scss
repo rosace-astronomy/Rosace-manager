@@ -302,6 +302,10 @@
 		}
 
 		// fills its panel, as tall as the frame-by-frame plot beside it
+		&.frame2d-box {
+			height: 420px;
+		}
+
 		&.ew-box {
 			height: 220px;
 		}
@@ -356,6 +360,11 @@
 			color: white;
 			font-weight: 600;
 		}
+	}
+
+	.frame2d-legend {
+		padding: 0 1.1rem 0.6rem;
+		color: var(--muted);
 	}
 
 	.ew-title {
