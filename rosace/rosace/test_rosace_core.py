@@ -883,6 +883,19 @@ class TestDatabase:
         assert rows[0]["session_started_at"] == new_ctx.started_at.isoformat()
         assert rows[0]["observed_at"] is not None
 
+    async def test_bess_validations_by_stars(self):
+        """Every state, only the names asked for, with the session directory."""
+        from rosace.database import db_get_bess_validations_by_stars
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        await db_queue_bess_validation("bystar01", ctx.session_id, "V695 Mon", "a.fits")
+        await db_queue_bess_validation("bystar02", ctx.session_id, "HD  65875", "b.fits")
+        await db_queue_bess_validation("bystar03", ctx.session_id, "16 Peg", "c.fits")
+        rows = await db_get_bess_validations_by_stars(["HD  65875", "V695 Mon"])
+        assert sorted(r["observation_id"] for r in rows) == ["bystar01", "bystar02"]
+        assert rows[0]["session_dir"] == ctx.session_dir
+        assert await db_get_bess_validations_by_stars([]) == []
+
     async def test_insert_pointing_error_allows_multiple_rows_per_observation(self):
         """Successive plate-solve measurements for the same observation each get
         their own row -- this is a history table, not a one-row-per-observation
@@ -2817,6 +2830,20 @@ class TestAuthRoutes:
         assert sent.status_code == 200
         assert sent.json()["status"] == "sent" and sent.json()["sent_at"] is not None
         assert again.status_code == 409
+        assert unknown.status_code == 404
+        assert anonymous.status_code == 401
+
+    def test_bess_previous_spectra_route(self, tmp_path):
+        """Unknown spectrum or missing final FITS: 404; login required. The
+        content itself is tested in test_bess_archive.py."""
+        self._bess_spectrum(tmp_path, "bessprv1")
+        (tmp_path / "Vega_x.fits").unlink()
+        with self._client() as client:
+            missing = client.get("/bess/validations/bessprv1/previous")
+            unknown = client.get("/bess/validations/nosuchob/previous")
+        with self._anon_client() as client:
+            anonymous = client.get("/bess/validations/bessprv1/previous")
+        assert missing.status_code == 404 and "final spectrum not found" in missing.json()["detail"]
         assert unknown.status_code == 404
         assert anonymous.status_code == 401
 

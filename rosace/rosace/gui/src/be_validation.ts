@@ -8,17 +8,21 @@
  *                   marked "sent" here, once sent to BeSS by hand;
  * - /be/#<obs_id>   one spectrum, with everything needed to accept or reject
  *                   it (GET /bess/validations/<obs_id>, prepared by the same
- *                   step) and the decision bar at the top.
+ *                   step) and the decision bar at the top, plus the earlier
+ *                   spectra of the star, searched in BeSS when the page
+ *                   opens (GET /bess/validations/<obs_id>/previous).
  * Same login (cookie) and same look as the main page.
  */
 
-import { VBox, HBox, Button, Label, Application, BoxProps, Input, Image, Link, MessageBox, initTooltips } from "x4js";
+import { VBox, HBox, Button, Label, Application, BoxProps, Input, Image, Link, MessageBox, Checkbox, initTooltips } from "x4js";
 
 import "./be_validation.scss";
 
 import { LoginView, fetchCurrentUser, logout as authLogout } from "./auth";
 import { FitsViewer, ImageOverlay } from "./widgets/fits_viewer";
 import { SpectrumViewer, SpectrumOverlay } from "./widgets/spectrum_viewer";
+import { SpectraCompareViewer, CompareCurve } from "./widgets/spectra_compare_viewer";
+import { EwTimePlot } from "./widgets/ew_time_plot";
 
 import logout_icon from "./assets/logout.svg";
 
@@ -72,6 +76,45 @@ interface PageData {
 	files: string[];
 	unavailable: Record<string, string>;
 }
+
+/** One spectrum of the "Spectres précédents" panel (bess_archive.previous_spectra()). */
+interface PreviousSpectrum {
+	source: "current" | "rosace" | "bess" | "bess_rosace";
+	date_obs: string | null;
+	observer: string | null;
+	instrument: string | null;
+	resolving_power: number | null;
+	wavelength: ( number | null )[];
+	flux: ( number | null )[];
+	degraded: { wavelength: ( number | null )[], flux: ( number | null )[] } | null;
+	halpha_ew: number | null;	// angstrom, at the validated spectrum's resolution, negative in emission
+	scaled: boolean;			// set to 1 on the continuum on either side of H-alpha, like the others
+	observation_id?: string;
+	bess_target_name?: string;
+}
+
+interface PreviousSpectra {
+	found_by: "robot" | "name" | "position" | null;	// how BeSS recognised the star
+	bess_error: string | null;
+	current: PreviousSpectrum;
+	spectra: PreviousSpectrum[];
+}
+
+const SOURCE_LABEL: Record<PreviousSpectrum["source"], string> = {
+	current:     "spectre à valider",
+	rosace:      "Rosace",
+	bess:        "BeSS",
+	bess_rosace: "BeSS (spectre Rosace)",
+};
+
+// Colour variables of each source (be_validation.scss), by rank within the source
+const SOURCE_COLORS: Record<PreviousSpectrum["source"], string> = {
+	current:     "--cmp-current",
+	rosace:      "--cmp-rosace",
+	bess:        "--cmp-bess",
+	bess_rosace: "--cmp-bess-rosace",
+};
+const COLOR_SHADES = 5;
 
 interface SpectrumPage extends ValidationRow {
 	data: PageData | null;
@@ -344,10 +387,22 @@ class SpectrumView extends VBox {
 		// The wheel scrolls the page; Ctrl + wheel zooms
 		const spectrum = new SpectrumViewer( { flex: 1, ctrlWheel: true } );
 		const guide = data.guide ? new FitsViewer( { flex: 1, ctrlWheel: true } ) : null;
+		const previousViewer = new SpectraCompareViewer( { flex: 1 } );
+		const previousMessage = new Label( { cls: "previous-message", text: "Recherche des spectres précédents dans BeSS…" } );
+		const previousLegend = new VBox( { cls: "previous-legend" } );
+		const previousEw = new EwTimePlot( { flex: 1 } );
+		const previous = panel( "Spectres précédents", "previous", [
+			previousMessage,
+			new VBox( { cls: "viewer-box spectrum-box", content: [ previousViewer ] } ),
+			previousLegend,
+			new Label( { cls: "ew-title", text: "Largeur équivalente Hα, à la résolution du spectre validé (négative en émission)" } ),
+			new VBox( { cls: "viewer-box ew-box", content: [ previousEw ] } ),
+		] );
 
 		this.body.setContent( [
 			this.headerPanel( page, data ),
 			panel( "Spectre 1D", "spectrum", [ new VBox( { cls: "viewer-box spectrum-box", content: [ spectrum ] } ) ] ),
+			previous,
 			new HBox( { cls: "two-panels", content: [
 				panel( "Image de guidage", "guide", [ guide
 					? new VBox( { cls: "viewer-box guide-box", content: [ guide ] } )
@@ -359,6 +414,7 @@ class SpectrumView extends VBox {
 		] );
 
 		this.loadSpectrum( spectrum, data );
+		this.loadPrevious( previousViewer, previousEw, previousMessage, previousLegend );
 		if( guide ) {
 			this.loadGuide( guide, data );
 		}
@@ -463,6 +519,80 @@ class SpectrumView extends VBox {
 		catch( e ) {
 			this.showMessage( `Spectre non chargé : ${e}` );
 		}
+	}
+
+	/** The spectrum being validated and the most recent earlier ones of its
+	 * star (BeSS and Rosace), searched in BeSS each time the page opens. */
+	private async loadPrevious( viewer: SpectraCompareViewer, ewPlot: EwTimePlot, message: Label, legend: VBox ) {
+		let result: PreviousSpectra;
+		try {
+			const res = await fetch( `${API}/bess/validations/${encodeURIComponent( this.obsId )}/previous`,
+				{ cache: "no-store", signal: AbortSignal.timeout( 120000 ) } );
+			if( !res.ok ) {
+				const body = await res.json( ).catch( ( ) => ( {} ) );
+				throw new Error( body.detail ?? `${res.status} ${res.statusText}` );
+			}
+			result = await res.json( ) as PreviousSpectra;
+		}
+		catch( e ) {
+			message.setText( `Spectres précédents indisponibles : ${e}` );
+			message.setClass( "warning", true );
+			return;
+		}
+
+		const notes: string[] = [];
+		if( result.found_by === "position" ) {
+			notes.push( "Étoile non reconnue par son nom dans BeSS : spectres trouvés par position, à vérifier." );
+		}
+		else if( result.found_by === null && !result.bess_error ) {
+			notes.push( "Aucun spectre de cette étoile dans BeSS." );
+		}
+		if( result.bess_error ) {
+			notes.push( `BeSS : ${result.bess_error}` );
+		}
+		if( !result.spectra.length ) {
+			notes.push( "Aucun spectre précédent." );
+		}
+		const unscaled = [ result.current, ...result.spectra ].filter( s => !s.scaled ).length;
+		if( unscaled ) {
+			notes.push( `${unscaled > 1 ? `${unscaled} spectres n'ont` : "Un spectre n'a"} pas pu être mis à la même échelle que les autres (voir la légende).` );
+		}
+		message.setText( notes.join( " " ) );
+		message.setClass( "warning", result.found_by === "position" || !!result.bess_error || unscaled > 0 );
+		message.show( notes.length > 0 );
+
+		const ranks: Record<string, number> = {};
+		const all = [ result.current, ...result.spectra ];
+		const curves: CompareCurve[] = all.map( ( s, i ) => {
+			const rank = ranks[s.source] = ( ranks[s.source] ?? 0 ) + 1;
+			const color = s.source === "current" ? SOURCE_COLORS.current
+				: `${SOURCE_COLORS[s.source]}-${( rank - 1 ) % COLOR_SHADES + 1}`;
+			return { key: `${i}`, color, width: s.source === "current" ? 2 : 1.1,
+				wavelength: s.wavelength, flux: s.flux, degraded: s.degraded };
+		} );
+		viewer.setCurves( curves );
+		ewPlot.setPoints( all.flatMap( ( s, i ) => s.halpha_ew !== null && s.date_obs
+			? [ { key: curves[i].key, date: Date.parse( s.date_obs.endsWith( "Z" ) || /[+-]\d\d:\d\d$/.test( s.date_obs ) ? s.date_obs : `${s.date_obs}Z` ),
+				ew: s.halpha_ew, color: curves[i].color, current: s.source === "current" } ]
+			: [] ) );
+
+		legend.setContent( all.map( ( s, i ) => {
+			const position = result.found_by === "position" && ( s.source === "bess" || s.source === "bess_rosace" )
+				? ` — ⚠ par coordonnées (BeSS : ${s.bess_target_name || "?"})` : "";
+			const scale = s.scaled ? "" : " — ⚠ pas à la même échelle (continuum 6510–6530 / 6595–6615 Å non couvert)";
+			const text = [ utText( s.date_obs ), s.observer ?? "observateur inconnu", SOURCE_LABEL[s.source],
+				s.resolving_power ? `R ${s.resolving_power}` : null, s.instrument,
+				s.halpha_ew !== null ? `LE Hα ${s.halpha_ew.toFixed( 2 )} Å` : "LE Hα non mesurable" ].filter( x => x ).join( " — " ) + position + scale;
+			const swatch = new Label( { cls: "swatch" } );
+			swatch.setStyleValue( "background", `var(${curves[i].color})` );
+			return new HBox( { cls: `legend-line${position || scale ? " suspect" : ""}`, content: [
+				swatch,
+				new Checkbox( { label: text, checked: true, change: ( ev ) => {
+					viewer.setVisible( curves[i].key, !!ev.value );
+					ewPlot.setVisible( curves[i].key, !!ev.value );
+				} } ),
+			] } );
+		} ) );
 	}
 
 	private async loadGuide( viewer: FitsViewer, data: PageData ) {

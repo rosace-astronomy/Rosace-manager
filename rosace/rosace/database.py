@@ -661,6 +661,26 @@ async def db_get_bess_validation(observation_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+async def db_get_bess_validations_by_stars(names: list[str]) -> list[dict]:
+    """Every spectrum of the BeSS validation list, whatever its status, whose
+    star (the queried name) is one of these names, with its session's directory."""
+    if not names:
+        return []
+    placeholders = ", ".join("?" * len(names))
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"""
+            SELECT v.*, s.session_dir
+            FROM bess_validation v
+            LEFT JOIN sessions s ON s.id = v.session_id
+            WHERE v.star IN ({placeholders})
+            """,
+            list(names),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
 async def db_set_bess_decision(observation_id: str, decision: str, user: str, comment: str | None) -> int:
     """The observer's decision ('accepted' or 'rejected'), replacing any
     earlier one, as long as the spectrum has not been sent to BeSS; 'pending'

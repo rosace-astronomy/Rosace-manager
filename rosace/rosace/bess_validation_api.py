@@ -5,7 +5,8 @@
 REST routes of the BeSS validation web page (gui/src/be_validation.ts,
 served at /be/): the spectra waiting for the observer's decision before
 being sent to BeSS, one spectrum's page data and files, the decision, and
-the mark that the observer sent it to BeSS.
+the mark that the observer sent it to BeSS, and the earlier spectra of its
+star (bess_archive.py).
 The list and the page data are written by the bess_validation REDUCTION
 step (rosace.db's bess_validation table, and "<final>_validation.json" next
 to the final spectrum, see file_names.validation_file_name()).
@@ -20,6 +21,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from .auth import UserOut, get_current_user
+from .bess_archive import BessArchiveError, previous_spectra
 from .database import db_get_bess_validation, db_get_bess_validations, db_mark_bess_sent, db_set_bess_decision
 from .file_names import validation_file_name
 
@@ -69,6 +71,18 @@ async def get_validation_file(obs_id: str, name: str):
     if not path.is_file():
         raise HTTPException(status_code=404, detail=f"Fichier introuvable : {name}")
     return FileResponse(path, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/validations/{obs_id}/previous")
+async def get_previous_spectra(obs_id: str):
+    """The spectrum and the most recent other spectra of its star, from BeSS
+    and from Rosace (bess_archive.previous_spectra()); fetched from BeSS each
+    time the page opens."""
+    row = await _row_or_404(obs_id)
+    try:
+        return await previous_spectra(row)
+    except BessArchiveError as e:
+        raise HTTPException(status_code=404, detail=f"Spectres précédents indisponibles : {e}")
 
 
 @router.post("/validations/{obs_id}/decision")

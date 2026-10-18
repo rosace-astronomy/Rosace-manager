@@ -51,7 +51,6 @@ robot_max_age_hours (12).
 import logging
 import math
 import os
-import re
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -59,6 +58,7 @@ from typing import NamedTuple, Optional
 
 import httpx
 
+from ....bess_archive import ROBOT_LINE, is_robot_file
 from ....database import db_get_last_success_per_target
 from ....models import ExposureConfig
 from ....targets import StarInProgram, program_get_by_name, program_get_stars, star_aliases_map
@@ -79,15 +79,6 @@ DOWNLOAD_TIMEOUT_SECONDS = 5.0
 RETRY_MINUTES = 30.0
 LATENESS_STEP = 0.5   # stars whose lateness falls in the same half period are equivalent
 
-# One robot line: name (fixed 15-character field), HD (0 = none), RA, DEC,
-# magnitude, last observation (date and time, 0000-00-00 = never), BeSS
-# priority, requested period (days).
-_ROBOT_LINE = re.compile(
-    r"^(.{15})(\S*)\s+([+-]\d\d \d\d [\d.]+)\s+([+-]\d\d \d\d [\d.]+)\s+(\S+)\s+"
-    r"(\S+ \S+|\S+)\s+(\S+)\s+(\S+)\s*$"
-)
-_ROBOT_HEADER = ("Name", "HD", "RA", "DEC", "Magn", "Last_Obs", "Prior.", "Obs_Period")
-
 # Only used to limit network attempts and repeated log messages; no
 # scheduling decision depends on them.
 _last_download_attempt: Optional[float] = None
@@ -106,17 +97,12 @@ def _report_once(key: str, level: int, message: str) -> None:
         log.log(level, f"[SCHEDULER] {message}")
 
 
-def _is_robot_file(text: str) -> bool:
-    lines = text.splitlines()
-    return len(lines) > 2 and tuple(lines[1].split()) == _ROBOT_HEADER
-
-
 def parse_robot_file(text: str) -> dict[str, BessEntry]:
     """BeSS entries keyed by lower-case name and by "hd <n>"; unreadable lines
     are skipped (DEBUG)."""
     entries: dict[str, BessEntry] = {}
     for line in text.splitlines()[2:]:
-        match = _ROBOT_LINE.match(line)
+        match = ROBOT_LINE.match(line)
         if not match:
             if line.strip():
                 log.debug(f"[SCHEDULER] BeSS robot file: unreadable line skipped: {line!r}")
@@ -154,7 +140,7 @@ async def _refresh_robot_file(path: Path, url: str, max_age_hours: float) -> Non
     _last_download_attempt = time.monotonic()
     try:
         text = await _download(url)
-        if not _is_robot_file(text):
+        if not is_robot_file(text):
             raise ValueError("unexpected content (not a BeSS robot file)")
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".tmp")
@@ -173,7 +159,7 @@ def _read_robot_file(path: Path, night: str) -> dict[str, BessEntry]:
         _report_once(f"{night}|no-robot", logging.ERROR,
                      f"BeSS robot file unavailable ({path}: {e}) — Rosace's own history only")
         return {}
-    if not _is_robot_file(text):
+    if not is_robot_file(text):
         _report_once(f"{night}|bad-robot", logging.ERROR,
                      f"BeSS robot file unreadable ({path}) — Rosace's own history only")
         return {}

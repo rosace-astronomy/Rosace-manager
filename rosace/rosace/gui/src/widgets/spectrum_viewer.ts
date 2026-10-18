@@ -520,7 +520,7 @@ export class SpectrumViewer extends VBox {
 
 /** "Round" tick values (1, 2 or 5 × 10^n apart) covering [min, max], about `count` of them. */
 
-function niceTicks( min: number, max: number, count: number ): number[] {
+export function niceTicks( min: number, max: number, count: number ): number[] {
 	const range = max - min;
 	if( !( range > 0 ) || !isFinite( range ) ) {
 		return [];
@@ -537,7 +537,7 @@ function niceTicks( min: number, max: number, count: number ): number[] {
 
 /** Tick label with just enough decimals for the step between ticks. */
 
-function formatTick( value: number, ticks: number[] ): string {
+export function formatTick( value: number, ticks: number[] ): string {
 	const step = ticks.length > 1 ? Math.abs( ticks[1] - ticks[0] ) : 1;
 	const decimals = Math.max( 0, -Math.floor( Math.log10( step ) ) );
 	return value.toFixed( decimals );
