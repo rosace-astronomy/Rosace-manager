@@ -1,6 +1,6 @@
-// BeSS validation page: the main page's colours, header, panels and login
-// form, plus the few rules of its own list.
-@use "./main.scss";
+// BeSS validation page (be_validation.ts): what only this page uses -- the
+// shared styles (colours, panels, header, viewers, login...) are in _common.scss.
+@use "./common";
 
 .validation-view {
 	height: 100vh;

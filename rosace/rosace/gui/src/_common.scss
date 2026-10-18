@@ -1,0 +1,340 @@
+// Styles shared by every page of the GUI (main.scss, be_validation.scss...),
+// imported by each page with @use "./common". A style used by more than one
+// page goes here; a style of one page only stays in that page's file.
+
+:root {
+	// Spring palette — green / warm gray / brown (deeper, less washed out)
+	--bg: #e6e1d2;
+	--bg-panel: #dcdcd9;
+	--bg-card: #cfcfcb;
+
+	--accent: #3f6b45;
+	--green: #4a7a4a;
+	--amber: #b37a2e;
+	--red: #8f4a34;
+	--text: #3a352d;
+	--text-dk: #17140f;
+	--muted: #7c7364;
+
+	--border: rgba(58, 53, 45, 0.22);
+	--neutral: #c7c1b0;
+	--disabled-bg: #ded9cb;
+	--disabled-text: #a39c8c;
+	--font-ui: "montserrat";
+	--font-mono: ui-monospace, "SFMono-Regular", "Cascadia Code", Consolas, monospace;
+
+	--radius: 10px;
+	--shadow-sm: 0 1px 2px rgba(40, 32, 20, 0.10), 0 2px 6px rgba(40, 32, 20, 0.08);
+}
+
+:root[data-theme="dark"] {
+	--bg: #080c14;
+	--bg-panel: #0d1626;
+	--bg-card: #111e33;
+	--accent: #00d4ff;
+	//--green: #00ff88;
+	//--amber: #ffb830;
+	//--red: #ff3c5a;
+	--text: #d6d6d6;
+	--text-dk: #000000;
+	--muted: #8da8c3;
+	--border: rgba(0, 212, 255, 0.12);
+
+	--listbox-item-color: var( --text );
+	--listbox-item-color-sel: var(--text-dk);
+	--listbox-item-background-sel: #abb7cd;
+	--listbox-item-background-hover: #2a3d60;
+
+	--menu-background: #2a3d60;
+	--menuitem-color: #d3e2fd;
+}
+
+html,
+body {
+	height: 100%;
+	overflow: hidden;
+	background: var(--bg);
+	color: var(--text);
+	font-family: var(--font-ui);
+	font-size: 14px;
+}
+
+.mainview {
+	height: 100vh;
+}
+
+.panel {
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	overflow: hidden;
+	align-self: stretch;
+	background: var( --bg-panel );
+	box-shadow: var(--shadow-sm);
+
+	&>.title {
+		display: block;
+		padding: 0.55rem 1.1rem;
+		color: var(--accent);
+		font-weight: 600;
+		font-size: 0.8rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		background: var(--bg-card);
+		border-bottom: 1px solid var(--border);
+		flex-shrink: 0;
+
+		// image panels: the object and observation ID keep their case, only the
+		// panel name is written in capitals (panelTitle() in main.ts)
+		&.keep-case {
+			text-transform: none;
+		}
+
+		// object and observation ID after the panel name, in the text colour
+		.title-detail {
+			color: var(--text);
+			margin-left: 0.8em;
+		}
+	}
+}
+
+// patch x4
+.x4listbox, .x4simpletextarea {
+	border: none;
+	background: var( --bg-panel );
+}
+
+.x4input {
+	--input-background: var( --bg-card );
+	--input-color: var( --text );
+}
+
+
+
+// Header
+.appheader {
+	height: 66px;
+	padding: 0 1.5rem;
+	border-bottom: 1px solid var(--border);
+
+	// logo & title
+	.header-logo {
+		gap: 0.75rem;
+		align-items: center;
+
+		#image {
+			height: 38px;
+			width: auto;
+		}
+
+		#title {
+			font-size: 1.35rem;
+			font-weight: 700;
+			text-transform: uppercase;
+			color: var(--accent);
+		}
+	}
+
+	#logout, #darkmode {
+		color: white;
+
+		// Button footprint pinned explicitly (≈ the default 8px padding + 1.4em icon
+		// these had before) so dropping the padding to grow the icon doesn't also
+		// shrink the button — only the icon inside it grows.
+		width: 2.4em;
+		height: 2.4em;
+		padding: 0em;
+
+		#icon {
+			width: 100%;
+			height: 100%;
+		}
+	}
+
+	#logout {
+		background-color: var(--green);
+	}
+
+	#darkmode {
+		background-color: black;
+	}
+}
+
+
+// Tooltips (every page): the page's own beige tones instead of x4js's blue.
+// Set on the tooltip itself, so they win over x4js's :root defaults
+// whatever the order the style sheets load in; dark mode follows.
+.x4tooltip {
+	--tooltip-background: var(--bg-card);
+	--tooltip-color: var(--text);
+	--tooltip-border: var(--border);
+	--tooltip-icon-color: var(--accent);
+	--tooltip-caption-background: var(--accent);
+}
+
+// Image and spectrum viewers (FitsViewer, SpectrumViewer), wherever they are:
+// the main page's right column and the BeSS validation page (be_validation.ts)
+// Room for "λ: 6562.8 Å  F: 1.234  (extrapolé)"
+.spectrum-viewer .fits-toolbar .fits-readout {
+	min-width: 44ch;
+}
+
+.fits-viewer {
+	flex: 1;
+	min-height: 0;
+
+	.fits-toolbar {
+		padding: 0.3rem 0.6rem;
+		gap: 0.4rem;
+		border-bottom: 1px solid var(--border);
+		flex-shrink: 0;
+
+		.fits-btn {
+			color: white;
+			background-color: var(--green);
+
+			// "Zone" toggle, while zone-selection mode is on
+			&.active {
+				background-color: var(--amber);
+			}
+		}
+
+		// Pixel readout ("X 613  Y 614  I 1234"), pushed to the right end of the
+		// toolbar. Fixed width + preserved spaces: the buttons never shift while
+		// the digits change.
+		.fits-readout {
+			margin-left: auto;
+			align-self: center;
+			min-width: 32ch;
+			// text-align alone isn't enough if the label lays out its inner text as a
+			// flex item -- justify-content covers that case too
+			display: flex;
+			justify-content: flex-end;
+			text-align: right;
+			white-space: pre;
+			font-family: var(--font-mono);
+			font-weight: bold;
+			color: var(--text);
+		}
+	}
+
+	.fits-canvas {
+		// Canvas (x4js) extends Component, not Box, so it never gets the %box
+		// mixin's position:relative -- without it, its own inner <canvas>
+		// (position:absolute) anchors to the nearest positioned ancestor
+		// instead (this .fits-viewer), landing on top of the toolbar above it.
+		position: relative;
+		flex: 1;
+		min-height: 0;
+		// Light grey rather than black: makes the image's own edges visible
+		// against the frame instead of blending into a black background.
+		background: var(--neutral);
+		// A plain arrow while hovering (easier to aim at one particular pixel,
+		// the pixel readout is right there in the toolbar); a crosshair while
+		// drawing a zone (left button), the closed hand while panning (right
+		// button), up/down arrows for a vertical-only pan (Ctrl)
+		cursor: default;
+
+		&.zone-mode {
+			cursor: crosshair;
+		}
+
+		&.panning {
+			cursor: grabbing;
+		}
+
+		&.v-pan {
+			cursor: ns-resize;
+		}
+	}
+}
+
+// Login screen (AppShell, before MainView)
+.login-view {
+	position: relative;
+	width: 100%;
+	height: 100%;
+
+	// No .panel here (no border/background/shadow, deliberately) — a bordered card's
+	// height was coming out short of its own content for a reason not pinned down;
+	// simplest robust fix is to not have a box that can clip in the first place.
+	//
+	// Centering via absolute positioning + transform, not flex align/justify-content:
+	// the flex-based version (align-items/justify-content: center on .login-view) was
+	// tried twice and didn't reliably center .login-panel for a reason not pinned down
+	// either — this technique doesn't depend on flex container behavior at all.
+	.login-panel {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		width: 520px;
+		padding: 3.5rem 0;
+		gap: 2rem;
+
+		.login-title {
+			// Centering itself is done via the align:"center" prop (auth.ts), which
+			// adds x4js's own .al-center class (justify-content) — a Label is an hbox
+			// internally, so a plain text-align here would have no effect on it.
+			font-size: 1.8rem;
+			color: var(--accent);
+			margin-bottom: 0.5rem;
+		}
+	}
+
+	.login-form {
+		// Form extends Box, not VBox — %box (shared.scss) only sets position:relative,
+		// no display:flex, unlike VBox/HBox — so gap/vertical stacking need to be set
+		// explicitly here, they aren't inherited the way they are for a plain VBox.
+		display: flex;
+		flex-direction: column;
+		gap: 1.75rem;
+
+		// x4js's own .x4form class defaults to flex-grow:1/flex-basis:0 (meant for a
+		// form that fills a definite-height parent), combined with .x4box's min-height:0
+		// (which disables flexbox's normal "don't shrink below content size" guard).
+		// Inside .login-panel, whose own height is auto/content-driven (not definite),
+		// that combination let the form collapse under its own content instead of
+		// sizing to it — the border ended up too short, content overflowing below it.
+		// flex: 0 0 auto forces content-based sizing instead (same fix already used
+		// elsewhere in this file, e.g. below, for the same underlying x4js default).
+		flex: 0 0 auto;
+
+		// Frame around the fields/button, added directly here rather than via the
+		// shared .panel class: .panel sets overflow:hidden, which is what clipped
+		// .login-panel's content under the abs-position + transform centering above
+		// (see the comment on .login-panel) — a plain border/radius has no such risk.
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		padding: 2rem;
+
+		.field {
+			gap: 0.5rem;
+			align-items: center;
+
+			.x4label {
+				font-size: 1rem;
+				color: var(--muted);
+				text-align: center;
+			}
+
+			.x4input {
+				width: 100%;
+				height: 3.2rem;
+				font-size: 1.1rem;
+				border-radius: 8px;
+				padding: 0.5rem 1rem;
+				box-sizing: border-box;
+			}
+		}
+
+		.x4button {
+			height: 3.2rem;
+			font-size: 1.1rem;
+			margin-top: 0.5rem;
+			border-radius: 8px;
+			background: var(--accent);
+			color: white;
+		}
+	}
+}
+
