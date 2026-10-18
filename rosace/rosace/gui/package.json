@@ -8,7 +8,7 @@
 	},
 	"devDependencies": {
 		"x4build": "latest",
-		"x4js": "latest"
+		"x4js": "2.3.21"
 	},
 	"dependencies": {
 		"@fontsource/montserrat": "^5.2.8",

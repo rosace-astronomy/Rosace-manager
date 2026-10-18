@@ -689,6 +689,10 @@ class Shell extends VBox {
 	}
 
 	route( ) {
+		// x4js closes a tooltip only on its element's mouseleave, which an
+		// element removed from the page never sends: the tooltip of the
+		// clicked « Ouvrir » would stay on the next view. Sent here instead.
+		this.dom.querySelectorAll( "[tooltip]" ).forEach( el => el.dispatchEvent( new MouseEvent( "mouseleave" ) ) );
 		this.loggedIn = true;
 		const obsId = decodeURIComponent( location.hash.replace( /^#/, "" ) );
 		const onUnauthorized = ( ) => this.showLogin( );

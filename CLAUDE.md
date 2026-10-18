@@ -923,6 +923,10 @@ Centralized logging, configured once via `configure_logging()`, called at the ve
 
 The control interface is a single-page application built **exclusively with [X4 (x4js)](https://github.com/rlibre/x4)**. No other UI framework or DOM manipulation library is permitted.
 
+**Before writing or changing GUI code, read x4js's own instructions for AI assistants**, shipped with the package (since 2.3): `gui/node_modules/x4js/aiguide.md` (how to write idiomatic x4 code — follow it), `aicontext.md` (exact classes and signatures — check every x4 API used against it, or against `node_modules/x4js/src/`; never guess one) and `aicli.md` (the `x4js` command line). They describe the installed version, so they are read again after an x4js update. Where they and this file disagree, this file wins for Rosace's own conventions (language, layout, styles).
+
+Known x4js behaviour: a tooltip closes only on its element's `mouseleave`, which an element removed from the page never sends — a view replaced while the mouse is over a tooltip element keeps the tooltip on screen. `be_validation.ts::Shell.route()` sends that `mouseleave` itself before changing view.
+
 - Entry point: `src/main.ts` — one `RosaceApp` class, all layout via X4 components
 - Styles: `src/_common.scss` holds everything shared by the pages (colours and dark theme, base, panels, the shared part of the header, x4js patches, tooltips, image/spectrum viewers, login screen); each page has its own file importing it with `@use "./common"` — `main.scss` (main page), `be_validation.scss` (BeSS validation page). A style used by more than one page goes in `_common.scss`.
 - All containers must be `VBox` / `HBox`; all text via `Label`; all interactive elements via `Button` or `Component`
