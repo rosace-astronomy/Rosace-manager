@@ -85,9 +85,10 @@
 			font-size: 1.15rem;
 		}
 
-		// Holds the "Envoyé" button on an accepted row; same width when empty
+		// Holds the "Envoyé" button on an accepted row; same width when empty,
+		// just the button's, so the comment is never far from the chip
 		.row-action {
-			flex: 0 0 8rem;
+			flex: 0 0 6rem;
 
 			// Beige, tone on tone: an action still to do (green would read as done)
 			.sent {
@@ -97,6 +98,20 @@
 				color: var(--text-dk);
 				border: 1px solid var(--muted);
 			}
+		}
+
+		// The decision's comment: the rest of the width, one line, cut with
+		// "…" (the whole comment in the tooltip)
+		.row-comment {
+			flex: 1 1 0;
+			min-width: 0;
+			margin-left: -0.6rem;		// a tighter gap than between the other columns
+			color: var(--muted);
+			font-style: italic;
+			font-size: 1.05rem;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
 		}
 	}
 }
@@ -169,6 +184,13 @@
 		&.cancel {
 			background: var(--neutral);
 			color: var(--text-dk);
+		}
+
+		// Beige like the list's "Envoyé": an action, not a state
+		&.reset:not([disabled]) {
+			background: var(--neutral);
+			color: var(--text-dk);
+			border: 1px solid var(--muted);
 		}
 	}
 }

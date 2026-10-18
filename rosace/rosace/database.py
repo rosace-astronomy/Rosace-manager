@@ -663,17 +663,19 @@ async def db_get_bess_validation(observation_id: str) -> dict | None:
 
 async def db_set_bess_decision(observation_id: str, decision: str, user: str, comment: str | None) -> int:
     """The observer's decision ('accepted' or 'rejected'), replacing any
-    earlier one, as long as the spectrum has not been sent to BeSS. Returns
-    the number of rows changed (0: unknown, or already sent)."""
-    if decision not in ("accepted", "rejected"):
+    earlier one, as long as the spectrum has not been sent to BeSS; 'pending'
+    takes the decision back (decided_at and decided_by cleared, the comment
+    kept). Returns the number of rows changed (0: unknown, or already sent)."""
+    if decision not in BESS_DECIDABLE_STATUSES:
         raise ValueError(f"Unknown decision: {decision!r}")
+    decided = decision != "pending"
     placeholders = ", ".join("?" * len(BESS_DECIDABLE_STATUSES))
     async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
         cursor = await db.execute(
             f"UPDATE bess_validation SET status = ?, decided_at = ?, decided_by = ?, comment = ? "
             f"WHERE observation_id = ? AND status IN ({placeholders})",
-            (decision, datetime.now(timezone.utc).isoformat(), user, comment or None, observation_id,
-             *BESS_DECIDABLE_STATUSES),
+            (decision, datetime.now(timezone.utc).isoformat() if decided else None, user if decided else None,
+             comment or None, observation_id, *BESS_DECIDABLE_STATUSES),
         )
         await db.commit()
         return cursor.rowcount

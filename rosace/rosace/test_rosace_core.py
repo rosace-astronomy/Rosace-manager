@@ -2778,6 +2778,9 @@ class TestAuthRoutes:
             rejected = client.post("/bess/validations/bessdec1/decision",
                                    json={"decision": "rejected", "comment": "clouds"})
             accepted = client.post("/bess/validations/bessdec1/decision", json={"decision": "accepted"})
+            taken_back = client.post("/bess/validations/bessdec1/decision",
+                                     json={"decision": "pending", "comment": "look again"})
+            client.post("/bess/validations/bessdec1/decision", json={"decision": "accepted"})
             invalid = client.post("/bess/validations/bessdec1/decision", json={"decision": "sent"})
 
             async def _send():
@@ -2787,13 +2790,17 @@ class TestAuthRoutes:
 
             asyncio.run(_send())
             frozen = client.post("/bess/validations/bessdec1/decision", json={"decision": "rejected"})
+            frozen_back = client.post("/bess/validations/bessdec1/decision", json={"decision": "pending"})
             unknown = client.post("/bess/validations/nosuchob/decision", json={"decision": "accepted"})
         assert rejected.status_code == 200
         assert rejected.json()["status"] == "rejected" and rejected.json()["comment"] == "clouds"
         assert rejected.json()["decided_by"] == TestApiEndpoints._TEST_ADMIN_USER
         assert accepted.json()["status"] == "accepted" and accepted.json()["comment"] is None
+        assert taken_back.json()["status"] == "pending" and taken_back.json()["comment"] == "look again"
+        assert taken_back.json()["decided_at"] is None and taken_back.json()["decided_by"] is None
         assert invalid.status_code == 422
         assert frozen.status_code == 409
+        assert frozen_back.status_code == 409
         assert unknown.status_code == 404
 
     def test_bess_mark_sent(self, tmp_path):

@@ -218,6 +218,8 @@ class ListView extends VBox {
 						? [ new Button( { cls: "sent", label: "Envoyé", tooltip: "À cliquer une fois le spectre envoyé à BeSS",
 							click: ( ) => this.markSent( row ) } ) ]
 						: [] } ),
+					// the rest of the width; the whole comment in the tooltip
+					new Label( { cls: "row-comment", text: row.comment ?? "", tooltip: row.comment ?? undefined } ),
 				] } ) ),
 			] } );
 		} ) );
@@ -255,16 +257,19 @@ class ListView extends VBox {
 /**
  * One spectrum: the decision bar at the top (always visible), then
  * everything needed to decide, prepared by the bess_validation step.
- * Accepting or rejecting records the decision and goes back to the list;
- * "Annuler" goes back without changing anything.
+ * Accepting, rejecting or taking the decision back ("Remettre à valider")
+ * records it and goes back to the list; "Annuler" goes back without
+ * changing anything.
  */
 
 class SpectrumView extends VBox {
 
 	private obsId: string;
+	private status: Status | null = null;
 	private comment: Input;
 	private body: VBox;
 	private buttons: Button[] = [];
+	private reset: Button;
 	private message: Label;
 
 	constructor( props: ViewProps & { obsId: string } ) {
@@ -273,7 +278,9 @@ class SpectrumView extends VBox {
 
 		const accept = new Button( { cls: "decide accept", label: "Accepter", click: ( ) => this.decide( "accepted" ) } );
 		const reject = new Button( { cls: "decide reject", label: "Refuser", click: ( ) => this.decide( "rejected" ) } );
-		this.buttons = [ accept, reject ];
+		this.reset = new Button( { cls: "decide reset", label: "Remettre à valider",
+			tooltip: "Annule la décision : le spectre redevient « À valider »", click: ( ) => this.decide( "pending" ) } );
+		this.buttons = [ accept, reject, this.reset ];
 
 		this.setContent( [
 			pageHeader( [
@@ -284,6 +291,7 @@ class SpectrumView extends VBox {
 				this.comment = new Input( { cls: "comment", type: "text", flex: 1, placeholder: "facultatif" } ),
 				accept,
 				reject,
+				this.reset,
 				new Button( { cls: "decide cancel", label: "Annuler", tooltip: "Retour à la liste, sans rien changer", click: ( ) => this.back( ) } ),
 			] } ),
 			this.message = new Label( { cls: "decision-message" } ),
@@ -320,8 +328,8 @@ class SpectrumView extends VBox {
 
 		document.title = `${page.star} — ${PAGE_TITLE}`;
 		this.comment.setValue( page.comment ?? "" );
-		const decidable = [ "pending", "accepted", "rejected" ].includes( page.status );
-		this.buttons.forEach( b => b.enable( decidable ) );
+		this.status = page.status;
+		const decidable = this.enableButtons( );
 		if( !decidable ) {
 			this.showMessage( `${STATUS_LABEL[page.status]} : décision figée.` );
 		}
@@ -482,7 +490,16 @@ class SpectrumView extends VBox {
 		}
 	}
 
-	private async decide( decision: "accepted" | "rejected" ) {
+	/** Decision buttons active until the spectrum is sent; "Remettre à valider"
+	 * only once decided. Returns whether a decision can still be taken. */
+	private enableButtons( ): boolean {
+		const decidable = this.status === "pending" || this.status === "accepted" || this.status === "rejected";
+		this.buttons.forEach( b => b.enable( decidable ) );
+		this.reset.enable( this.status === "accepted" || this.status === "rejected" );
+		return decidable;
+	}
+
+	private async decide( decision: "accepted" | "rejected" | "pending" ) {
 		this.buttons.forEach( b => b.disable( ) );
 		try {
 			const res = await fetch( `${API}/bess/validations/${encodeURIComponent( this.obsId )}/decision`, {
@@ -503,7 +520,7 @@ class SpectrumView extends VBox {
 		}
 		catch( e ) {
 			this.showMessage( `Décision non enregistrée : ${e}` );
-			this.buttons.forEach( b => b.enable( ) );
+			this.enableButtons( );
 		}
 	}
 }

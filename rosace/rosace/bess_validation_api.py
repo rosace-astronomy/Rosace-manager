@@ -27,7 +27,7 @@ router = APIRouter(prefix="/bess", dependencies=[Depends(get_current_user)])
 
 
 class Decision(BaseModel):
-    decision: Literal["accepted", "rejected"]
+    decision: Literal["accepted", "rejected", "pending"]   # "pending": the decision taken back
     comment: str | None = None
 
 
@@ -73,8 +73,8 @@ async def get_validation_file(obs_id: str, name: str):
 
 @router.post("/validations/{obs_id}/decision")
 async def post_decision(obs_id: str, body: Decision, user: UserOut = Depends(get_current_user)):
-    """Accepts or rejects the spectrum (a new decision replaces the last one),
-    until it is sent to BeSS (409 after)."""
+    """Accepts or rejects the spectrum, or takes the decision back ("pending");
+    a new decision replaces the last one, until it is sent to BeSS (409 after)."""
     await _row_or_404(obs_id)
     if await db_set_bess_decision(obs_id, body.decision, user.username, body.comment) == 0:
         raise HTTPException(status_code=409, detail="Spectre déjà envoyé à BeSS : décision figée")
