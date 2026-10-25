@@ -91,6 +91,12 @@ Claude peut le suggérer, jamais le faire lui-même.
       sera publiée sur un dépôt public : « Get started » (démo Docker), et
       ce qu'a apporté septembre-octobre — partir du manuel utilisateur
       `~/Téléchargements/Rosace_manuel_utilisateur_v1.0.pdf` (2026-10-18)
+- [ ] L'image de démo est publique sur Codeberg mais son mode d'emploi
+      (`docker/README.md`) est dans un dépôt privé : avant de donner la
+      commande `docker run` à quelqu'un, publier les instructions
+      (lancer, arrêter, purger, effacer, Mac Apple Silicon avec
+      `--platform linux/amd64`) dans un endroit public — la page « Get
+      started » de la doc Sphinx (2026-10-25)
 - [ ] Supprimer le backend `internal` (`sequencer_backend: internal`,
       `programs/demo.yaml`, les `_internal.py`) : la démo ne s'en sert plus.
       Basculer d'abord ses tests sur le matériel rejoué (2026-10-16)

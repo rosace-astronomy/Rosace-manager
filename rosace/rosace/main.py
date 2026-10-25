@@ -18,13 +18,16 @@ Spectroscopic orchestrator — main entry point.
 State machine: INIT_SESSION → SCHEDULER → SEQUENCER → REDUCTION → SHARING → ARCHIVE → CLOSE_SESSION
 """
 
-# Command-line options (cli.py) must be handled before `from .config import ...`
-# below: some of them choose which config.yaml gets loaded.
+# Run as a script, this is the `rosace` command (cli.py): it handles the
+# options, which must come before `from .config import ...` below (some choose
+# which config.yaml gets loaded), then starts the server, which imports this
+# module afresh — so the script copy stops here, before loading anything else.
 import sys
 
 if __name__ == "__main__":
-    from rosace.cli import run_cli
-    run_cli(sys.argv[1:])
+    from rosace.cli import main
+    main(sys.argv[1:])
+    sys.exit(0)
 
 import asyncio
 import json
@@ -48,7 +51,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .config     import GUI_PREVIEW_DIR, SITE_NAME, SITE_LONGITUDE_DEG, SCHEDULER_RETRY_SECONDS, SEQUENCER_BACKEND, SESSION_COOKIE_SECURE, SESSION_TTL_HOURS, IS_DEMO_MODE
+from .config     import CONFIG_PATH, GUI_PREVIEW_DIR, SITE_NAME, SITE_LONGITUDE_DEG, SCHEDULER_RETRY_SECONDS, SEQUENCER_BACKEND, SESSION_COOKIE_SECURE, SESSION_TTL_HOURS, IS_DEMO_MODE
 from .log_config import configure_logging
 
 configure_logging()
@@ -99,6 +102,7 @@ log = logging.getLogger("spectro.main")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    log.info(f"[MAIN] Rosace {_rosace_version()} started (config {CONFIG_PATH})")
     await db_init()
     await targets_db_init()
     await auth_db_init()
@@ -823,14 +827,6 @@ async def import_program_stars_from_file(file: UploadFile):
             ))
 
     return results
-
-# ─────────────────────────────────────────────────────────────
-# Entry point
-# ─────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("rosace.main:app", host="0.0.0.0", port=8000)
 
 # ─────────────────────────────────────────────────────────────
 # Endpoints — Stars

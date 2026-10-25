@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """
-Command-line options of `python -m rosace.main`, handled by run_cli(), which
-main.py calls first thing when run as a script.
+The `rosace` command (pyproject.toml's [project.scripts]) and its options;
+`python -m rosace.main` is the same command, main.py calling main() first
+thing when run as a script. main() takes --host/--port, run_cli() handles
+every other option, then main() starts the server.
 
 Kept out of main.py so the orchestrator knows nothing of the installation
 tools behind these options (config and horizon-file validation, admin
@@ -20,7 +22,9 @@ import os
 import sys
 
 _HELP_TEXT = """\
-Usage: python -m rosace.main [config_path] [--demo-mode] [--check-config [config_path]] [--create-admin username] [--list-subplugins [family]] [--purge-simulated [--apply]] [--purge-demo [--apply]] [--build-validation-data [--apply]]
+Usage: rosace [config_path] [--demo-mode] [--host H] [--port N] [--check-config [config_path]] [--create-admin username] [--list-subplugins [family]] [--purge-simulated [--apply]] [--purge-demo [--apply]] [--build-validation-data [--apply]] [--version]
+
+  (`python -m rosace.main` is the same command, with the same options.)
 
   (no arguments)            Start the server using the active config, resolved in
                             priority order: ROSACE_CONFIG env var > <base_data_dir>/
@@ -40,6 +44,13 @@ Usage: python -m rosace.main [config_path] [--demo-mode] [--check-config [config
                             dataset (scripts/build_demo_dataset.py --output
                             ~/.rosace-demo/replay) and solve-field. The Docker
                             image runs the same, dataset included.
+
+  --host H                  Address the server listens on. Default 0.0.0.0: every
+                            address of this PC, so the GUI is reachable from the
+                            local network; 127.0.0.1: this PC only.
+
+  --port N                  Port the server listens on (default 8000) — e.g.
+                            `rosace --demo-mode --port 8001` beside a real server.
 
   --check-config [config_path]
                             Validate a config and exit — never starts the server.
@@ -87,18 +98,62 @@ Usage: python -m rosace.main [config_path] [--demo-mode] [--check-config [config
                             session runs. Without --apply, only checks each
                             observation file can be read. Never starts the server.
 
+  --version                 Print Rosace's version and exit.
+
   --help, -h                Show this message and exit.
 """
+
+DEFAULT_HOST = "0.0.0.0"
+DEFAULT_PORT = 8000
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Entry point of the `rosace` command: handles the options, then starts
+    the server (unless an option exited first)."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    host = _take_option(argv, "--host") or DEFAULT_HOST
+    port_text = _take_option(argv, "--port")
+    port = DEFAULT_PORT
+    if port_text is not None:
+        if not port_text.isdigit() or not 1 <= int(port_text) <= 65535:
+            print(f"[FAIL] --port needs a number between 1 and 65535, got {port_text!r}")
+            sys.exit(1)
+        port = int(port_text)
+    # Taken out before run_cli(), whose positional config path is argv[0].
+    run_cli(argv)
+    import uvicorn
+    uvicorn.run("rosace.main:app", host=host, port=port)
+
+
+def _take_option(argv: list[str], name: str) -> str | None:
+    """Removes `name value` from argv and returns value (None when absent)."""
+    if name not in argv:
+        return None
+    idx = argv.index(name)
+    if idx + 1 >= len(argv):
+        print(f"[FAIL] {name} needs a value")
+        sys.exit(1)
+    value = argv[idx + 1]
+    del argv[idx:idx + 2]
+    return value
 
 
 def run_cli(argv: list[str]) -> None:
     """Handles argv (sys.argv[1:]). The tool options (--help, --check-config,
     --create-admin, --list-subplugins, --purge-simulated, --purge-demo,
-    --build-validation-data) exit the process;
+    --build-validation-data, --version) exit the process;
     --demo-mode, a config path or no argument at all set ROSACE_CONFIG where
-    needed and return, so main.py goes on to start the server."""
+    needed and return, so main() goes on to start the server."""
     if "--help" in argv or "-h" in argv:
         print(_HELP_TEXT)
+        sys.exit(0)
+    if "--version" in argv:
+        from importlib import metadata
+        try:
+            version = metadata.version("rosace")
+        except metadata.PackageNotFoundError:
+            version = "unknown"
+        print(f"Rosace {version}")
         sys.exit(0)
     if "--check-config" in argv:
         idx = argv.index("--check-config")

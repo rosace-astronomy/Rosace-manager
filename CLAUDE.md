@@ -101,19 +101,22 @@ source rosace-manager/bin/activate
 # Install in editable mode with dev dependencies (run from repo root)
 pip install -e "rosace/[dev]"
 
-# First run only: bootstrap the first admin account (see Authentication)
-python -m rosace.main --create-admin <username>
+# The `rosace` command (pyproject.toml's [project.scripts] → cli.py::main());
+# `python -m rosace.main` is the same command, with the same options.
+# `rosace --help` lists them, `rosace --version` prints the version.
 
-# Start the server
-cd rosace
-uvicorn rosace.main:app --host 0.0.0.0 --port 8000
-# or: python -m rosace.main
+# First run only: bootstrap the first admin account (see Authentication)
+rosace --create-admin <username>
+
+# Start the server (default --host 0.0.0.0: reachable from the local network;
+# --host 127.0.0.1: this PC only; default --port 8000)
+rosace
 
 # Alternative: the demo — the real process on replayed hardware (no
 # telescope, no INDI, no PHD2; needs the replay dataset and solve-field),
 # isolated under ~/.rosace-demo — see "Trying Rosace without hardware" below
-# python -m rosace.main --demo-mode
-# python -m rosace.main --purge-demo --apply   # start a fresh demo
+# rosace --demo-mode                    # beside a real server: --port 8001
+# rosace --purge-demo --apply           # start a fresh demo
 
 # Interactive API docs
 # http://localhost:8000/docs
@@ -743,13 +746,13 @@ more than one instrument (e.g. a main telescope plus a demo scope) needs
 more than one active config. `config.py::_resolve_config_path()` picks the
 active file in priority order, evaluated once at import time:
 
-1. **`ROSACE_CONFIG` env var**, if set — an explicit path (any location, `~` expanded), highest priority. `python -m rosace.main <path>` sets this from a positional CLI argument before any other import runs (every command-line option is handled by `cli.py::run_cli()`, which `main.py` calls first thing when run as a script — required to run before `from .config import ...` triggers `config.py`'s own loading; kept out of `main.py` so the orchestrator knows nothing of these installation tools); a `uvicorn rosace.main:app` launch needs the env var set directly instead (`ROSACE_CONFIG=<path> uvicorn ...`). Meant for one-off overrides — a second instrument, a test config, `--demo-mode` (below) — not the everyday case.
+1. **`ROSACE_CONFIG` env var**, if set — an explicit path (any location, `~` expanded), highest priority. `python -m rosace.main <path>` sets this from a positional CLI argument before any other import runs (every command-line option is handled by `cli.py`, which the `rosace` command, or `main.py` run as a script, calls first thing — required to run before `from .config import ...` triggers `config.py`'s own loading; kept out of `main.py` so the orchestrator knows nothing of these installation tools); a `uvicorn rosace.main:app` launch needs the env var set directly instead (`ROSACE_CONFIG=<path> uvicorn ...`). Meant for one-off overrides — a second instrument, a test config, `--demo-mode` (below) — not the everyday case.
 2. **`<base_data_dir>/conf/config.yaml`**, if it exists — where `base_data_dir` comes from `conf/base_data_dir.yaml` (a single-field file, `base_data_dir: ~/.rosace` by default). This is a real installation's own config, found automatically on every launch with no argument needed — the day-to-day case once you've configured your own instrument. `conf/base_data_dir.yaml` itself always lives in the package's own `conf/`: it has to be found before `base_data_dir` is even known, so it can't live under `base_data_dir` itself.
 3. **The packaged `conf/config.yaml`** — used only if neither of the above applies (fresh install, nothing configured yet).
 
 `python -m rosace.main --check-config [path]` validates a config without starting the server: with no argument, it validates whatever step 1–3 above would resolve to; with a path, it validates that file specifically (via the same `ROSACE_CONFIG` mechanism). Prints `[OK]`/`[FAIL]` and exits 0/1 — never reaches `uvicorn.run()` either way, so it's safe to run against a candidate config without risking a real session starting. When the config declares `horizon_file`, it also parses and validates that file (`horizon.py::load_horizon()`) and prints its point count (`[OK] horizon file valid: <path> (N points)`, or `[FAIL] horizon file invalid: ...` and exit 1) — so a freshly copied KStars export can be checked before a session ever reaches the SCHEDULER. Finally it imports the plugin registry, which instantiates the active scheduler and validates the sub-plugin catalogue: an unknown `active_scheduler` (or a bad catalogue) prints `[FAIL] plugins invalid: ...` and exits 1, otherwise `[OK] plugins valid (active scheduler: <name>)`.
 
-`python -m rosace.main --help` (or `-h`) prints this same CLI's usage — the positional `config_path` argument, `--demo-mode`, `--check-config`, `--create-admin`, `--list-subplugins`, `--purge-simulated`, `--purge-demo` and `--build-validation-data` — and exits, without starting the server either.
+`rosace --help` (or `-h`; `python -m rosace.main` is the same command) prints this same CLI's usage — the positional `config_path` argument, `--demo-mode`, `--host`, `--port`, `--check-config`, `--create-admin`, `--list-subplugins`, `--purge-simulated`, `--purge-demo`, `--build-validation-data` and `--version` — and exits, without starting the server either. `cli.py::main()` is the entry point of both: it takes `--host`/`--port` out of the arguments (defaults `0.0.0.0`, reachable from the local network, and `8000`), lets `run_cli()` handle the rest, then starts uvicorn; the server's first log line gives the version and the active config (`[MAIN] Rosace <version> started (config <path>)`). Run as a script, `main.py` calls `main()` before importing anything else and stops there, so the application is loaded once, by uvicorn.
 
 `python -m rosace.main --create-admin <username>` bootstraps the first admin account (see Authentication above) and exits — also never starts the server.
 
@@ -906,12 +909,11 @@ Rosace's (see HISTORY.md 2026-10-16).
   and no meridian filter (the recorded targets are offered at any hour),
   `base_data_dir: ~/.rosace-demo`.
 
-`python -m rosace.main --demo-mode` is pure sugar: it points `ROSACE_CONFIG`
+`rosace --demo-mode` is pure sugar: it points `ROSACE_CONFIG`
 at the packaged `conf/config_demo.yaml` (resolved from
 `Path(__file__).parent`, so it works wherever `pip` put the package) and
 falls through to the normal startup, on port 8000. Beside a running real
-server, use `ROSACE_CONFIG=<package>/conf/config_demo.yaml uvicorn
-rosace.main:app --port 8001` instead. What triggers the demo behaviour is
+server, add `--port 8001`. What triggers the demo behaviour is
 not the flag but the config's `is_demo: true` (`IS_DEMO_MODE`): the seed,
 the fake PHD2, and `GET /status`'s `demo_mode`, which makes the GUI show an
 orange **DEMO MODE** badge next to its title and "DEMO mode" in the browser

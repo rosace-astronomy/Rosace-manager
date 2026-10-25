@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from rosace.cli import run_cli
+from rosace.cli import main, run_cli
 
 
 class TestServerStartOptions:
@@ -46,11 +46,64 @@ class TestServerStartOptions:
         assert "ROSACE_CONFIG" not in os.environ
 
 
+class TestMain:
+    """main() takes --host/--port, lets run_cli() handle the rest, then
+    starts the server — uvicorn.run replaced here by a recorder."""
+
+    @pytest.fixture(autouse=True)
+    def _server_calls(self, monkeypatch):
+        monkeypatch.delenv("ROSACE_CONFIG", raising=False)
+        self.calls = []
+        import uvicorn
+        monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: self.calls.append((app, kwargs)))
+
+    def test_defaults(self):
+        main([])
+
+        assert self.calls == [("rosace.main:app", {"host": "0.0.0.0", "port": 8000})]
+
+    def test_host_and_port(self):
+        main(["--port", "8001", "--host", "127.0.0.1"])
+
+        assert self.calls == [("rosace.main:app", {"host": "127.0.0.1", "port": 8001})]
+
+    def test_port_before_a_config_path(self):
+        main(["--port", "8001", "/some/where/config.yaml"])
+
+        assert os.environ["ROSACE_CONFIG"] == "/some/where/config.yaml"
+        assert self.calls[0][1]["port"] == 8001
+
+    def test_demo_mode_on_another_port(self):
+        main(["--demo-mode", "--port", "8001"])
+
+        assert Path(os.environ["ROSACE_CONFIG"]).name == "config_demo.yaml"
+        assert self.calls[0][1]["port"] == 8001
+
+    @pytest.mark.parametrize("argv", [["--port", "abc"], ["--port", "0"], ["--port", "70000"], ["--port"]])
+    def test_bad_port_fails_without_starting(self, argv):
+        with pytest.raises(SystemExit) as exit_info:
+            main(argv)
+
+        assert exit_info.value.code == 1
+        assert self.calls == []
+
+
 def _run(*args, env=None):
     return subprocess.run(
         [sys.executable, "-m", "rosace.main", *args],
         capture_output=True, text=True, env=env,
     )
+
+
+class TestVersionCLI:
+
+    def test_prints_the_installed_version(self):
+        from importlib import metadata
+
+        result = _run("--version")
+
+        assert result.returncode == 0
+        assert result.stdout.strip() == f"Rosace {metadata.version('rosace')}"
 
 
 class TestListSubpluginsCLI:

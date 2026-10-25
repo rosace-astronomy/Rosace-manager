@@ -23,12 +23,10 @@ source rosace-manager/bin/activate
 pip install -e "rosace/[dev]"
 
 # First run only: bootstrap the first admin account
-python -m rosace.main --create-admin <username>
+rosace --create-admin <username>
 
-# Start the server
-cd rosace
-uvicorn rosace.main:app --host 0.0.0.0 --port 8000
-# or: python -m rosace.main
+# Start the server (rosace --help lists the options)
+rosace
 ```
 
 The web GUI is served at http://localhost:8000/, and the interactive API

@@ -12,6 +12,12 @@ are listed, newest first. The reasons behind the changes are in
 - The demo's Docker image is published on Codeberg's container registry:
   `docker run ... codeberg.org/francoiscochard/rosace-demo`, nothing to
   build (see `docker/README.md`).
+- The `rosace` command works (it failed at once before): `rosace` starts
+  the server, with the same options as `python -m rosace.main`.
+- `--port` and `--host` choose where the server listens, e.g.
+  `rosace --demo-mode --port 8001` beside a real server.
+- `--version` prints the version; the server's first log line gives the
+  version and the configuration in use.
 
 ## [0.1.0.0] — 2026-10-25
 
