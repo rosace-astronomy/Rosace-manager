@@ -27,7 +27,9 @@ one where a name or the exact position is left.
 
 - Docker (Linux: the distribution's package; Windows / Mac: Docker Desktop).
 - The replay dataset in `docker/replay_data/` (about 120 MB, frames
-  gzip-compressed, not in git),
+  gzip-compressed). It is **not in git**: without it, `docker build` stops
+  with "the demo's replay dataset is missing". It is not published yet
+  either, so for now only the observatory can build the image; it is
   built once from the observatory's own data:
 
   ```

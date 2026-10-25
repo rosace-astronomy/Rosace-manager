@@ -66,9 +66,18 @@ RUN python3 -m venv --system-site-packages /opt/venv \
     && find /opt/venv /usr/lib/python3/dist-packages -name "*.pyc" -delete
 
 # The replay dataset: its own layer, before the code, so a code change does
-# not copy it again. solve-field reads its index tiles there.
-COPY docker/replay_data /opt/rosace-demo/replay
-RUN printf 'inparallel\nadd_path /opt/rosace-demo/replay/astrometry\nautoindex\n' > /etc/astrometry.cfg
+# not copy it again. solve-field reads its index tiles there. The dataset is
+# not in git: docker/README.md, always present, is copied with it so that the
+# COPY never fails on its own, and the RUN stops the build with a readable
+# message when the dataset is missing.
+COPY docker/README.md docker/replay_dat[a] /opt/rosace-demo/replay/
+RUN rm /opt/rosace-demo/replay/README.md \
+    && if [ ! -f /opt/rosace-demo/replay/manifest.yaml ]; then \
+        echo "ERROR: the demo's replay dataset is missing (docker/replay_data/manifest.yaml)." >&2; \
+        echo "It is not in git: see docker/README.md, \"Prerequisites\"." >&2; \
+        exit 1; \
+    fi \
+    && printf 'inparallel\nadd_path /opt/rosace-demo/replay/astrometry\nautoindex\n' > /etc/astrometry.cfg
 
 # The application. Editable install, deliberately: pyproject.toml has no
 # package_data for the non-Python files (conf/*.yaml, programs/*.yaml,
