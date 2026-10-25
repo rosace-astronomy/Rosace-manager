@@ -29,6 +29,34 @@ rosace --create-admin <username>
 rosace
 ```
 
+### Using `rosace` from any terminal, with Tab completion
+
+Two steps, done once. In the examples, the repository is in
+`/home/observatoire/ROSACE/Rosace-manager`: replace it with yours.
+
+**1. Make the `rosace` command available everywhere.** Run this command once
+in a terminal. It puts a link to the command in `~/.local/bin`, a folder the
+terminal already searches; the command then works without activating the
+virtual environment (it already knows which Python to use).
+
+```bash
+ln -s /home/observatoire/ROSACE/Rosace-manager/rosace-manager/bin/rosace ~/.local/bin/rosace
+```
+
+**2. Turn on Tab completion of the options.** Add this line at the end of
+the file `~/.bashrc` (with a text editor), then open a new terminal. The full
+path is needed: the virtual environment is not active when `~/.bashrc` runs.
+
+```bash
+eval "$(/home/observatoire/ROSACE/Rosace-manager/rosace-manager/bin/register-python-argcomplete rosace)"
+```
+
+Check: in a new terminal, `rosace --version` prints the version, and
+`rosace --pu` followed by Tab offers `--purge-simulated` and `--purge-demo`.
+
+Activating the virtual environment is then only needed to work on the code
+(tests, `pip install -e`).
+
 The web GUI is served at http://localhost:8000/, and the interactive API
 docs at http://localhost:8000/docs.
 

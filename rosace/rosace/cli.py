@@ -1,11 +1,14 @@
+# PYTHON_ARGCOMPLETE_OK
 # SPDX-FileCopyrightText: 2026 The ROSACE project
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """
 The `rosace` command (pyproject.toml's [project.scripts]) and its options;
 `python -m rosace.main` is the same command, main.py calling main() first
-thing when run as a script. main() takes --host/--port, run_cli() handles
-every other option, then main() starts the server.
+thing when run as a script. build_parser() declares every option (argparse:
+standard errors and exit code 2, `--option=value`, generated help, and the
+Tab completion argcomplete reads from it); run_cli() runs a tool option or
+prepares the server start, then main() starts the server.
 
 Kept out of main.py so the orchestrator knows nothing of the installation
 tools behind these options (config creation and validation, horizon-file
@@ -13,163 +16,197 @@ validation, admin bootstrap, sub-plugin listing, purge of simulated data).
 
 Import order matters: some options choose which config.yaml gets loaded
 (ROSACE_CONFIG), and rosace.config reads it once, when first imported. So
-this module imports nothing but os/sys at module level, and every option
-imports what it needs inside its own branch -- run_cli() must run before
-anything imports rosace.config.
+this module imports nothing but argparse/os/sys at module level, and every
+option imports what it needs inside its own branch -- run_cli() must run
+before anything imports rosace.config.
 """
 
+import argparse
 import os
 import sys
-
-_HELP_TEXT = """\
-Usage: rosace [config_path] [--demo-mode] [--host H] [--port N] [--check-config [config_path]] [--create-admin username] [--list-subplugins [family]] [--purge-simulated [--apply]] [--purge-demo [--apply]] [--build-validation-data [--apply]] [--init-config] [--version]
-
-  (`python -m rosace.main` is the same command, with the same options.)
-
-  (no arguments)            Start the server using the active config, resolved in
-                            priority order: ROSACE_CONFIG env var > ~/.config/rosace/
-                            config.yaml (this installation's own config; the
-                            directory follows $XDG_CONFIG_HOME when set) > the
-                            packaged conf/config.yaml (the INDI simulators). The
-                            hardware profile named by active_hardware is looked for
-                            next to that config.yaml first, then among the packaged
-                            profiles.
-
-  config_path               Start the server against this config.yaml instead of
-                            the one that would normally be resolved — e.g. to run
-                            a second instrument's config for this launch only.
-                            One-off equivalent of setting ROSACE_CONFIG yourself.
-
-  --demo-mode               Start the server against the packaged demo config
-                            (conf/config_demo.yaml): the real 72ED programs run
-                            against replay devices that hand back the frames of a
-                            real night (no INDI server, no PHD2, no telescope),
-                            isolated under ~/.rosace-demo. Needs the replay
-                            dataset (scripts/build_demo_dataset.py --output
-                            ~/.rosace-demo/replay) and solve-field. The Docker
-                            image runs the same, dataset included.
-
-  --host H                  Address the server listens on. Default 0.0.0.0: every
-                            address of this PC, so the GUI is reachable from the
-                            local network; 127.0.0.1: this PC only.
-
-  --port N                  Port the server listens on (default 8000) — e.g.
-                            `rosace --demo-mode --port 8001` beside a real server.
-
-  --check-config [config_path]
-                            Validate a config and exit — never starts the server.
-                            With no path, validates whatever would normally be
-                            resolved; with a path, validates that file instead.
-                            If the config declares horizon_file, also parses and
-                            validates that local-horizon file (prints its point
-                            count). Also prints the hardware profile file found.
-                            Prints [OK]/[FAIL] and exits 0/1.
-
-  --init-config             Create ~/.config/rosace/ and copy the packaged config
-                            (INDI simulators) there as config.yaml, the starting
-                            point of this installation's own config. Refuses if a
-                            config.yaml is already there. Never starts the server.
-
-  --create-admin username  Bootstrap the very first admin account and exit — never
-                            starts the server. Prompts for the password (never
-                            passed as an argument, to keep it out of shell history
-                            and `ps`). Refuses if any account already exists: past
-                            this first bootstrap, account creation goes through the
-                            API (admin-only), not shell access to the machine.
-
-  --list-subplugins [family]
-                            List every sub-plugin found on disk (sequencer_plugins/,
-                            reduction_plugins/, sharing_plugins/), one per line, with
-                            its own one-line description (its module docstring's
-                            first line) -- for discovering what already exists before
-                            writing a new sub-plugin or duplicating a close one.
-                            Optionally restrict to one family: sequencer, reduction,
-                            or sharing. Never starts the server.
-
-  --purge-simulated [--apply]
-                            Remove the data of the sessions run with simulated
-                            equipment (sessions.simulated = 1 in rosace.db: INDI
-                            simulators, internal backend) — their database rows and
-                            the files they wrote in their session directory. Without
-                            --apply, only lists what would go. Never starts the server.
-
-  --purge-demo [--apply]    Empty the demo's data directory (~/.rosace-demo:
-                            databases, log, observations, previews...) to start a
-                            fresh demo, keeping only the replay dataset. Refused
-                            while a demo server runs. Without --apply, only lists
-                            what would go. Never starts the server.
-
-  --build-validation-data [--apply]
-                            (Re)write the BeSS validation page's data (JSON and
-                            plots, next to each final spectrum) of every spectrum
-                            in the validation list, from its observation file --
-                            for spectra reduced before the bess_validation step
-                            existed. Never touches the database. Refused while a
-                            session runs. Without --apply, only checks each
-                            observation file can be read. Never starts the server.
-
-  --version                 Print Rosace's version and exit.
-
-  --help, -h                Show this message and exit.
-"""
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8000
 
+# The sub-plugin families (pipeline_loader._SUBPLUGIN_FAMILY_DIRS, not
+# imported here: it would load the config).
+SUBPLUGIN_FAMILIES = ("sequencer", "reduction", "sharing")
+
+# The tool options: they run, then exit, and never start the server.
+_TOOL_OPTIONS = ("check_config", "init_config", "create_admin", "list_subplugins",
+                 "purge_simulated", "purge_demo", "build_validation_data")
+_APPLY_OPTIONS = ("purge_simulated", "purge_demo", "build_validation_data")
+
+_DESCRIPTION = """Start the Rosace server, or run one of the tool options below.
+
+With no argument, the server uses the active config, resolved in priority
+order: the ROSACE_CONFIG env var > ~/.config/rosace/config.yaml (this
+installation's own config; the directory follows $XDG_CONFIG_HOME when set)
+> the packaged conf/config.yaml (the INDI simulators). The hardware profile
+named by active_hardware is looked for next to that config.yaml first, then
+among the packaged profiles.
+
+`python -m rosace.main` is the same command, with the same options."""
+
+_EPILOG = (
+    "Tab completion of the options: add this line to ~/.bashrc once (full path:\n"
+    "the virtual environment is not active there), then open a new terminal:\n"
+    '  eval "$(<venv>/bin/register-python-argcomplete rosace)"\n'
+    "See README.md (using rosace without activating the environment)."
+)
+
+
+def _version() -> str:
+    from importlib import metadata
+    try:
+        return metadata.version("rosace")
+    except metadata.PackageNotFoundError:
+        return "unknown"
+
+
+def _port(text: str) -> int:
+    if not text.isdigit() or not 1 <= int(text) <= 65535:
+        raise argparse.ArgumentTypeError(f"a number between 1 and 65535, got {text!r}")
+    return int(text)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Every option of the command — also what Tab completion offers."""
+    parser = argparse.ArgumentParser(
+        prog="rosace", description=_DESCRIPTION, epilog=_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    config_path = parser.add_argument(
+        "config_path", nargs="?",
+        help="start the server against this config.yaml instead of the one that "
+             "would normally be resolved (e.g. a second instrument's, or the "
+             "packaged simulators') -- one-off equivalent of setting ROSACE_CONFIG",
+    )
+
+    server = parser.add_argument_group("server")
+    server.add_argument(
+        "--demo-mode", action="store_true",
+        help="start against the packaged demo config (conf/config_demo.yaml): the "
+             "real 72ED programs run on replay devices handing back the frames of "
+             "a real night (no INDI server, no PHD2, no telescope), isolated under "
+             "~/.rosace-demo. Needs the replay dataset (scripts/build_demo_dataset.py "
+             "--output ~/.rosace-demo/replay) and solve-field; the Docker image "
+             "runs the same, dataset included",
+    )
+    server.add_argument(
+        "--host", default=DEFAULT_HOST,
+        help="address the server listens on (default %(default)s: every address "
+             "of this PC, the GUI reachable from the local network; 127.0.0.1: "
+             "this PC only)",
+    )
+    server.add_argument(
+        "--port", type=_port, default=DEFAULT_PORT,
+        help="port the server listens on (default %(default)s), e.g. "
+             "`rosace --demo-mode --port 8001` beside a real server",
+    )
+
+    tools = parser.add_argument_group("tool options (one at a time; never start the server)")
+    exclusive = tools.add_mutually_exclusive_group()
+    check_config = exclusive.add_argument(
+        "--check-config", nargs="?", const="", metavar="CONFIG_PATH",
+        help="validate a config and exit: with no path, the one that would "
+             "normally be resolved; with a path, that file. Also prints the "
+             "hardware profile found and, when the config declares horizon_file, "
+             "validates that local-horizon file. Prints [OK]/[FAIL], exits 0/1",
+    )
+    exclusive.add_argument(
+        "--init-config", action="store_true",
+        help="create ~/.config/rosace/ and copy the packaged config (INDI "
+             "simulators) there as config.yaml, the starting point of this "
+             "installation's own config. Refuses if a config.yaml is already there",
+    )
+    exclusive.add_argument(
+        "--create-admin", metavar="USERNAME",
+        help="bootstrap the very first admin account (password prompted, never "
+             "an argument). Refuses if any account exists: past this bootstrap, "
+             "accounts are created through the API (admin only)",
+    )
+    exclusive.add_argument(
+        "--list-subplugins", nargs="?", const=True, choices=SUBPLUGIN_FAMILIES,
+        metavar="FAMILY",
+        help="list every sub-plugin on disk with its one-line description, "
+             "optionally one family only: " + ", ".join(SUBPLUGIN_FAMILIES),
+    )
+    exclusive.add_argument(
+        "--purge-simulated", action="store_true",
+        help="remove the data of the sessions run with simulated equipment "
+             "(INDI simulators, internal backend): their database rows and the "
+             "files they wrote. Without --apply, only lists what would go",
+    )
+    exclusive.add_argument(
+        "--purge-demo", action="store_true",
+        help="empty the demo's data directory (~/.rosace-demo) to start a fresh "
+             "demo, keeping the replay dataset. Refused while a demo server runs. "
+             "Without --apply, only lists what would go",
+    )
+    exclusive.add_argument(
+        "--build-validation-data", action="store_true",
+        help="(re)write the BeSS validation page's data of every spectrum in the "
+             "validation list, from its observation file. Never touches the "
+             "database; refused while a session runs. Without --apply, only "
+             "checks each observation file can be read",
+    )
+    tools.add_argument(
+        "--apply", action="store_true",
+        help="with --purge-simulated, --purge-demo or --build-validation-data: "
+             "really do it (otherwise a dry run)",
+    )
+    parser.add_argument("--version", action="version", version=f"Rosace {_version()}")
+
+    try:
+        from argcomplete.completers import FilesCompleter
+    except ImportError:
+        pass
+    else:
+        config_path.completer = FilesCompleter(["yaml"])
+        check_config.completer = FilesCompleter(["yaml"])
+    return parser
+
 
 def main(argv: list[str] | None = None) -> None:
     """Entry point of the `rosace` command: handles the options, then starts
-    the server (unless an option exited first)."""
-    argv = list(sys.argv[1:] if argv is None else argv)
-    host = _take_option(argv, "--host") or DEFAULT_HOST
-    port_text = _take_option(argv, "--port")
-    port = DEFAULT_PORT
-    if port_text is not None:
-        if not port_text.isdigit() or not 1 <= int(port_text) <= 65535:
-            print(f"[FAIL] --port needs a number between 1 and 65535, got {port_text!r}")
-            sys.exit(1)
-        port = int(port_text)
-    # Taken out before run_cli(), whose positional config path is argv[0].
-    run_cli(argv)
+    the server (unless a tool option exited first)."""
+    parser = build_parser()
+    try:
+        import argcomplete
+    except ImportError:
+        pass  # no Tab completion, everything else works
+    else:
+        argcomplete.autocomplete(parser)
+    args = run_cli(sys.argv[1:] if argv is None else argv, parser)
     import uvicorn
-    uvicorn.run("rosace.main:app", host=host, port=port)
+    uvicorn.run("rosace.main:app", host=args.host, port=args.port)
 
 
-def _take_option(argv: list[str], name: str) -> str | None:
-    """Removes `name value` from argv and returns value (None when absent)."""
-    if name not in argv:
-        return None
-    idx = argv.index(name)
-    if idx + 1 >= len(argv):
-        print(f"[FAIL] {name} needs a value")
-        sys.exit(1)
-    value = argv[idx + 1]
-    del argv[idx:idx + 2]
-    return value
+def run_cli(argv: list[str], parser: argparse.ArgumentParser | None = None) -> argparse.Namespace:
+    """Parses argv (sys.argv[1:]). A tool option (--check-config, --init-config,
+    --create-admin, --list-subplugins, --purge-simulated, --purge-demo,
+    --build-validation-data) runs and exits the process, as do --help,
+    --version and a usage error (exit 2); otherwise --demo-mode or a config
+    path set ROSACE_CONFIG where needed, and the parsed options are returned
+    so main() goes on to start the server."""
+    parser = parser or build_parser()
+    args = parser.parse_args(argv)
+    tool = next((name for name in _TOOL_OPTIONS
+                 if getattr(args, name) not in (None, False)), None)
+    if args.apply and tool not in _APPLY_OPTIONS:
+        parser.error("--apply only goes with --purge-simulated, --purge-demo or --build-validation-data")
+    if tool and args.config_path:
+        parser.error(f"a config path cannot go with --{tool.replace('_', '-')}"
+                     + (" (give it to --check-config itself)" if tool == "check_config" else ""))
+    if tool and args.demo_mode:
+        parser.error(f"--demo-mode cannot go with --{tool.replace('_', '-')}")
+    if args.demo_mode and args.config_path:
+        parser.error("--demo-mode and a config path cannot go together")
 
-
-def run_cli(argv: list[str]) -> None:
-    """Handles argv (sys.argv[1:]). The tool options (--help, --check-config,
-    --init-config, --create-admin, --list-subplugins, --purge-simulated, --purge-demo,
-    --build-validation-data, --version) exit the process;
-    --demo-mode, a config path or no argument at all set ROSACE_CONFIG where
-    needed and return, so main() goes on to start the server."""
-    if "--help" in argv or "-h" in argv:
-        print(_HELP_TEXT)
-        sys.exit(0)
-    if "--version" in argv:
-        from importlib import metadata
-        try:
-            version = metadata.version("rosace")
-        except metadata.PackageNotFoundError:
-            version = "unknown"
-        print(f"Rosace {version}")
-        sys.exit(0)
-    if "--check-config" in argv:
-        idx = argv.index("--check-config")
-        explicit_config = argv[idx + 1] if idx + 1 < len(argv) else None
-        if explicit_config:
-            os.environ["ROSACE_CONFIG"] = explicit_config
+    if tool == "check_config":
+        if args.check_config:
+            os.environ["ROSACE_CONFIG"] = args.check_config
         try:
             import rosace.config as checked_config
         except Exception as e:
@@ -194,7 +231,7 @@ def run_cli(argv: list[str]) -> None:
             sys.exit(1)
         print(f"[OK] plugins valid (active scheduler: {checked_config.ACTIVE_SCHEDULER})")
         sys.exit(0)
-    elif "--init-config" in argv:
+    elif tool == "init_config":
         # Loads the packaged config only to reach config.py's own paths, so a
         # broken config elsewhere can never stop the init.
         os.environ["ROSACE_CONFIG"] = os.path.join(os.path.dirname(__file__), "conf", "config.yaml")
@@ -211,12 +248,8 @@ def run_cli(argv: list[str]) -> None:
         print(f"a hardware profile of your own goes next to it, in {target.parent}.")
         print("Then check it: rosace --check-config")
         sys.exit(0)
-    elif "--create-admin" in argv:
-        idx = argv.index("--create-admin")
-        username = argv[idx + 1] if idx + 1 < len(argv) else None
-        if not username:
-            print("[FAIL] --create-admin requires a username")
-            sys.exit(1)
+    elif tool == "create_admin":
+        username = args.create_admin
         import asyncio
         import getpass
         password = getpass.getpass("Password: ")
@@ -233,19 +266,15 @@ def run_cli(argv: list[str]) -> None:
             sys.exit(1)
         print(f"[OK] admin '{username}' created")
         sys.exit(0)
-    elif "--list-subplugins" in argv:
-        idx = argv.index("--list-subplugins")
-        family = argv[idx + 1] if idx + 1 < len(argv) and not argv[idx + 1].startswith("-") else None
-        from rosace.plugins.pipeline_loader import _SUBPLUGIN_FAMILY_DIRS, list_subplugins
-        if family is not None and family not in _SUBPLUGIN_FAMILY_DIRS:
-            print(f"[FAIL] unknown family {family!r} (expected one of: {', '.join(_SUBPLUGIN_FAMILY_DIRS)})")
-            sys.exit(1)
+    elif tool == "list_subplugins":
+        family = None if args.list_subplugins is True else args.list_subplugins
+        from rosace.plugins.pipeline_loader import list_subplugins
         rows = list_subplugins([family] if family else None)
         for row_family, name, summary in rows:
             print(f"{row_family:10s} {name:20s} {summary}")
         sys.exit(0)
-    elif "--purge-demo" in argv:
-        apply = "--apply" in argv
+    elif tool == "purge_demo":
+        apply = args.apply
         os.environ["ROSACE_CONFIG"] = os.path.join(os.path.dirname(__file__), "conf", "config_demo.yaml")
         from rosace.demo_purge import purge_demo, report
         try:
@@ -261,8 +290,8 @@ def run_cli(argv: list[str]) -> None:
         print("[OK] purged -- the next demo start seeds a fresh demo" if apply
               else "Dry run: nothing deleted (add --apply to delete)")
         sys.exit(0)
-    elif "--build-validation-data" in argv:
-        apply = "--apply" in argv
+    elif tool == "build_validation_data":
+        apply = args.apply
         from rosace.plugins.reduction_plugins.bess_validation.bess_validation import rebuild_validation_data
         try:
             results = rebuild_validation_data(apply=apply)
@@ -276,8 +305,8 @@ def run_cli(argv: list[str]) -> None:
         if not apply:
             print("Dry run: nothing written (add --apply to write)")
         sys.exit(1 if failed else 0)
-    elif "--purge-simulated" in argv:
-        apply = "--apply" in argv
+    elif tool == "purge_simulated":
+        apply = args.apply
         from rosace.simulated_data import purge_simulated, report
         purges = purge_simulated(apply=apply)
         if not purges:
@@ -286,7 +315,7 @@ def run_cli(argv: list[str]) -> None:
         print(report(purges))
         print("[OK] purged" if apply else "Dry run: nothing deleted (add --apply to delete)")
         sys.exit(0)
-    elif "--demo-mode" in argv:
+    elif args.demo_mode:
         # Pure sugar for ROSACE_CONFIG: resolves the packaged demo config's
         # path (this module sits next to main.py, so its conf/ is the same)
         # and returns to main.py's normal server startup, same as the bare
@@ -294,5 +323,6 @@ def run_cli(argv: list[str]) -> None:
         # isolation) lives entirely in conf/config_demo.yaml, demo_seed.py and
         # hardware_replay/, triggered by IS_DEMO_MODE — not by this flag itself.
         os.environ["ROSACE_CONFIG"] = os.path.join(os.path.dirname(__file__), "conf", "config_demo.yaml")
-    elif argv:
-        os.environ["ROSACE_CONFIG"] = argv[0]
+    elif args.config_path:
+        os.environ["ROSACE_CONFIG"] = args.config_path
+    return args

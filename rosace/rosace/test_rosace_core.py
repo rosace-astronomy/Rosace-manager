@@ -337,7 +337,7 @@ class TestHelpCLI:
             capture_output=True, text=True,
         )
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage: rosace" in result.stdout
         assert "config valid" not in result.stdout  # would appear if --check-config actually ran
 
 
@@ -2989,8 +2989,8 @@ session_cookie_secure: false
 
     def test_missing_username_fails_fast(self, tmp_path):
         result = self._run(tmp_path)  # no username after --create-admin
-        assert result.returncode != 0
-        assert "[FAIL]" in result.stdout
+        assert result.returncode == 2  # argparse's usage error
+        assert "--create-admin: expected one argument" in result.stderr
 
     def test_creates_first_admin_and_exits_zero(self, tmp_path):
         result = self._run(tmp_path, "night_owl")

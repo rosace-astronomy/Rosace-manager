@@ -20,6 +20,8 @@ are listed, newest first. The reasons behind the changes are in
   version and the configuration in use.
 - `rosace --init-config` creates `~/.config/rosace/config.yaml`, a copy of
   the simulators configuration to adapt to the installation.
+- Tab completion of the `rosace` options (one line to add to `~/.bashrc`,
+  see README.md).
 
 ### Changed
 
@@ -28,6 +30,9 @@ are listed, newest first. The reasons behind the changes are in
   a bare `rosace` starts it, or the INDI simulators when there is none.
   `conf/base_data_dir.yaml` and the `~/.rosace/conf/config.yaml` lookup are
   gone. `rosace --check-config` also names the hardware profile found.
+- A mistake on the command line (unknown option, typo, bad port, options
+  that do not go together) is reported clearly, with exit code 2, instead of
+  a Python traceback or being silently ignored; `--option=value` is accepted.
 
 ## [0.1.0.0] — 2026-10-25
 

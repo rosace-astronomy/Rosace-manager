@@ -1,11 +1,12 @@
 """
-Tests for cli.py (command-line options of `python -m rosace.main`).
+Tests for cli.py (the `rosace` command, same as `python -m rosace.main`).
 Run: pytest test_cli.py -v
 
 --check-config, --help and --create-admin are covered through the real
 process in test_rosace_core.py. This file covers the rest: the options that
 start the server (tested in-process on run_cli(), which returns instead of
-starting anything) and --list-subplugins/--purge-simulated (real process).
+starting anything), the usage errors argparse reports, Tab completion, and
+--list-subplugins/--purge-simulated/--init-config (real process).
 """
 
 import os
@@ -79,13 +80,64 @@ class TestMain:
         assert Path(os.environ["ROSACE_CONFIG"]).name == "config_demo.yaml"
         assert self.calls[0][1]["port"] == 8001
 
+    def test_port_with_an_equals_sign(self):
+        main(["--port=8001"])
+
+        assert self.calls[0][1]["port"] == 8001
+
     @pytest.mark.parametrize("argv", [["--port", "abc"], ["--port", "0"], ["--port", "70000"], ["--port"]])
     def test_bad_port_fails_without_starting(self, argv):
         with pytest.raises(SystemExit) as exit_info:
             main(argv)
 
-        assert exit_info.value.code == 1
+        assert exit_info.value.code == 2
         assert self.calls == []
+
+
+class TestUsageErrors:
+    """Mistakes in the command line: argparse's error on stderr, exit code 2,
+    nothing run."""
+
+    @pytest.mark.parametrize("argv, message", [
+        (["--prot", "8001"], "unrecognized arguments: --prot"),
+        (["--apply"], "--apply only goes with"),
+        (["--purge-demo", "--init-config"], "not allowed with argument"),
+        (["--list-subplugins", "foo"], "invalid choice: 'foo'"),
+        (["--demo-mode", "/some/where/config.yaml"], "--demo-mode and a config path"),
+        (["/some/where/config.yaml", "--purge-simulated"], "a config path cannot go with --purge-simulated"),
+        (["--demo-mode", "--purge-demo"], "--demo-mode cannot go with --purge-demo"),
+    ])
+    def test_reported_with_exit_code_2(self, argv, message, capsys, monkeypatch):
+        monkeypatch.delenv("ROSACE_CONFIG", raising=False)
+        with pytest.raises(SystemExit) as exit_info:
+            run_cli(argv)
+
+        assert exit_info.value.code == 2
+        assert message in capsys.readouterr().err
+        assert "ROSACE_CONFIG" not in os.environ
+
+
+class TestCompletion:
+
+    def test_the_families_are_pipeline_loaders(self):
+        from rosace.cli import SUBPLUGIN_FAMILIES
+        from rosace.plugins.pipeline_loader import _SUBPLUGIN_FAMILY_DIRS
+
+        assert set(SUBPLUGIN_FAMILIES) == set(_SUBPLUGIN_FAMILY_DIRS)
+
+    def test_config_paths_complete_with_yaml_files(self):
+        pytest.importorskip("argcomplete")
+        from rosace.cli import build_parser
+
+        actions = {action.dest: action for action in build_parser()._actions}
+        for dest in ("config_path", "check_config"):
+            assert type(actions[dest].completer).__name__ == "FilesCompleter"
+
+    def test_the_marker_argcomplete_looks_for_is_at_the_top(self):
+        # argcomplete only completes a console script whose module carries
+        # this marker in its first 1024 bytes.
+        head = (Path(__file__).parent / "cli.py").read_bytes()[:1024]
+        assert b"PYTHON_ARGCOMPLETE_OK" in head
 
 
 def _run(*args, env=None):
@@ -140,8 +192,8 @@ class TestListSubpluginsCLI:
 
     def test_unknown_family_fails(self):
         result = _run("--list-subplugins", "nope")
-        assert result.returncode == 1
-        assert "[FAIL] unknown family 'nope'" in result.stdout
+        assert result.returncode == 2
+        assert "invalid choice: 'nope'" in result.stderr
 
 
 class TestPurgeSimulatedCLI:
