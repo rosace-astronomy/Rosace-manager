@@ -98,6 +98,8 @@ Debian's own Python, which astrometry.net needs anyway.
 | A fresh demo (the stars are observed once per day) | `docker exec rosace-demo python -m rosace.main --purge-demo --apply`, then `docker restart rosace-demo` |
 | Remove the container (keeps the volume) | `docker rm -f rosace-demo` |
 | Start from scratch (deletes the volume) | `docker volume rm rosace-demo-data` |
+| Remove the image (after removing the container) | `docker rmi rosace-demo` |
+| Reclaim the space of old builds (unnamed images, asks first) | `docker image prune` |
 
 After a code change: `docker build -t rosace-demo .`, `docker rm -f
 rosace-demo`, then the `docker run` above again.

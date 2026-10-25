@@ -74,6 +74,18 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Publier l'image Docker de la démo sur ghcr.io, et le jeu de rejeu en
       pièce jointe d'une release GitHub, pour qu'un autre poste n'ait pas à
       le reconstruire depuis `~/.rosace` (2026-10-16)
+- [ ] Publier l'image de démo toute faite (manuel : jeton, `docker login`,
+      `docker tag`, `docker push`) sur le registre de Codeberg, ghcr.io en
+      miroir, et peut-être Docker Hub (`docker.io`, le plus connu, nom
+      court). Décisions avant : visibilité (une image publique rend le code
+      lisible, alors que les dépôts sont privés), numérotation (date +
+      `latest`, ou version de Rosace), architectures (ARM pour les Mac
+      récents : il faut `buildx`). Le jeu de rejeu, lui, est publié depuis
+      le 2026-10-25 (publication `demo-data-2026-10-14`, Codeberg + GitHub)
+      (2026-10-25)
+- [ ] Plus tard : construction automatique de l'image à chaque push
+      (Forgejo Actions / GitHub Actions) — télécharger le jeu de rejeu
+      demande un jeton tant que le dépôt est privé (2026-10-25)
 - [ ] Mettre à jour la doc Sphinx (`~/ROSACE/Rosace-docs`, publiée sur
       rosace-astronomy.github.io, en anglais) au moment où l'image Docker
       sera publiée sur un dépôt public : « Get started » (démo Docker), et
