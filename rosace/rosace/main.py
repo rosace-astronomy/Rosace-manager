@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Optional
 
 from contextlib import asynccontextmanager
+from importlib import metadata
 
 import yaml
 from fastapi import (
@@ -117,10 +118,18 @@ async def lifespan(_app: FastAPI):
     if fake_phd2 is not None:
         await fake_phd2.stop()
 
+def _rosace_version() -> str:
+    # The one version number is the package's own (pyproject.toml)
+    try:
+        return metadata.version("rosace")
+    except metadata.PackageNotFoundError:
+        return "unknown"
+
+
 app = FastAPI(
     title="Spectro Orchestrator",
     description="Orchestrateur d'observations spectroscopiques",
-    version="0.5.0",
+    version=_rosace_version(),
     lifespan=lifespan,
 )
 

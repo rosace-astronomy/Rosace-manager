@@ -58,6 +58,30 @@ sub-plugin directory, nor in test files), since the root `LICENSE` file
 already covers the whole repository and a header on every one of its ~160
 Python files would be pure repetition for no added legal effect.
 
+## Versioning
+
+Rosace's version is **X.Y.Z.n**, written in one place only,
+`rosace/pyproject.toml` (`version = ...`); everything else reads the installed
+package's version (`importlib.metadata`: the FITS `SWCREATE` keyword, the API
+docs). X changes when a new instrument works with Rosace (1.0.0.0 once the
+72ED setup really works), Y for a new function (e.g. a new plugin), Z for a
+bug fix, n for an internal version.
+
+- **Published versions always end in `.0`** (X.Y.Z.0), and only they get a
+  git tag, annotated, `vX.Y.Z.0`, and go to the Codeberg container registry
+  (moving `latest` along). Internal versions (X.Y.Z.1, .2…) come after the
+  published version they start from, so the numbers always sort in time order;
+  n is raised when the user wants a build identifiable (e.g. before a sky night).
+- Last published version: `git tag -l 'v*.0' --sort=-v:refname | head -1`.
+- After changing the version, rerun `pip install -e "rosace/[dev]"`: an
+  editable install only reads the number again when reinstalled.
+- `CHANGELOG.md` (repo root) lists what changed for a user in each published
+  version. Each commit that changes something a user can see adds a line
+  under `[Unreleased]` (drafted with the commit message); at publication,
+  `[Unreleased]` becomes `[X.Y.Z.0] — <date>` and a new empty `[Unreleased]`
+  is opened. Internal versions get no section of their own. The *why* stays
+  in HISTORY.md.
+
 ## Project overview
 
 **Rosace** is an async REST API (FastAPI + Python 3.12) that orchestrates spectroscopic observation sessions end-to-end. It is designed to run autonomously at night, cycling through a state machine from target selection to archiving.

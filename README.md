@@ -41,7 +41,8 @@ cd rosace
 pytest rosace -v
 ```
 
-See `CLAUDE.md` for the full architecture reference.
+See `CLAUDE.md` for the full architecture reference, and
+[CHANGELOG.md](CHANGELOG.md) for what changed in each published version.
 
 Contents:
 
