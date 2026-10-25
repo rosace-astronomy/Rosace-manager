@@ -821,7 +821,11 @@ Rosace's (see HISTORY.md 2026-10-16).
   observation (`HOMING_OBSERVATION_ID`, HD 7636, not replayed). Default output
   `docker/replay_data/` (git-ignored, 118 MB for the 4 observations of
   2026-10-14 — psi Per, eps Cas, M 57, eta Ori — through the Be_stars chain;
-  9 observations and 487 MB until 2026-10-18). The replay profile reads it from `replay_dataset_dir:
+  9 observations and 487 MB until 2026-10-18). Published as the file
+  `rosace-demo-data-2026-10-14.tar` of the release `demo-data-2026-10-14`
+  (Codeberg, and GitHub as a mirror; download and checksum in
+  `docker/README.md`): a new dataset is a new release, never a change to
+  this one. The replay profile reads it from `replay_dataset_dir:
   ~/.rosace-demo/replay` — a link to `docker/replay_data/` on this PC
   (`ln -s <repo>/docker/replay_data ~/.rosace-demo/replay`), or
   `--output ~/.rosace-demo/replay`. **Anonymized**: after copying,

@@ -29,9 +29,28 @@ one where a name or the exact position is left.
 - Docker (Linux: the distribution's package; Windows / Mac: Docker Desktop).
 - The replay dataset in `docker/replay_data/` (about 120 MB, frames
   gzip-compressed). It is **not in git**: without it, `docker build` stops
-  with "the demo's replay dataset is missing". It is not published yet
-  either, so for now only the observatory can build the image; it is
-  built once from the observatory's own data:
+  with "the demo's replay dataset is missing". It is published as a file of
+  the release `demo-data-2026-10-14`, on Codeberg and on its GitHub mirror
+  (the same file):
+
+  - <https://codeberg.org/FrancoisCochard/Rosace-manager/releases/download/demo-data-2026-10-14/rosace-demo-data-2026-10-14.tar>
+  - <https://github.com/rosace-astronomy/Rosace-manager/releases/download/demo-data-2026-10-14/rosace-demo-data-2026-10-14.tar>
+
+  While the repository is private, download it from the release page in a
+  browser, logged in. Then, from the repository root:
+
+  ```
+  sha256sum rosace-demo-data-2026-10-14.tar
+  tar -xf rosace-demo-data-2026-10-14.tar -C docker/
+  ```
+
+  The checksum must read
+  `623405982b7c9653676ee0f9c2e296ec472cc10f9dc654b1e63f4ba344801501` (also
+  given by the release's `.sha256` file); `tar` creates
+  `docker/replay_data/`.
+
+  The dataset is built by the observatory from its own data, then
+  published as a new release:
 
   ```
   python scripts/build_demo_dataset.py --guidelog <PHD2 GuideLog of the night>
