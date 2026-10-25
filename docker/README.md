@@ -17,8 +17,9 @@ The demo is the same as `python -m rosace.main --demo-mode` outside Docker
 ## Anonymized
 
 Nothing in the image names the observer or the site: the frames' headers
-give the site's position rounded to the degree (45° N, 6° E), the observer
-is `rosace`, the site `Rosace-Demo`; the real installation's configuration
+give the site's position rounded to the degree (45° N, 6° E) and no longer
+hold the target's altitude, azimuth or airmass (which would give the
+position back), the observer is `rosace`, the site `Rosace-Demo`; the real installation's configuration
 and hardware profiles, and the tests, are left out (`.dockerignore`).
 `scripts/build_demo_dataset.py` anonymizes the dataset it builds and refuses
 one where a name or the exact position is left.

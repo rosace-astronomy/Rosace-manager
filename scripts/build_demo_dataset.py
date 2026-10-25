@@ -95,9 +95,19 @@ INDEX_TILES = [f"index-5206-{hp}.fits" for hp in ("02", "03", "13", "21")]
 # observer name, the site's exact coordinates)
 POSITION_CARDS = ("SITELAT", "SITELONG", "LAT-OBS", "LONG-OBS")
 ELEVATION_CARDS = ("SITEELEV", "ALT-OBS")
+# Cards removed outright: with the date and the target's RA/DEC, the target's
+# altitude, azimuth or airmass give the site's position back (the latitude to
+# about 100 m from the INDI driver's OBJCTALT/OBJCTAZ)
+HORIZONTAL_CARDS = ("OBJCTALT", "OBJCTAZ", "OBJCTHA", "AIRMASS", "LST", "HA")
+# Same reason, in the header of PHD2's guide log: ", Hour angle = -1.09 hr"
+# and ", Alt = 78.5 deg, Az = 69.4 deg" are removed from the position line
+GUIDE_LOG_HORIZONTAL = re.compile(r", (?:Hour angle|Alt|Az) = [^,\n]*")
 DEMO_ELEVATION_M = 1000
 DEMO_OBSERVER = "rosace"
 DEMO_SITE = "Rosace-Demo"
+# Any SITENAME card gets a neutral name: only the instrumental response has
+# one, recorded at another site with another instrument
+DEMO_SITENAME = "SiteLambda"
 SITE_NAME = re.compile(r"\bSt[-_ ]?Pan(crasse)?\b", re.IGNORECASE)
 PRIVATE = [re.compile(p, re.IGNORECASE) for p in
            (r"Cochard", r"Pancrasse", r"\bSt[-_ ]?Pan\b", r"(?<![\d.])45\.289", r"(?<![\d.])5\.855")]
@@ -352,13 +362,16 @@ def _anonymized_value(key: str, value):
         return None if number in (0, DEMO_ELEVATION_M) else DEMO_ELEVATION_M
     if key == "OBSERVER":
         return None if str(value).strip() == DEMO_OBSERVER else DEMO_OBSERVER
+    if key == "SITENAME":
+        return None if str(value).strip() == DEMO_SITENAME else DEMO_SITENAME
     if isinstance(value, str) and SITE_NAME.search(value):
         return SITE_NAME.sub(DEMO_SITE, value)
     return None
 
 
 def anonymize_dataset(output: Path) -> None:
-    """Rounds the site's coordinates to the degree, replaces the observer by
+    """Rounds the site's coordinates to the degree, removes the target's
+    altitude, azimuth, hour angle and airmass, replaces the observer by
     "rosace" and the site's name by "Rosace-Demo", in every FITS header and
     text file of the dataset (in place, only where needed), then checks
     nothing private is left."""
@@ -372,6 +385,10 @@ def anonymize_dataset(output: Path) -> None:
                 for hdu in hdul:
                     for key in list(hdu.header.keys()):
                         if not key or key in ("COMMENT", "HISTORY"):
+                            continue
+                        if key in HORIZONTAL_CARDS:
+                            del hdu.header[key]
+                            changed += 1
                             continue
                         new = _anonymized_value(key, hdu.header[key])
                         if new is not None:
@@ -391,7 +408,7 @@ def anonymize_dataset(output: Path) -> None:
                     os.replace(temporary, path)
         elif path.suffix in (".yaml", ".txt"):
             text = path.read_text()
-            new = SITE_NAME.sub(DEMO_SITE, text)
+            new = GUIDE_LOG_HORIZONTAL.sub("", SITE_NAME.sub(DEMO_SITE, text))
             if path.name == "manifest.yaml":
                 new = re.sub(r"^source: (\d{4}-\d{2}-\d{2})_\S+?,", r"source: night \1,", new, flags=re.MULTILINE)
             if new != text:
@@ -403,15 +420,22 @@ def anonymize_dataset(output: Path) -> None:
 
 def check_anonymized(output: Path) -> None:
     """Refuses (SystemExit) a dataset where the observer's name, the site's
-    name or its exact coordinates are left, in a FITS header or a text file."""
+    name, its exact coordinates, or what gives them back (the target's
+    altitude, azimuth, hour angle or airmass) are left, in a FITS header or a
+    text file."""
     leftovers = []
     for path in sorted(p for p in output.rglob("*") if p.is_file()):
         if _is_fits(path):
             from astropy.io import fits
             with fits.open(path, memmap=False) as hdul:
                 text = "\n".join(repr(hdu.header) for hdu in hdul)
+                leftovers += [f"{path.relative_to(output)}: card {key}" for hdu in hdul
+                              for key in HORIZONTAL_CARDS if key in hdu.header]
         elif path.suffix in (".yaml", ".txt"):
             text = path.read_text()
+            match = GUIDE_LOG_HORIZONTAL.search(text)
+            if match:
+                leftovers.append(f"{path.relative_to(output)}: {match.group(0)!r}")
         else:
             continue
         for pattern in PRIVATE:

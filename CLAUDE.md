@@ -826,11 +826,15 @@ Rosace's (see HISTORY.md 2026-10-16).
   (`ln -s <repo>/docker/replay_data ~/.rosace-demo/replay`), or
   `--output ~/.rosace-demo/replay`. **Anonymized**: after copying,
   `anonymize_dataset()` rounds the site's position in every FITS header to
-  the degree (`SITELAT`/`SITELONG`, `SITEELEV` → 1000 m), sets `OBSERVER`
+  the degree (`SITELAT`/`SITELONG`, `SITEELEV` → 1000 m), removes the
+  target's altitude, azimuth, hour angle and airmass (`OBJCTALT`/`OBJCTAZ`/
+  `AIRMASS`... in the FITS headers, `Hour angle`/`Alt`/`Az` in the guide
+  logs' header — with the date and RA/DEC they give the latitude back to
+  about 100 m), sets `OBSERVER`
   to `rosace` and any mention of the site's name to `Rosace-Demo` (the
   manifest's `source:` keeps only the night's date); `check_anonymized()`
-  then refuses a dataset where the observer's or site's name or the exact
-  position is left. `--anonymize-only` applies both to an existing dataset
+  then refuses a dataset where the observer's or site's name, the exact
+  position or one of those values is left. `--anonymize-only` applies both to an existing dataset
   (tests: `scripts/test_build_demo_dataset.py`, run explicitly). The
   originals in `~/.rosace` are never modified. `config_demo.yaml` uses the
   same approximate site (45° N, 6° E, 1000 m).
