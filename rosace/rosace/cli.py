@@ -8,8 +8,8 @@ thing when run as a script. main() takes --host/--port, run_cli() handles
 every other option, then main() starts the server.
 
 Kept out of main.py so the orchestrator knows nothing of the installation
-tools behind these options (config and horizon-file validation, admin
-bootstrap, sub-plugin listing, purge of simulated data).
+tools behind these options (config creation and validation, horizon-file
+validation, admin bootstrap, sub-plugin listing, purge of simulated data).
 
 Import order matters: some options choose which config.yaml gets loaded
 (ROSACE_CONFIG), and rosace.config reads it once, when first imported. So
@@ -22,14 +22,18 @@ import os
 import sys
 
 _HELP_TEXT = """\
-Usage: rosace [config_path] [--demo-mode] [--host H] [--port N] [--check-config [config_path]] [--create-admin username] [--list-subplugins [family]] [--purge-simulated [--apply]] [--purge-demo [--apply]] [--build-validation-data [--apply]] [--version]
+Usage: rosace [config_path] [--demo-mode] [--host H] [--port N] [--check-config [config_path]] [--create-admin username] [--list-subplugins [family]] [--purge-simulated [--apply]] [--purge-demo [--apply]] [--build-validation-data [--apply]] [--init-config] [--version]
 
   (`python -m rosace.main` is the same command, with the same options.)
 
   (no arguments)            Start the server using the active config, resolved in
-                            priority order: ROSACE_CONFIG env var > <base_data_dir>/
-                            conf/config.yaml (this installation's own config) > the
-                            packaged conf/config.yaml.
+                            priority order: ROSACE_CONFIG env var > ~/.config/rosace/
+                            config.yaml (this installation's own config; the
+                            directory follows $XDG_CONFIG_HOME when set) > the
+                            packaged conf/config.yaml (the INDI simulators). The
+                            hardware profile named by active_hardware is looked for
+                            next to that config.yaml first, then among the packaged
+                            profiles.
 
   config_path               Start the server against this config.yaml instead of
                             the one that would normally be resolved — e.g. to run
@@ -58,7 +62,13 @@ Usage: rosace [config_path] [--demo-mode] [--host H] [--port N] [--check-config 
                             resolved; with a path, validates that file instead.
                             If the config declares horizon_file, also parses and
                             validates that local-horizon file (prints its point
-                            count). Prints [OK]/[FAIL] and exits 0/1.
+                            count). Also prints the hardware profile file found.
+                            Prints [OK]/[FAIL] and exits 0/1.
+
+  --init-config             Create ~/.config/rosace/ and copy the packaged config
+                            (INDI simulators) there as config.yaml, the starting
+                            point of this installation's own config. Refuses if a
+                            config.yaml is already there. Never starts the server.
 
   --create-admin username  Bootstrap the very first admin account and exit — never
                             starts the server. Prompts for the password (never
@@ -140,7 +150,7 @@ def _take_option(argv: list[str], name: str) -> str | None:
 
 def run_cli(argv: list[str]) -> None:
     """Handles argv (sys.argv[1:]). The tool options (--help, --check-config,
-    --create-admin, --list-subplugins, --purge-simulated, --purge-demo,
+    --init-config, --create-admin, --list-subplugins, --purge-simulated, --purge-demo,
     --build-validation-data, --version) exit the process;
     --demo-mode, a config path or no argument at all set ROSACE_CONFIG where
     needed and return, so main() goes on to start the server."""
@@ -166,6 +176,7 @@ def run_cli(argv: list[str]) -> None:
             print(f"[FAIL] config invalid: {e}")
             sys.exit(1)
         print(f"[OK] config valid: {checked_config._CONFIG_PATH}")
+        print(f"[OK] hardware profile: {checked_config.HARDWARE_CONFIG_PATH}")
         if checked_config.HORIZON_FILE is not None:
             try:
                 from rosace.horizon import load_horizon
@@ -182,6 +193,23 @@ def run_cli(argv: list[str]) -> None:
             print(f"[FAIL] plugins invalid: {e}")
             sys.exit(1)
         print(f"[OK] plugins valid (active scheduler: {checked_config.ACTIVE_SCHEDULER})")
+        sys.exit(0)
+    elif "--init-config" in argv:
+        # Loads the packaged config only to reach config.py's own paths, so a
+        # broken config elsewhere can never stop the init.
+        os.environ["ROSACE_CONFIG"] = os.path.join(os.path.dirname(__file__), "conf", "config.yaml")
+        import shutil
+        import rosace.config as packaged_config
+        target = packaged_config._user_config_dir() / "config.yaml"
+        if target.exists():
+            print(f"[FAIL] {target} already exists -- nothing changed")
+            sys.exit(1)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(packaged_config._DEFAULT_CONFIG_PATH, target)
+        print(f"[OK] created {target} (a copy of the INDI simulators config)")
+        print("Edit it for this installation (observatory block, active_hardware...);")
+        print(f"a hardware profile of your own goes next to it, in {target.parent}.")
+        print("Then check it: rosace --check-config")
         sys.exit(0)
     elif "--create-admin" in argv:
         idx = argv.index("--create-admin")

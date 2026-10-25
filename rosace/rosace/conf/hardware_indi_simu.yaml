@@ -104,7 +104,7 @@ sequencer_prefix:
     - guiding_dark_acquisition
 
 PHD2_config:
-    # host: 192.168.144.32
+    # host: 192.0.2.32 # e.g. PHD2 on another computer
     host: 127.0.0.1 # localhost (but integers expected)
     port: 4400
     do_calibration: False

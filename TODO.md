@@ -97,6 +97,14 @@ Claude peut le suggérer, jamais le faire lui-même.
       (lancer, arrêter, purger, effacer, Mac Apple Silicon avec
       `--platform linux/amd64`) dans un endroit public — la page « Get
       started » de la doc Sphinx (2026-10-25)
+- [ ] Démarrer les simulateurs INDI et PHD2 depuis Rosace (serveur INDI
+      avec le profil « simulators », PHD2 avec son profil équivalent) pour un
+      premier essai sans les avoir lancés à la main — aujourd'hui, un premier
+      lancement échoue tant qu'ils ne tournent pas en tâche de fond ; leur
+      installation reste à faire à part (2026-10-25)
+- [ ] Sortir aussi `programs/*.yaml` du code (réglages propres à
+      l'installation, comme les parts de temps de `Be_stars.yaml`) : la démo
+      les utilise et le sélecteur lit tout un dossier, à concevoir (2026-10-25)
 - [ ] Supprimer le backend `internal` (`sequencer_backend: internal`,
       `programs/demo.yaml`, les `_internal.py`) : la démo ne s'en sert plus.
       Basculer d'abord ses tests sur le matériel rejoué (2026-10-16)

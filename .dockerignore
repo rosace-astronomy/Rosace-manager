@@ -10,10 +10,8 @@ rosace/rosace/gui/bin/
 .git/
 .vscode/
 .idea/
-# Never in the demo image: the real installation's configuration and
-# hardware profiles (observer, site, network), and the tests
-rosace/rosace/conf/config72ED.yaml
-rosace/rosace/conf/hardware_indi_72ED-*.yaml
+# Never in the demo image: the tests (an installation's own configuration
+# lives in ~/.config/rosace/, outside the repository)
 **/test_*.py
 **/conftest.py
 rosace/rosace/hardware_replay/testing.py

@@ -3,6 +3,18 @@ Pytest fixtures shared by every test file in the package
 (test_rosace_core.py, plugins/test_*.py, plugins/*_plugins/test_*.py).
 """
 
+import os
+import tempfile
+from pathlib import Path
+
+# Tests always run against the packaged config, never this machine's own
+# (~/.config/rosace/config.yaml, or a ROSACE_CONFIG exported in the shell):
+# set before anything imports rosace.config, inherited by the subprocesses
+# some tests start. An empty XDG_CONFIG_HOME covers the tests that remove
+# ROSACE_CONFIG to exercise the lookup.
+os.environ["ROSACE_CONFIG"] = str(Path(__file__).parent / "conf" / "config.yaml")
+os.environ["XDG_CONFIG_HOME"] = tempfile.mkdtemp(prefix="rosace_test_xdg_")
+
 import pytest
 
 from rosace import step_progress

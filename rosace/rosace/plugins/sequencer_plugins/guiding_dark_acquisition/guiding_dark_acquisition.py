@@ -1,7 +1,7 @@
 """
 Sub-plugin SEQUENCER -- Guiding-camera dark acquisition, with current-session
 reuse. Backend "indi" only -- the guiding camera is uncooled
-(hardware_indi_72ED-WIFI.yaml's guiding_camera.cooling: FALSE), so unlike
+(the 72ED hardware profile's guiding_camera.cooling: FALSE), so unlike
 dark_acquisition (science camera, temperature-bucketed library), this is a
 plain once-per-session series with no staleness check at all, same
 reasoning as flat_acquisition: shoot GUIDING_DARK_COUNT raw frames with the

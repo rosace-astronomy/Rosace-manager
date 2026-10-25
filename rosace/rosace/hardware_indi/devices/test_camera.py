@@ -14,7 +14,7 @@ from rosace.hardware_indi.devices.camera import IndiCamera
 
 _BASE_CONFIG = dict(
     indi_name="Test Camera",
-    indi_client=dict(indi_host="192.168.144.48", indi_port=7624),
+    indi_client=dict(indi_host="192.0.2.48", indi_port=7624),
 )
 
 

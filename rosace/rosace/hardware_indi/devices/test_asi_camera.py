@@ -19,7 +19,7 @@ from rosace.hardware_indi.devices.asi_camera import IndiASICamera
 
 _CONFIG = dict(
     indi_name="ZWO CCD ASI120MM Mini",
-    indi_client=dict(indi_host="192.168.144.50", indi_port=7624),
+    indi_client=dict(indi_host="192.0.2.50", indi_port=7624),
     gain=50,
     offset=20,
 )

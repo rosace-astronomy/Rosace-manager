@@ -136,42 +136,67 @@ class TestSequencerBackend:
 
 
 class TestConfigResolution:
-    """_resolve_config_path(): ROSACE_CONFIG > <base_data_dir>/conf/config.yaml > packaged default."""
+    """_resolve_config_path(): ROSACE_CONFIG > ~/.config/rosace/config.yaml >
+    packaged default; _resolve_hardware_path(): next to the config > packaged."""
 
     def test_explicit_rosace_config_env_wins(self, tmp_path, monkeypatch):
         explicit = tmp_path / "explicit.yaml"
         explicit.write_text("base_data_dir: /tmp/whatever\n")
         monkeypatch.setenv("ROSACE_CONFIG", str(explicit))
+        (tmp_path / "rosace").mkdir()
+        (tmp_path / "rosace" / "config.yaml").write_text("base_data_dir: /tmp/other\n")
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
         import rosace.config as config_module
         assert config_module._resolve_config_path() == explicit
 
-    def test_falls_back_to_base_data_dir_conf_when_present(self, tmp_path, monkeypatch):
+    def test_uses_the_xdg_config_dir_when_present(self, tmp_path, monkeypatch):
         monkeypatch.delenv("ROSACE_CONFIG", raising=False)
-
-        install_dir = tmp_path / "install"
-        (install_dir / "conf").mkdir(parents=True)
-        real_config = install_dir / "conf" / "config.yaml"
-        real_config.write_text(f"base_data_dir: {install_dir}\n")
-
-        boot_file = tmp_path / "base_data_dir.yaml"
-        boot_file.write_text(f"base_data_dir: {install_dir}\n")
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        (tmp_path / "rosace").mkdir()
+        own_config = tmp_path / "rosace" / "config.yaml"
+        own_config.write_text("base_data_dir: /tmp/whatever\n")
 
         import rosace.config as config_module
-        monkeypatch.setattr(config_module, "_BASE_DATA_DIR_FILE", boot_file)
+        assert config_module._resolve_config_path() == own_config
 
-        assert config_module._resolve_config_path() == real_config
+    def test_xdg_config_home_unset_means_dot_config(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("ROSACE_CONFIG", raising=False)
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        (tmp_path / ".config" / "rosace").mkdir(parents=True)
+        own_config = tmp_path / ".config" / "rosace" / "config.yaml"
+        own_config.write_text("base_data_dir: /tmp/whatever\n")
+
+        import rosace.config as config_module
+        assert config_module._resolve_config_path() == own_config
 
     def test_falls_back_to_packaged_default_when_nothing_found(self, tmp_path, monkeypatch):
         monkeypatch.delenv("ROSACE_CONFIG", raising=False)
-
-        boot_file = tmp_path / "base_data_dir.yaml"
-        boot_file.write_text(f"base_data_dir: {tmp_path / 'nonexistent_install'}\n")
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
         import rosace.config as config_module
-        monkeypatch.setattr(config_module, "_BASE_DATA_DIR_FILE", boot_file)
-
         assert config_module._resolve_config_path() == config_module._DEFAULT_CONFIG_PATH
+
+    def test_hardware_profile_next_to_the_config_first(self, tmp_path):
+        import rosace.config as config_module
+        own_profile = tmp_path / "hardware_indi_simu.yaml"
+        own_profile.write_text("simulated: true\n")
+
+        assert config_module._resolve_hardware_path(tmp_path / "config.yaml", "hardware_indi_simu") == own_profile
+
+    def test_hardware_profile_falls_back_to_the_packaged_one(self, tmp_path):
+        import rosace.config as config_module
+
+        assert (config_module._resolve_hardware_path(tmp_path / "config.yaml", "hardware_indi_simu")
+                == config_module._PACKAGE_CONF_DIR / "hardware_indi_simu.yaml")
+
+    def test_missing_hardware_profile_names_both_places(self, tmp_path):
+        import rosace.config as config_module
+
+        with pytest.raises(FileNotFoundError, match="no_such_profile") as error:
+            config_module._resolve_hardware_path(tmp_path / "config.yaml", "no_such_profile")
+        assert str(tmp_path) in str(error.value)
 
 
 class TestCheckConfigCLI:

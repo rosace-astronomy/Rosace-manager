@@ -17,7 +17,7 @@ from rosace.hardware_indi.devices.spectro_Alpy600 import IndiSpectroAlpy600
 
 _CONFIG = dict(
     indi_name="SM Pro",
-    indi_client=dict(indi_host="192.168.144.48", indi_port=7624),
+    indi_client=dict(indi_host="192.0.2.48", indi_port=7624),
 )
 
 

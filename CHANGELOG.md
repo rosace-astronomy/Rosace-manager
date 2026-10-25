@@ -18,6 +18,16 @@ are listed, newest first. The reasons behind the changes are in
   `rosace --demo-mode --port 8001` beside a real server.
 - `--version` prints the version; the server's first log line gives the
   version and the configuration in use.
+- `rosace --init-config` creates `~/.config/rosace/config.yaml`, a copy of
+  the simulators configuration to adapt to the installation.
+
+### Changed
+
+- An installation's own configuration now lives in `~/.config/rosace/`
+  (`config.yaml`, and its hardware profiles next to it), outside the code:
+  a bare `rosace` starts it, or the INDI simulators when there is none.
+  `conf/base_data_dir.yaml` and the `~/.rosace/conf/config.yaml` lookup are
+  gone. `rosace --check-config` also names the hardware profile found.
 
 ## [0.1.0.0] — 2026-10-25
 

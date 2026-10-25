@@ -14,7 +14,13 @@ import yaml
 
 _PACKAGE_CONF_DIR = Path(__file__).parent / "conf"
 _DEFAULT_CONFIG_PATH = _PACKAGE_CONF_DIR / "config.yaml"
-_BASE_DATA_DIR_FILE = _PACKAGE_CONF_DIR / "base_data_dir.yaml"
+
+
+def _user_config_dir() -> Path:
+    """This installation's own configuration directory, by the Linux (XDG)
+    convention: $XDG_CONFIG_HOME/rosace, else ~/.config/rosace."""
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    return (Path(xdg).expanduser() if xdg else Path.home() / ".config") / "rosace"
 
 
 def _load_config(path: Path) -> dict:
@@ -26,24 +32,38 @@ def _resolve_config_path() -> Path:
     """
     Which config.yaml to load, in priority order:
     1. ROSACE_CONFIG env var, if set — an explicit path (any location), e.g. set by
-       `python -m rosace.main <path>` or by the caller's own environment. Highest
-       priority, meant for one-off overrides (a second instrument, a test config).
-    2. <base_data_dir>/conf/config.yaml, where base_data_dir comes from
-       base_data_dir.yaml (see that file) — this installation's own config, so a
-       real deployment doesn't need to pass ROSACE_CONFIG on every launch.
-    3. The packaged conf/config.yaml — demo defaults, works out of the box on a
-       fresh install with nothing configured yet.
+       `rosace <path>` or by the caller's own environment (a systemd service).
+       Highest priority, meant for overrides (a second instrument, a test config,
+       the demo).
+    2. config.yaml in the user's configuration directory (_user_config_dir(),
+       ~/.config/rosace/) — this installation's own config, found on every
+       launch with no argument.
+    3. The packaged conf/config.yaml — the INDI simulators, what a fresh install
+       with nothing configured yet starts with.
     """
     explicit = os.environ.get("ROSACE_CONFIG")
     if explicit:
         return Path(explicit).expanduser()
 
-    boot_cfg = _load_config(_BASE_DATA_DIR_FILE)
-    candidate = Path(boot_cfg["base_data_dir"]).expanduser() / "conf" / "config.yaml"
+    candidate = _user_config_dir() / "config.yaml"
     if candidate.exists():
         return candidate
 
     return _DEFAULT_CONFIG_PATH
+
+
+def _resolve_hardware_path(config_path: Path, name: str) -> Path:
+    """The hardware profile <name>.yaml: next to the active config.yaml first
+    (an installation's own profiles live with its config), else the packaged
+    one (simulators, replay)."""
+    candidates = [config_path.parent / f"{name}.yaml", _PACKAGE_CONF_DIR / f"{name}.yaml"]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(
+        f"Hardware profile {name!r} (active_hardware) not found: looked for "
+        + " and ".join(str(c) for c in dict.fromkeys(candidates))
+    )
 
 
 _CONFIG_PATH = _resolve_config_path()
@@ -93,14 +113,15 @@ HORIZON_FILE: Path | None = Path(_horizon_file).expanduser() if _horizon_file el
 # The other keys of the block (observer, site, equipment, telescope,
 # spectrograph, camera, resolving_power, Demetra-only keys) are optional,
 # read through OBSERVATORY by write_spectrum (BeSS keywords), plot_spectrum,
-# summary and export_demetra — see the block in config72ED.yaml.
+# summary and export_demetra — see the block in config_demo.yaml.
 
 # ── Active hardware configuration ────────────────────────────
-# Name of the YAML file in conf/ (without extension) describing the hardware
-# to use. Lets you switch between several configurations (simulator, real
+# Name of the YAML file (without extension) describing the hardware to use,
+# next to the active config.yaml or packaged in conf/ (_resolve_hardware_path).
+# Lets you switch between several configurations (simulator, real
 # observatory…) by changing only this value.
 ACTIVE_HARDWARE = _cfg["active_hardware"]
-HARDWARE_CONFIG_PATH = Path(__file__).parent / "conf" / f"{ACTIVE_HARDWARE}.yaml"
+HARDWARE_CONFIG_PATH = _resolve_hardware_path(_CONFIG_PATH, ACTIVE_HARDWARE)
 
 # ── Scheduling ──────────────────────────────────────────────
 # Delay before asking SCHEDULER again when there's nothing to observe right

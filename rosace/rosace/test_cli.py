@@ -95,6 +95,24 @@ def _run(*args, env=None):
     )
 
 
+class TestInitConfigCLI:
+
+    def test_copies_the_packaged_config_once_then_refuses(self, tmp_path):
+        env = {**os.environ, "XDG_CONFIG_HOME": str(tmp_path)}
+        target = tmp_path / "rosace" / "config.yaml"
+        packaged = Path(__file__).parent / "conf" / "config.yaml"
+
+        first = _run("--init-config", env=env)
+        assert first.returncode == 0, first.stdout + first.stderr
+        assert target.read_text() == packaged.read_text()
+
+        target.write_text("# edited by the observer\n")
+        second = _run("--init-config", env=env)
+        assert second.returncode == 1
+        assert "already exists" in second.stdout
+        assert target.read_text() == "# edited by the observer\n"
+
+
 class TestVersionCLI:
 
     def test_prints_the_installed_version(self):

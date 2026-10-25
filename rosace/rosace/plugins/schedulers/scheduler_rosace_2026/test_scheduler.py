@@ -80,7 +80,7 @@ class TestSchedulerPlugin:
     def _no_meridian_filter_by_default(self, monkeypatch):
         """Meridian filter off unless a test opts in — whatever
         min_meridian_distance_deg the active config happens to declare (e.g.
-        config72ED.yaml's 3) must never leak into these tests."""
+        the 72ED installation's 3) must never leak into these tests."""
         monkeypatch.setattr(scheduler_mod, "MIN_MERIDIAN_DISTANCE_DEG", 0)
 
     async def _make_session(self) -> SessionContext:

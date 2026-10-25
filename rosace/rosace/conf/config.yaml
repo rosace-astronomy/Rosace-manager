@@ -45,14 +45,31 @@ observatory:
   # profile at its current azimuth (on top of their flat minimum altitude).
   # Absent = no local horizon, only the flat minimum altitude applies. Read on
   # every SCHEDULER call; a missing or malformed file is fatal. Validate it
-  # with `python -m rosace.main --check-config`. Exposed as HORIZON_FILE.
+  # with `rosace --check-config`. Exposed as HORIZON_FILE.
   # horizon_file: ~/.rosace/horizon/horizon.txt
-  # The observatory's names (observer, BeSS site and equipment names, the
-  # equipment's parts) — optional, needed only to write BeSS spectra; see
-  # the same block in config72ED.yaml.
+  # The observatory's names — optional, needed only to write BeSS spectra:
+  # the three BeSS forms (observer, site, equipment, exactly as in BeSS) and
+  # the equipment's parts, in English, ASCII, at most 40 characters for the
+  # BeSS names. Read by write_spectrum (FITS keywords OBSERVER, BSS_SITE,
+  # BSS_INST, TELESCOP, INSTRUME, DETNAM, BSS_ITRP), plot_spectrum, summary
+  # and export_demetra (the last four keys are Demetra only). Example:
+  # observer: A. Name               # OBSERVER
+  # site: My-Site                   # BSS_SITE, exactly as in BeSS
+  # equipment: Alpy600-72ED-AM3     # BSS_INST, exactly as in BeSS
+  # telescope: 72ED refractor       # TELESCOP
+  # spectrograph: Alpy 600          # INSTRUME
+  # camera: Atik 314L               # DETNAM
+  # resolving_power: 600            # BSS_ITRP: typical resolving power
+  # site_uai_code: ""               # Demetra only
+  # telescope_diameter_mm: 72       # Demetra only
+  # telescope_focal_mm: 420         # Demetra only
+  # sensor_type: CCD                # Demetra only
 
-# Name (without extension) of the active hardware profile in conf/ — only
-# consulted when sequencer_backend (below) is 'indi'.
+# Name (without extension) of the active hardware profile — only consulted
+# when sequencer_backend (below) is 'indi'. Looked for next to this
+# config.yaml first (an installation's own profile, e.g.
+# ~/.config/rosace/hardware_my_telescope.yaml), then among the packaged
+# profiles (hardware_indi_simu, hardware_replay).
 # Exposed as ACTIVE_HARDWARE / HARDWARE_CONFIG_PATH in config.py.
 active_hardware: hardware_indi_simu
 
@@ -212,8 +229,11 @@ subplugin_params:
 
   focus:
     # Fraction of the guiding camera's smaller frame dimension used as the
-    # side of the central square search window -- see config72ED.yaml's own
-    # copy of this key for the full explanation. No real optics to protect
-    # here (CCD Simulator), but declared anyway so the GUI's reference
-    # rectangle is visible when testing against hardware_indi_simu too.
+    # side of the central square search window (PSF quality away from the
+    # optical axis -- coma, field curvature -- isn't representative of
+    # focus). Instrument-specific, like backlash_offset_deg: how far
+    # off-axis the optics stay clean varies with the actual guiding optics.
+    # No real optics to protect here (CCD Simulator), but declared anyway so
+    # the GUI's reference rectangle is visible when testing against
+    # hardware_indi_simu too.
     window_fraction: 0.9
