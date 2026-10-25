@@ -7,6 +7,12 @@ are listed, newest first. The reasons behind the changes are in
 
 ## [Unreleased]
 
+### Added
+
+- The demo's Docker image is published on Codeberg's container registry:
+  `docker run ... codeberg.org/francoiscochard/rosace-demo`, nothing to
+  build (see `docker/README.md`).
+
 ## [0.1.0.0] — 2026-10-25
 
 First numbered version. Rosace at this point:

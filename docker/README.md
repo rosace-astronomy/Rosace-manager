@@ -24,9 +24,26 @@ and hardware profiles, and the tests, are left out (`.dockerignore`).
 `scripts/build_demo_dataset.py` anonymizes the dataset it builds and refuses
 one where a name or the exact position is left.
 
-## Prerequisites
+## Quick start: the published image
 
-- Docker (Linux: the distribution's package; Windows / Mac: Docker Desktop).
+The image is published on Codeberg's container registry, public — nothing
+to build, only Docker needed (Linux: the distribution's package; Windows /
+Mac: Docker Desktop):
+
+```
+docker run -d -p 8001:8000 -v rosace-demo-data:/root/.rosace-demo --name rosace-demo codeberg.org/francoiscochard/rosace-demo
+```
+
+Then open http://localhost:8001 — see "Run the container" below. Without a
+tag, Docker takes `latest`, the newest published version; a given version is
+asked for by its number, e.g. `codeberg.org/francoiscochard/rosace-demo:0.1.0.0`.
+`docker pull codeberg.org/francoiscochard/rosace-demo` fetches a newer
+`latest`, then remove the container and run it again (the volume keeps the
+demo's data). Built for amd64 only (see below).
+
+## Prerequisites (to build the image yourself)
+
+- Docker.
 - The replay dataset in `docker/replay_data/` (about 120 MB, frames
   gzip-compressed). It is **not in git**: without it, `docker build` stops
   with "the demo's replay dataset is missing". It is published as a file of
@@ -112,8 +129,26 @@ docker load -i rosace-demo.tar.gz                       # on the other one
 ```
 
 The image is built for the building machine's architecture (amd64 here); an
-Apple Silicon Mac runs it through emulation, more slowly. Publishing it
-(ghcr.io) is not done yet.
+Apple Silicon Mac runs it through emulation, more slowly.
+
+## Publishing a version (maintainer)
+
+Only published versions (X.Y.Z.0, see CLAUDE.md, "Versioning") go to the
+registry, built from their git tag on a clean tree, with the dataset in
+place. Log in once with a Codeberg access token (Settings → Applications,
+permission `package` read and write only):
+
+```
+docker login codeberg.org -u FrancoisCochard
+docker build -t rosace-demo:<version> .
+docker tag rosace-demo:<version> codeberg.org/francoiscochard/rosace-demo:<version>
+docker tag rosace-demo:<version> codeberg.org/francoiscochard/rosace-demo:latest
+docker push codeberg.org/francoiscochard/rosace-demo:<version>
+docker push codeberg.org/francoiscochard/rosace-demo:latest
+```
+
+The image name is lower case (Docker refuses capitals); the package is
+attached to the Codeberg account, and public because the account is.
 
 ## Credits
 

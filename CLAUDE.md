@@ -885,7 +885,10 @@ Rosace's (see HISTORY.md 2026-10-16).
   installation's `config72ED.yaml` and 72ED hardware profiles and every test
   file, so the image names neither the observer nor the site (the packaged
   `config.yaml` and `SessionContext` say `Observatory`). Built locally by
-  hand (`docker build -t rosace-demo .`); not published yet (TODO.md). 341 MB
+  hand (`docker build -t rosace-demo .`); each published version (X.Y.Z.0,
+  see "Versioning") is pushed by hand, public, to Codeberg's registry as
+  `codeberg.org/francoiscochard/rosace-demo:<version>` and `:latest` (since
+  0.1.0.0, 2026-10-25; steps in `docker/README.md`). 341 MB
   to download, ~1.1 GB unpacked (628 MB / 2.4 GB on python:3.12-slim with 9
   observations). The whole test suite passes on the image's libraries
   (mount the repository into a throwaway container, `python -m ensurepip`,
