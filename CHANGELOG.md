@@ -20,6 +20,9 @@ are listed, newest first. The reasons behind the changes are in
   version and the configuration in use.
 - `rosace --init-config` creates `~/.config/rosace/config.yaml`, a copy of
   the simulators configuration to adapt to the installation.
+- `rosace --purge-failed <date>` removes what a night's failed acquisitions
+  left (database rows, guide images, observation files), keeping every
+  other observation complete; without `--apply`, only lists what would go.
 - Tab completion of the `rosace` options (one line to add to `~/.bashrc`,
   see README.md).
 

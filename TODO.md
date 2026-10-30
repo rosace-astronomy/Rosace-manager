@@ -25,15 +25,15 @@ Claude peut le suggérer, jamais le faire lui-même.
       devices de la session restent perdus jusqu'à la session suivante (un
       client INDI neuf n'est créé qu'au démarrage d'une session ou d'un test
       matériel) (2026-10-13)
-- [ ] La monture AM3 arrête de suivre peu après le méridien : HD 26398
-      (nuit du 14, partie à l'est, angle horaire −5,8° → +6,0° prévu) a
-      perdu l'étoile vers 02:18 UT, angle horaire ≈ +1,3° ; 5 poses sur 14
-      sans étoile, écart de 4,3° à la fin (rattrapé par `stack`). Le
-      réglage provisoire `selector.meridian_tolerance_deg: 15` ne
-      correspond donc pas à la monture telle qu'elle est réglée : choisir
-      entre régler la limite de la monture (driver AM3 / Ekos) ou ramener
-      ce réglage vers 1°. Rosace ne voit pas non plus l'arrêt du suivi
-      pendant la série (16 min sans étoile sans aucun message) (2026-10-15)
+- [ ] Résumé et page `/be/` sans image de guidage quand le contrôle de fin
+      de `stop_phd2_guiding` échoue : `summary.guide_image()` se rabat sur
+      `pointing_72ed["corrected_guide_image"]`, mais `pointing_72ed`
+      enregistre `guide_image` — le repli ne marche jamais (HD 206773,
+      nuit du 27) ; puis `--build-validation-data --apply` (2026-10-28)
+- [ ] Caméra de pointage décalée d'environ 1,6° par rapport au tube : la
+      cible est à 96–97′ du centre des images grand champ, donc hors champ
+      (5 images sur 5, nuit du 27) ; à aligner de jour, puis
+      `wide_field.sampling_arcsec: 20.1` (2026-10-28)
 
 ## Gros chantiers
 
@@ -43,7 +43,6 @@ Claude peut le suggérer, jamais le faire lui-même.
       `slit_x`/`slit_y`/échantillonnage, bornes de réduction, réponse
       instrumentale, raies de la lampe), étapes propres à la monture
       (`sequencer_prefix`), et validation sur le ciel (2026-10-17)
-- [ ] Faut-il supprimer le plugin "Sharing" ?
 - [ ] Simplifier CLAUDE.md (232 ko, ~940 lignes ; traduction française
       dans `~/Téléchargements/CLAUDE_fr_2026-10-17_v1.0.pdf`) : y garder les
       règles, conventions et l'architecture ; déplacer l'histoire (dates,
@@ -62,27 +61,20 @@ Claude peut le suggérer, jamais le faire lui-même.
       (`sharing_status`/`sharing_done`), la clé `sharing:` de tous les
       programmes, `sharing_plugins/`, la GUI et les tests ; même question
       pour ARCHIVE, encore un espace réservé (2026-10-17)
+- [ ] Revoir où Rosace range ses fichiers : tout est sous `~/.rosace/`
+      (`base_data_dir`), sauf la configuration de l'installation et ses
+      profils matériels, partis dans `~/.config/rosace/` le 2026-10-25 —
+      peu naturel. Réflexion de fond à mener : séparer ce qui se règle
+      (configuration, profils, listes d'observation, horizon, raies de
+      référence, réponse) de ce que Rosace produit (bases, journaux,
+      observations, bibliothèque de darks, caches), et décider où va
+      chacun (2026-10-28)
 
 ## Chantiers proposés
 
-- [ ] Image Docker de la démo sur matériel rejoué (étape 5 du chantier
-      démo) : astrometry.net et les 7 tuiles d'index dans l'image, jeu de
-      rejeu copié depuis `docker/replay_data/`, lancement par `--demo-mode`,
-      volume sur `~/.rosace-demo` ; supprimer `docker/config.demo.yaml`,
-      `docker/demo_programs/`, `docker/seed_demo_data.py`, `docker/preview/`
-      et réécrire `docker/README.md` (2026-10-16)
 - [ ] Publier l'image Docker de la démo sur ghcr.io, et le jeu de rejeu en
       pièce jointe d'une release GitHub, pour qu'un autre poste n'ait pas à
       le reconstruire depuis `~/.rosace` (2026-10-16)
-- [ ] Publier l'image de démo toute faite (manuel : jeton, `docker login`,
-      `docker tag`, `docker push`) sur le registre de Codeberg, ghcr.io en
-      miroir, et peut-être Docker Hub (`docker.io`, le plus connu, nom
-      court). Décisions avant : visibilité (une image publique rend le code
-      lisible, alors que les dépôts sont privés), numérotation (date +
-      `latest`, ou version de Rosace), architectures (ARM pour les Mac
-      récents : il faut `buildx`). Le jeu de rejeu, lui, est publié depuis
-      le 2026-10-25 (publication `demo-data-2026-10-14`, Codeberg + GitHub)
-      (2026-10-25)
 - [ ] Plus tard : construction automatique de l'image à chaque push
       (Forgejo Actions / GitHub Actions) — télécharger le jeu de rejeu
       demande un jeton tant que le dépôt est privé (2026-10-25)
@@ -108,9 +100,6 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Supprimer le backend `internal` (`sequencer_backend: internal`,
       `programs/demo.yaml`, les `_internal.py`) : la démo ne s'en sert plus.
       Basculer d'abord ses tests sur le matériel rejoué (2026-10-16)
-- [ ] `--demo-mode` démarre toujours sur le port 8000 ; à côté du vrai
-      serveur, il faut passer par `ROSACE_CONFIG=… uvicorn … --port 8001`.
-      Option `--port` ? (2026-10-16)
 
 - [ ] Flux et transparence dans la table `observations` : un résumé par
       observation, calculé par `calculate_flux` et recopié via
@@ -196,6 +185,9 @@ Claude peut le suggérer, jamais le faire lui-même.
 
 ## Petits items
 
+- [ ] Supprimer `~/ROSACE/analyses/` (analyse de la réponse
+      instrumentale, 3,5 Go, créé par Claude hors du dépôt) une fois le
+      travail sur la RI terminé (2026-10-28)
 - [ ] Écrire le vrai type de pose dans les FITS : régler `CCD_FRAME_TYPE`
       d'INDI (Light / Dark / Bias / Flat) avant chaque série, pour que
       l'en-tête dise `IMAGETYP = 'Dark Frame'` etc. — aujourd'hui toutes les
@@ -207,19 +199,6 @@ Claude peut le suggérer, jamais le faire lui-même.
       (`manual_list` du sélecteur et `scheduler_rosace_2026`). Aujourd'hui
       une telle ligne est bien ignorée, mais comme ligne invalide, avec une
       ERROR dans le journal (2026-10-17)
-- [ ] Numéro de version de Rosace : `pyproject.toml` déclare `0.5.0` (repris
-      dans le mot-clé FITS `SWCREATE` des spectres), mais ce numéro n'a
-      jamais évolué. Définir une règle de numérotation (quand l'incrémenter),
-      poser un tag git par version, et afficher la version (log au démarrage,
-      GUI, `--version`) (2026-10-13)
-- [ ] Commande `rosace` cassée : `[project.scripts]` de `pyproject.toml`
-      pointe sur l'application FastAPI (`rosace.main:app`), pas sur une
-      fonction de lancement — `rosace --help` échoue (TypeError). La faire
-      pointer sur le lancement de `cli.py` (même comportement que
-      `python -m rosace.main`), ou supprimer la déclaration (2026-10-11).
-      Souhait de l'utilisateur : `rosace` seul démarre le serveur,
-      `rosace --help` affiche l'aide (mêmes options que `python -m
-      rosace.main`) (2026-10-11)
 - [ ] flat_acquisition : la lampe flat chauffe encore pendant la série — 1re
       image à 88 % des suivantes, puis +1 % jusqu'à la 5e (nuit 2026-09-25).
       Le rejet min/max du master l'écarte, mais une pause de stabilisation
@@ -246,4 +225,8 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] Summary et log : séparer l'écart étoile–fente en composante le long de
       la fente (sans effet sur le flux) et en travers (pertes de lumière) ;
       seule la seconde compte pour le centrage (2026-10-10)
-
+- [ ] `guiding_stats` compte aussi les images de guidage prises après la
+      perte de l'étoile : HD 212044 (nuit du 27, suivi arrêté au méridien)
+      donne `GUIDRMS = 1311.26` dans le FITS livré. Limiter aux poses
+      retenues par `stack`, ou signaler un guidage perdu — à discuter
+      (2026-10-28)

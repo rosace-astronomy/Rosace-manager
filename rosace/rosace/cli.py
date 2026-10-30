@@ -12,7 +12,8 @@ prepares the server start, then main() starts the server.
 
 Kept out of main.py so the orchestrator knows nothing of the installation
 tools behind these options (config creation and validation, horizon-file
-validation, admin bootstrap, sub-plugin listing, purge of simulated data).
+validation, admin bootstrap, sub-plugin listing, purge of simulated data and of failed
+acquisitions).
 
 Import order matters: some options choose which config.yaml gets loaded
 (ROSACE_CONFIG), and rosace.config reads it once, when first imported. So
@@ -34,8 +35,8 @@ SUBPLUGIN_FAMILIES = ("sequencer", "reduction", "sharing")
 
 # The tool options: they run, then exit, and never start the server.
 _TOOL_OPTIONS = ("check_config", "init_config", "create_admin", "list_subplugins",
-                 "purge_simulated", "purge_demo", "build_validation_data")
-_APPLY_OPTIONS = ("purge_simulated", "purge_demo", "build_validation_data")
+                 "purge_simulated", "purge_failed", "purge_demo", "build_validation_data")
+_APPLY_OPTIONS = ("purge_simulated", "purge_failed", "purge_demo", "build_validation_data")
 
 _DESCRIPTION = """Start the Rosace server, or run one of the tool options below.
 
@@ -54,6 +55,16 @@ _EPILOG = (
     '  eval "$(<venv>/bin/register-python-argcomplete rosace)"\n'
     "See README.md (using rosace without activating the environment)."
 )
+
+
+def _night(value: str) -> str:
+    """argparse type of --purge-failed: a YYYY-MM-DD date."""
+    from datetime import datetime
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a YYYY-MM-DD date: '{value}'")
+    return value
 
 
 def _version() -> str:
@@ -139,6 +150,13 @@ def build_parser() -> argparse.ArgumentParser:
              "files they wrote. Without --apply, only lists what would go",
     )
     exclusive.add_argument(
+        "--purge-failed", type=_night, metavar="DATE",
+        help="remove what the observations of one night (YYYY-MM-DD, the date "
+             "of its session directory) whose acquisition failed left behind: "
+             "their database rows and files; every other observation is kept. "
+             "Refused while a session runs. Without --apply, only lists what would go",
+    )
+    exclusive.add_argument(
         "--purge-demo", action="store_true",
         help="empty the demo's data directory (~/.rosace-demo) to start a fresh "
              "demo, keeping the replay dataset. Refused while a demo server runs. "
@@ -153,7 +171,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tools.add_argument(
         "--apply", action="store_true",
-        help="with --purge-simulated, --purge-demo or --build-validation-data: "
+        help="with --purge-simulated, --purge-failed, --purge-demo or --build-validation-data: "
              "really do it (otherwise a dry run)",
     )
     parser.add_argument("--version", action="version", version=f"Rosace {_version()}")
@@ -185,7 +203,7 @@ def main(argv: list[str] | None = None) -> None:
 
 def run_cli(argv: list[str], parser: argparse.ArgumentParser | None = None) -> argparse.Namespace:
     """Parses argv (sys.argv[1:]). A tool option (--check-config, --init-config,
-    --create-admin, --list-subplugins, --purge-simulated, --purge-demo,
+    --create-admin, --list-subplugins, --purge-simulated, --purge-failed, --purge-demo,
     --build-validation-data) runs and exits the process, as do --help,
     --version and a usage error (exit 2); otherwise --demo-mode or a config
     path set ROSACE_CONFIG where needed, and the parsed options are returned
@@ -195,7 +213,8 @@ def run_cli(argv: list[str], parser: argparse.ArgumentParser | None = None) -> a
     tool = next((name for name in _TOOL_OPTIONS
                  if getattr(args, name) not in (None, False)), None)
     if args.apply and tool not in _APPLY_OPTIONS:
-        parser.error("--apply only goes with --purge-simulated, --purge-demo or --build-validation-data")
+        parser.error("--apply only goes with --purge-simulated, --purge-failed, --purge-demo "
+                     "or --build-validation-data")
     if tool and args.config_path:
         parser.error(f"a config path cannot go with --{tool.replace('_', '-')}"
                      + (" (give it to --check-config itself)" if tool == "check_config" else ""))
@@ -311,6 +330,20 @@ def run_cli(argv: list[str], parser: argparse.ArgumentParser | None = None) -> a
         purges = purge_simulated(apply=apply)
         if not purges:
             print("[OK] no simulated session to purge")
+            sys.exit(0)
+        print(report(purges))
+        print("[OK] purged" if apply else "Dry run: nothing deleted (add --apply to delete)")
+        sys.exit(0)
+    elif tool == "purge_failed":
+        apply = args.apply
+        from rosace.failed_data import purge_failed, report
+        try:
+            purges = purge_failed(args.purge_failed, apply=apply)
+        except RuntimeError as error:
+            print(f"[FAIL] {error}")
+            sys.exit(1)
+        if not purges:
+            print(f"[OK] nothing to purge for the night of {args.purge_failed}")
             sys.exit(0)
         print(report(purges))
         print("[OK] purged" if apply else "Dry run: nothing deleted (add --apply to delete)")

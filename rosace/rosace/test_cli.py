@@ -106,6 +106,8 @@ class TestUsageErrors:
         (["--demo-mode", "/some/where/config.yaml"], "--demo-mode and a config path"),
         (["/some/where/config.yaml", "--purge-simulated"], "a config path cannot go with --purge-simulated"),
         (["--demo-mode", "--purge-demo"], "--demo-mode cannot go with --purge-demo"),
+        (["--purge-failed", "29/10/2026"], "not a YYYY-MM-DD date"),
+        (["--purge-failed"], "expected one argument"),
     ])
     def test_reported_with_exit_code_2(self, argv, message, capsys, monkeypatch):
         monkeypatch.delenv("ROSACE_CONFIG", raising=False)
@@ -272,6 +274,45 @@ class TestBuildValidationDataCLI(TestPurgeSimulatedCLI):
                        ("run00001", datetime.now(timezone.utc).isoformat(), "running"))
 
         result = _run("--build-validation-data", "--apply", env=env)
+
+        assert result.returncode == 1
+        assert "[FAIL] a session is running" in result.stdout
+
+
+class TestPurgeFailedCLI(TestPurgeSimulatedCLI):
+    """Same temporary installation as --purge-simulated (its _env)."""
+
+    def test_nothing_to_purge(self, tmp_path):
+        result = _run("--purge-failed", "2026-10-29", env=self._env(tmp_path))
+        assert result.returncode == 0, result.stderr
+        assert "[OK] nothing to purge for the night of 2026-10-29" in result.stdout
+
+    def test_dry_run_lists_a_failed_observation_and_deletes_nothing(self, tmp_path):
+        env = self._env(tmp_path)
+        night = tmp_path / "2026-10-29_TestSite"
+        night.mkdir()
+        with sqlite3.connect(self._db(tmp_path)) as db:
+            db.execute("INSERT INTO sessions (id, started_at, closed_at, status, session_dir) VALUES (?, ?, ?, ?, ?)",
+                       ("ses00001", "2026-10-29T19:00:00+00:00", "2026-10-29T21:00:00+00:00", "closed", str(night)))
+            db.execute("INSERT INTO observations (id, session_id, target_name, created_at, sequencer_status) "
+                       "VALUES (?, ?, ?, ?, ?)",
+                       ("obs00001", "ses00001", "Vega", "2026-10-29T19:10:00+00:00", "error"))
+
+        result = _run("--purge-failed", "2026-10-29", env=env)
+
+        assert result.returncode == 0, result.stderr
+        assert "ses00001" in result.stdout and "Dry run: nothing deleted" in result.stdout
+        with sqlite3.connect(self._db(tmp_path)) as db:
+            assert db.execute("SELECT COUNT(*) FROM observations").fetchone()[0] == 1
+
+    def test_refused_while_a_session_runs(self, tmp_path):
+        from datetime import datetime, timezone
+        env = self._env(tmp_path)
+        with sqlite3.connect(self._db(tmp_path)) as db:
+            db.execute("INSERT INTO sessions (id, started_at, status) VALUES (?, ?, ?)",
+                       ("run00001", datetime.now(timezone.utc).isoformat(), "running"))
+
+        result = _run("--purge-failed", "2026-10-29", "--apply", env=env)
 
         assert result.returncode == 1
         assert "[FAIL] a session is running" in result.stdout
