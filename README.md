@@ -43,12 +43,18 @@ cd rosace/rosace/gui && npm install && npm run build
 The web GUI is served at http://localhost:8000/, and the interactive API
 docs at http://localhost:8000/docs.
 
-Run the test suite:
+Run the test suite, from the repo root, with the environment active and
+ROSACE installed with `[dev]` (above):
 
 ```bash
-cd rosace
-pytest rosace -v
+python -m pytest rosace/rosace
 ```
+
+`python -m pytest` makes sure the environment's pytest is used, not one
+installed on the system (which does not see ROSACE's libraries and fails with
+`ModuleNotFoundError`). The whole suite takes a few minutes; add `-v` to list
+each test, or give one file, e.g.
+`python -m pytest rosace/rosace/test_rosace_core.py`.
 
 See `CLAUDE.md` for the full architecture reference, and
 [CHANGELOG.md](CHANGELOG.md) for what changed in each published version.
