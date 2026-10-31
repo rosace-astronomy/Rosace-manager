@@ -223,6 +223,8 @@ hardware_connect_timeout_seconds: 5
 camera_cooldown_timeout_seconds: 300
 session_ttl_hours: 336
 session_cookie_secure: false
+simbad_tap_urls:
+  - https://simbad.example/sync
 """)
         env = {**os.environ, "ROSACE_CONFIG": str(config_path)}
         created = subprocess.run(

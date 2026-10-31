@@ -76,6 +76,7 @@ from rosace.simbad import (
     simbad_search,
     SimbadNotFoundError,
     SimbadQueryError,
+    SimbadServers,
 )
 
 from rosace.config import ACTIVE_HARDWARE, HARDWARE_CONFIG_PATH, SEQUENCER_BACKEND
@@ -1534,6 +1535,93 @@ class TestSimbad:
             with pytest.raises(SimbadNotFoundError):
                 await simbad_search("L'Etoile d'Argent")   # apostrophe
 
+    # ── Several servers, tried in order ────────────────────────
+
+    _FIRST = "https://first.example/sim-tap/sync"
+    _SECOND = "https://second.example/sim-tap/sync"
+
+    @staticmethod
+    def _servers_client(answers: dict):
+        """A mocked httpx.AsyncClient whose get() answers per URL: an
+        exception to raise, or a payload to return. Records the URLs asked."""
+        calls = []
+
+        async def _get(url, params):
+            calls.append(url)
+            answer = answers[url]
+            if isinstance(answer, Exception):
+                raise answer
+            return _mock_httpx_response(answer)
+
+        instance = AsyncMock()
+        instance.get = AsyncMock(side_effect=_get)
+        instance.__aenter__ = AsyncMock(return_value=instance)
+        instance.__aexit__ = AsyncMock(return_value=False)
+        return instance, calls
+
+    async def test_simbad_tries_the_next_server_when_one_does_not_answer(self):
+        import httpx
+        instance, calls = self._servers_client({
+            self._FIRST: httpx.ConnectTimeout("timeout"),
+            self._SECOND: SIMBAD_RESPONSE_VEGA,
+        })
+        with patch("rosace.simbad.httpx.AsyncClient", return_value=instance):
+            result = await simbad_search("Vega", SimbadServers([self._FIRST, self._SECOND]))
+        assert result.name == "* alf Lyr"
+        assert calls == [self._FIRST, self._SECOND]
+
+    async def test_simbad_same_search_starts_with_the_server_that_answered(self):
+        """Within one search (an import list), a server down is not asked
+        again for every star; a new search starts from the first one again."""
+        import httpx
+        instance, calls = self._servers_client({
+            self._FIRST: httpx.ConnectTimeout("timeout"),
+            self._SECOND: SIMBAD_RESPONSE_VEGA,
+        })
+        servers = SimbadServers([self._FIRST, self._SECOND])
+        with patch("rosace.simbad.httpx.AsyncClient", return_value=instance):
+            await simbad_search("Vega", servers)
+            calls.clear()
+            await simbad_search("Vega", servers)
+            assert calls == [self._SECOND]
+            calls.clear()
+            await simbad_search("Vega", SimbadServers([self._FIRST, self._SECOND]))
+            assert calls == [self._FIRST, self._SECOND]
+
+    async def test_simbad_not_found_is_an_answer_no_other_server_asked(self):
+        instance, calls = self._servers_client({
+            self._FIRST: SIMBAD_RESPONSE_EMPTY,
+            self._SECOND: SIMBAD_RESPONSE_VEGA,
+        })
+        with patch("rosace.simbad.httpx.AsyncClient", return_value=instance):
+            with pytest.raises(SimbadNotFoundError):
+                await simbad_search("PasUneEtoile", SimbadServers([self._FIRST, self._SECOND]))
+        assert calls == [self._FIRST]
+
+    async def test_simbad_every_server_down_names_each(self):
+        import httpx
+        instance, calls = self._servers_client({
+            self._FIRST: httpx.ConnectTimeout("timeout"),
+            self._SECOND: httpx.ConnectError("refused"),
+        })
+        with patch("rosace.simbad.httpx.AsyncClient", return_value=instance):
+            with pytest.raises(SimbadQueryError) as err:
+                await simbad_search("Vega", SimbadServers([self._FIRST, self._SECOND]))
+        assert "first.example" in str(err.value) and "second.example" in str(err.value)
+
+    def test_simbad_servers_default_to_the_configuration(self):
+        from rosace.config import SIMBAD_TAP_URLS
+        assert SimbadServers().order() == SIMBAD_TAP_URLS
+
+    def test_simbad_tap_urls_validation(self):
+        from rosace.config import _validate_simbad_tap_urls
+        assert _validate_simbad_tap_urls([" https://a/sync "]) == ["https://a/sync"]
+        for bad in ([], "https://a/sync", [""], [42]):
+            with pytest.raises(ValueError, match="simbad_tap_urls.*invalid"):
+                _validate_simbad_tap_urls(bad)
+        with pytest.raises(ValueError, match="simbad_tap_urls missing"):
+            _validate_simbad_tap_urls(None)
+
 
 # ═════════════════════════════════════════════════════════════
 # GROUP 5 — Cross-consistency between models / state machine
@@ -2464,7 +2552,7 @@ class TestApiEndpoints:
         import rosace.main as main_mod
         from rosace.targets import StarCreate
 
-        async def fake_simbad_search(name):
+        async def fake_simbad_search(name, servers=None):
             return StarCreate(name="DupStar", ra=10.0, dec=10.0)
 
         monkeypatch.setattr(main_mod, "simbad_search", fake_simbad_search)
@@ -2483,7 +2571,7 @@ class TestApiEndpoints:
         import rosace.main as main_mod
         from rosace.targets import StarCreate
 
-        async def fake_simbad_search(name):
+        async def fake_simbad_search(name, servers=None):
             return StarCreate(name="alf Lyr ApiAliasTest", ra=279.23, dec=38.78)
 
         monkeypatch.setattr(main_mod, "simbad_search", fake_simbad_search)
@@ -2507,7 +2595,7 @@ class TestApiEndpoints:
         import rosace.main as main_mod
         from rosace.targets import StarCreate
 
-        async def fake_simbad_search(name):
+        async def fake_simbad_search(name, servers=None):
             # Simulates two different search terms for the same physical object.
             return StarCreate(name="DedupCanonicalStar", ra=282.52, dec=33.36)
 
@@ -2535,7 +2623,7 @@ class TestApiEndpoints:
         import rosace.main as main_mod
         from rosace.targets import StarCreate
 
-        async def fake_simbad_search(name):
+        async def fake_simbad_search(name, servers=None):
             return StarCreate(name="AliasAddedCanonicalStar", ra=10.0, dec=10.0)
 
         monkeypatch.setattr(main_mod, "simbad_search", fake_simbad_search)
@@ -2562,7 +2650,7 @@ class TestApiEndpoints:
             "VegaBulkImportTest": StarCreate(name="alf Lyr BulkImportTest", ra=279.23, dec=38.78),
         }
 
-        async def fake_simbad_search(name):
+        async def fake_simbad_search(name, servers=None):
             if name not in known:
                 raise SimbadNotFoundError(f"{name} introuvable")
             return known[name]
@@ -2587,7 +2675,7 @@ class TestApiEndpoints:
         import rosace.main as main_mod
         from rosace.targets import StarCreate
 
-        async def fake_simbad_search(name):
+        async def fake_simbad_search(name, servers=None):
             return StarCreate(name="alf Lyr BulkExistingTest", ra=279.23, dec=38.78)
 
         monkeypatch.setattr(main_mod, "simbad_search", fake_simbad_search)
@@ -2605,6 +2693,38 @@ class TestApiEndpoints:
         assert first.json()[0]["status"] == "created"
         assert second.json()[0]["status"] == "existing"
         assert second.json()[0]["id"] == first.json()[0]["id"]
+
+    def test_import_star_list_asks_a_server_down_once_per_list(self, monkeypatch):
+        """With the first Simbad server down, only the list's first star waits
+        for it; the next stars go straight to the server that answered."""
+        import httpx
+        first, second = "https://first.example/sync", "https://second.example/sync"
+        monkeypatch.setattr("rosace.simbad.SIMBAD_TAP_URLS", [first, second])
+        calls = []
+
+        async def _get(url, params):
+            calls.append(url)
+            if url == first:
+                raise httpx.ConnectTimeout("timeout")
+            return _mock_httpx_response({
+                "metadata": SIMBAD_RESPONSE_VEGA["metadata"],
+                "data": [["FailoverStarTest " + params["QUERY"].split("'")[1], 10.0, 20.0, None, None]],
+            })
+
+        instance = AsyncMock()
+        instance.get = AsyncMock(side_effect=_get)
+        instance.__aenter__ = AsyncMock(return_value=instance)
+        instance.__aexit__ = AsyncMock(return_value=False)
+        with patch("rosace.simbad.httpx.AsyncClient", return_value=instance):
+            with self._client() as client:
+                res = client.post(
+                    "/stars/import-list",
+                    files={"file": ("stars.txt", "FailA\nFailB\nFailC\n", "text/plain")},
+                )
+
+        assert res.status_code == 200
+        assert [r["status"] for r in res.json()] == ["created"] * 3
+        assert calls == [first, second, second, second]
 
     def test_import_program_stars_from_file(self):
         with self._client() as client:
@@ -3031,6 +3151,8 @@ hardware_connect_timeout_seconds: 5
 camera_cooldown_timeout_seconds: 300
 session_ttl_hours: 336
 session_cookie_secure: false
+simbad_tap_urls:
+  - https://simbad.example/sync
 """)
         return config_path
 

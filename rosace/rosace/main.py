@@ -85,7 +85,7 @@ from .plugins  import plugins
 from .plugins.pipeline_loader import get_display_names
 from .plugins.hardware_connectivity import test_hardware
 from . import step_progress
-from .simbad   import simbad_search, SimbadNotFoundError, SimbadQueryError
+from .simbad   import simbad_search, SimbadNotFoundError, SimbadQueryError, SimbadServers
 from .targets  import (
     targets_db_init,
     Star, StarCreate, StarLookup, StarInProgram, Program, ProgramCreate,
@@ -697,7 +697,7 @@ async def _ensure_alias(star: Star, name: str) -> bool:
     return False
 
 
-async def _import_star_from_simbad(name: str) -> tuple[Star, bool, bool]:
+async def _import_star_from_simbad(name: str, servers: Optional[SimbadServers] = None) -> tuple[Star, bool, bool]:
     """
     Adds a star to the database, identified by any name — no need to know its
     canonical Simbad name. First looks up whether a star matching `name`
@@ -716,14 +716,15 @@ async def _import_star_from_simbad(name: str) -> tuple[Star, bool, bool]:
     call registered a new alias (useful so the caller knows, without having
     to go check the database, whether `name` was indeed kept as an alias).
     Raises SimbadNotFoundError / SimbadQueryError if the star is genuinely
-    new and Simbad doesn't recognize it / doesn't respond.
+    new and Simbad doesn't recognize it / doesn't respond. `servers`: the
+    Simbad servers of the current search (see simbad.SimbadServers).
     """
     existing = await star_get_by_name(name)
     if existing:
         alias_added = await _ensure_alias(existing, name)
         return existing, False, alias_added
 
-    star_create = await simbad_search(name)
+    star_create = await simbad_search(name, servers)
 
     existing_by_canonical = await star_get_by_name(star_create.name)
     if existing_by_canonical:
@@ -775,13 +776,14 @@ async def import_stars_from_file(file: UploadFile):
     """
     content = (await file.read()).decode("utf-8")
     results: list[StarImportResult] = []
+    servers = SimbadServers()  # one search: a server down is skipped after the first star
 
     for line in content.splitlines():
         name = line.strip()
         if not name:
             continue
         try:
-            star, created, alias_added = await _import_star_from_simbad(name)
+            star, created, alias_added = await _import_star_from_simbad(name, servers)
             results.append(StarImportResult(
                 name=name, status="created" if created else "existing",
                 id=star.id, canonical_name=star.name, alias_added=alias_added,

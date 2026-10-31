@@ -737,7 +737,9 @@ Viewers outside Rosace (KStars, DS9) count from **1**: subtract 1 from each axis
 
 ### Simbad client (`simbad.py`)
 
-Queries CDS TAP via ADQL over HTTPS. Returns `StarCreate`. Raises `SimbadNotFoundError` (404) or `SimbadQueryError` (network/HTTP errors). In tests, mock `rosace.simbad.httpx.AsyncClient` as an async context manager.
+Queries Simbad's TAP service via ADQL over HTTPS. Returns `StarCreate`. Raises `SimbadNotFoundError` (404) or `SimbadQueryError` (no server gave a readable answer). In tests, mock `rosace.simbad.httpx.AsyncClient` as an async context manager.
+
+Several servers answer the same queries (the CDS in Strasbourg, its mirror at Harvard): `SIMBAD_TAP_URLS` (Core key `simbad_tap_urls`, required — the addresses live in the configuration only, never in the code) lists them, **the first one preferred**. `simbad_search(name, servers=None)` tries them in order; a network error, timeout, HTTP error or unreadable answer → WARNING and the next one; "not found" is an answer, never a reason to ask another server. `SimbadServers` is one search: a new one (each `/simbad/search` or `/simbad/import`, and each uploaded list) starts from the first server again, while the stars of one `/stars/import-list` share one instance and start with the server that answered last — a server that is down costs one timeout (10 s) per list, not per star (CDS down on 2026-10-31, see HISTORY.md).
 
 ### Configuration (`rosace/rosace/conf/`)
 
@@ -985,6 +987,7 @@ would go. Each demo session is also recorded as simulated
 | `SESSION_COOKIE_SECURE` | `session_cookie_secure` | `false` | Whether the session cookie requires HTTPS (the `Secure` attribute) — see Authentication above |
 | `CONFIG_PATH` | *(derived)* | — | Path of the active `config.yaml` (named in each observation's summary) |
 | `SIMULATED_EQUIPMENT` | *(derived)* | `false` | `sequencer_backend: internal`, or the active hardware profile declares `simulated: true` (top-level key) — recorded with every session (`sessions.simulated`), see `--purge-simulated` |
+| `SIMBAD_TAP_URLS` | `simbad_tap_urls` | *(required)* — CDS, then Harvard in the shipped configs | Simbad TAP servers, tried in order, the first preferred (see "Simbad client"); missing, or not a non-empty list of URLs: startup error. Read with `.get` so that its absence is reported by name |
 | `IS_DEMO_MODE` | `is_demo` | `false` | Optional — absent (so `false`) in every normal config; only `conf/config_demo.yaml` sets it: demo seeding, fake PHD2, `/status`'s `demo_mode` — see `--demo-mode` above |
 
 `TARGETS_DB_PATH` is defined in `targets.py` as `DATABASES_DIR / "targets.db"`.

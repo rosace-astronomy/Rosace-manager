@@ -9,6 +9,12 @@ are listed, newest first. The reasons behind the changes are in
 
 ### Added
 
+- The Simbad servers used to import stars are set in the configuration,
+  tried in order: when the first does not answer, the next one is used, and
+  the rest of an import list no longer waits for the dead server star after
+  star. **The key `simbad_tap_urls` is required**: add it to your
+  `config.yaml` (copy it from the packaged `conf/config.yaml`: the CDS in
+  Strasbourg, then its mirror at Harvard), or Rosace does not start.
 - The demo's Docker image is published on Codeberg's container registry:
   `docker run ... codeberg.org/francoiscochard/rosace-demo`, nothing to
   build (see `docker/README.md`).

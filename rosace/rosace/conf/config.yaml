@@ -112,6 +112,16 @@ session_ttl_hours: 336 # 336h = 14 days
 # guaranteed HTTPS. Exposed as SESSION_COOKIE_SECURE in config.py.
 session_cookie_secure: false
 
+# The Simbad servers (TAP service) used to import stars, tried in this
+# order: put the preferred one (e.g. the nearest) first. It is tried first at
+# every new search; when it does not answer, the next one is tried, and the
+# following stars of the same import list go straight to the server that
+# answered. Here the CDS (Strasbourg), then its mirror at Harvard. Required.
+# Exposed as SIMBAD_TAP_URLS in config.py.
+simbad_tap_urls:
+  - https://simbad.cds.unistra.fr/simbad/sim-tap/sync
+  - https://simbad.cfa.harvard.edu/simbad/sim-tap/sync
+
 # ═══════════════════════════════════════════════════════════════
 # Rosace — PLUGIN parameters.
 # Free-form: no schema is enforced here, and config.py never grows a new

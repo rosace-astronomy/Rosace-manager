@@ -72,6 +72,11 @@ camera_cooldown_timeout_seconds: 300
 session_ttl_hours: 336 # 336h = 14 days
 session_cookie_secure: false
 
+# Simbad servers, tried in this order (see the packaged config.yaml).
+simbad_tap_urls:
+  - https://simbad.cds.unistra.fr/simbad/sim-tap/sync
+  - https://simbad.cfa.harvard.edu/simbad/sim-tap/sync
+
 subplugin_params:
   exposure_time_mag0_seconds: 4.0
   max_exposure_time_seconds: 180

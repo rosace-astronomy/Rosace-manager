@@ -212,6 +212,31 @@ def _hardware_is_simulated(path: Path) -> bool:
 # nights and purged (simulated_data.py, --purge-simulated).
 SIMULATED_EQUIPMENT: bool = SEQUENCER_BACKEND == "internal" or _hardware_is_simulated(HARDWARE_CONFIG_PATH)
 
+# ── Simbad servers ─────────────────────────────────────────────
+# Simbad TAP servers (simbad.py), tried in this order: the first is the
+# preferred one, tried first at every new search. Only in the configuration,
+# never in the code.
+def _validate_simbad_tap_urls(value) -> list[str]:
+    if value is None:
+        raise ValueError(
+            "config.yaml: simbad_tap_urls missing (the list of Simbad servers, "
+            "see the packaged conf/config.yaml)"
+        )
+    if (not isinstance(value, list) or not value
+            or not all(isinstance(url, str) and url.strip() for url in value)):
+        raise ValueError(
+            f"config.yaml: simbad_tap_urls={value!r} invalid "
+            f"(expected a non-empty list of URLs)"
+        )
+    return [url.strip() for url in value]
+
+
+try:
+    SIMBAD_TAP_URLS = _validate_simbad_tap_urls(_cfg.get("simbad_tap_urls"))
+except ValueError as e:
+    _log_fatal_startup_error(str(e))
+    raise
+
 # ── Active SCHEDULER plugin ────────────────────────────────────────
 # Name of the SCHEDULER plugin to use — each is an interchangeable
 # target-selection algorithm, see plugins/schedulers/blank/scheduler.py for
