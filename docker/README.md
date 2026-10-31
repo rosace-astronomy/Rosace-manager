@@ -7,119 +7,93 @@ the whole reduction down to the final spectrum and its summary PDF — on
 **replayed hardware**. Instead of driving a telescope, the devices hand back
 the frames recorded during a real night (4 observations of 2026-10-14:
 psi Per, eps Cas, M 57, eta Ori), and a fake PHD2 replays that night's
-guiding. Each exposure lasts a few seconds on screen. This is **not** how a real observatory
-installation is meant to run — it lets someone try Rosace with nothing
-installed but Docker.
+guiding. It lets someone try Rosace with nothing installed but Docker; it
+is not how a real observatory installation runs.
 
-The demo is the same as `python -m rosace.main --demo-mode` outside Docker
-(see `CLAUDE.md`, "Trying Rosace without hardware").
+## To try the demo
+
+Use the published image, as described in the user documentation:
+
+**<https://rosace-astronomy.github.io/rosace-docs/GetStarted.html#step-1-try-the-docker-demo>**
+
+(how to start the demo, use it, run it again, and what to do when something
+goes wrong). The whole user documentation:
+<https://rosace-astronomy.github.io/rosace-docs/>.
+
+## For whoever builds or publishes the image
+
+The sections below are for them only. The demo itself is the same as
+`rosace --demo-mode` outside Docker (see the developer notes in
+`CLAUDE.md`, "Trying Rosace without hardware").
 
 ## Anonymized
 
 Nothing in the image names the observer or the site: the frames' headers
 give the site's position rounded to the degree (45° N, 6° E) and no longer
 hold the target's altitude, azimuth or airmass (which would give the
-position back), the observer is `rosace`, the site `Rosace-Demo`; the real installation's configuration
-and hardware profiles, and the tests, are left out (`.dockerignore`).
-`scripts/build_demo_dataset.py` anonymizes the dataset it builds and refuses
-one where a name or the exact position is left.
+position back), the observer is `rosace`, the site `Rosace-Demo`. The real
+installation's configuration lives outside the repository, and the tests are
+left out of the image (`.dockerignore`). `scripts/build_demo_dataset.py`
+anonymizes the dataset it builds and refuses one where a name or the exact
+position is left.
 
-## Quick start: the published image
+## The replay dataset
 
-The image is published on Codeberg's container registry, public — nothing
-to build, only Docker needed (Linux: the distribution's package; Windows /
-Mac: Docker Desktop):
+The image needs the replay dataset in `docker/replay_data/` (about 120 MB,
+frames gzip-compressed). It is **not in git**: without it, `docker build`
+stops with "the demo's replay dataset is missing". It is published as a
+file of the release `demo-data-2026-10-14`, on Codeberg and on its GitHub
+mirror (the same file):
+
+- <https://codeberg.org/FrancoisCochard/Rosace-manager/releases/download/demo-data-2026-10-14/rosace-demo-data-2026-10-14.tar>
+- <https://github.com/rosace-astronomy/Rosace-manager/releases/download/demo-data-2026-10-14/rosace-demo-data-2026-10-14.tar>
+
+From the repository root:
 
 ```
-docker run -d -p 8001:8000 -v rosace-demo-data:/root/.rosace-demo --name rosace-demo codeberg.org/francoiscochard/rosace-demo
+sha256sum rosace-demo-data-2026-10-14.tar
+tar -xf rosace-demo-data-2026-10-14.tar -C docker/
 ```
 
-Then open http://localhost:8001 — see "Run the container" below. Without a
-tag, Docker takes `latest`, the newest published version; a given version is
-asked for by its number, e.g. `codeberg.org/francoiscochard/rosace-demo:0.1.0.0`.
-`docker pull codeberg.org/francoiscochard/rosace-demo` fetches a newer
-`latest`, then remove the container and run it again (the volume keeps the
-demo's data). Built for amd64 only (see below).
+The checksum must read
+`623405982b7c9653676ee0f9c2e296ec472cc10f9dc654b1e63f4ba344801501` (also
+given by the release's `.sha256` file); `tar` creates `docker/replay_data/`.
 
-## Prerequisites (to build the image yourself)
+The dataset is built by the observatory from its own data, then published
+as a new release (never a change to an existing one):
 
-- Docker.
-- The replay dataset in `docker/replay_data/` (about 120 MB, frames
-  gzip-compressed). It is **not in git**: without it, `docker build` stops
-  with "the demo's replay dataset is missing". It is published as a file of
-  the release `demo-data-2026-10-14`, on Codeberg and on its GitHub mirror
-  (the same file):
+```
+python scripts/build_demo_dataset.py --guidelog <PHD2 GuideLog of the night>
+```
 
-  - <https://codeberg.org/FrancoisCochard/Rosace-manager/releases/download/demo-data-2026-10-14/rosace-demo-data-2026-10-14.tar>
-  - <https://github.com/rosace-astronomy/Rosace-manager/releases/download/demo-data-2026-10-14/rosace-demo-data-2026-10-14.tar>
+An existing dataset can be anonymized again on its own:
+`python scripts/build_demo_dataset.py --anonymize-only`.
 
-  While the repository is private, download it from the release page in a
-  browser, logged in. Then, from the repository root:
-
-  ```
-  sha256sum rosace-demo-data-2026-10-14.tar
-  tar -xf rosace-demo-data-2026-10-14.tar -C docker/
-  ```
-
-  The checksum must read
-  `623405982b7c9653676ee0f9c2e296ec472cc10f9dc654b1e63f4ba344801501` (also
-  given by the release's `.sha256` file); `tar` creates
-  `docker/replay_data/`.
-
-  The dataset is built by the observatory from its own data, then
-  published as a new release:
-
-  ```
-  python scripts/build_demo_dataset.py --guidelog <PHD2 GuideLog of the night>
-  ```
-
-  An existing dataset can be anonymized again on its own:
-  `python scripts/build_demo_dataset.py --anonymize-only`.
-
-## Build the image
+## Build and run the image
 
 From the repository root:
 
 ```
 docker build -t rosace-demo .
+docker run -d -p 8001:8000 -v rosace-demo-data:/root/.rosace-demo --name rosace-demo rosace-demo
 ```
 
 First build: a few minutes (Python and Node.js dependencies, the GUI,
 astrometry.net, the dataset). Later builds after a code change only redo the
-last layers.
-
-## Run the container
-
-```
-docker run -d -p 8001:8000 -v rosace-demo-data:/root/.rosace-demo --name rosace-demo rosace-demo
-```
-
-- `-p 8001:8000`: open http://localhost:8001 (any free port on the left).
-- `-v rosace-demo-data:/root/.rosace-demo`: the demo's databases,
-  observations and log, kept when the container is removed.
-
-Log in with `rosace` / `rosace` — fixed demo credentials: **never expose this
-port on the Internet**. Click START: the scheduler offers the recorded stars
-one after the other, about a minute and a half each, then their reduction
-runs (the 4 in about 6 minutes).
+last layers; then `docker rm -f rosace-demo` and the `docker run` above
+again (the volume keeps the demo's data).
 
 The image is about 340 MB to download, 1.1 GB once installed: it runs on
-Debian's own Python, which astrometry.net needs anyway.
+Debian's own Python, which astrometry.net needs anyway. It is built for the
+building machine's architecture (amd64 here); an Apple Silicon Mac runs it
+through emulation, more slowly.
 
-## Useful commands
+Maintenance commands, besides those of the user documentation:
 
 | Action | Command |
 |---|---|
-| Live logs | `docker logs -f rosace-demo` |
-| Stop / restart | `docker stop rosace-demo` / `docker start rosace-demo` |
-| A fresh demo (the stars are observed once per day) | `docker exec rosace-demo python -m rosace.main --purge-demo --apply`, then `docker restart rosace-demo` |
-| Remove the container (keeps the volume) | `docker rm -f rosace-demo` |
-| Start from scratch (deletes the volume) | `docker volume rm rosace-demo-data` |
-| Remove the image (after removing the container) | `docker rmi rosace-demo` |
+| Remove a locally built image (after removing the container) | `docker rmi rosace-demo` |
 | Reclaim the space of old builds (unnamed images, asks first) | `docker image prune` |
-
-After a code change: `docker build -t rosace-demo .`, `docker rm -f
-rosace-demo`, then the `docker run` above again.
 
 ## Sharing the image without a registry
 
@@ -128,12 +102,9 @@ docker save rosace-demo | gzip > rosace-demo.tar.gz     # on the building machin
 docker load -i rosace-demo.tar.gz                       # on the other one
 ```
 
-The image is built for the building machine's architecture (amd64 here); an
-Apple Silicon Mac runs it through emulation, more slowly.
-
 ## Publishing a version (maintainer)
 
-Only published versions (X.Y.Z.0, see CLAUDE.md, "Versioning") go to the
+Only published versions (X.Y.Z.0, see `CLAUDE.md`, "Versioning") go to the
 registry, built from their git tag on a clean tree, with the dataset in
 place. Log in once with a Codeberg access token (Settings → Applications,
 permission `package` read and write only):
