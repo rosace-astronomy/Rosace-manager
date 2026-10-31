@@ -1152,6 +1152,17 @@ class TestTargetsDB:
         star = await star_get_by_name("PasDansLaBase")
         assert star is None
 
+    async def test_star_get_by_name_ignores_case_not_wildcards(self):
+        """Case-insensitive, but "_" and "%" are plain characters, never
+        LIKE wildcards — on the canonical name and on aliases alike."""
+        sid = await star_insert(self._star("WildStarTest"))
+        await star_add_alias(sid, "WildAliasTest")
+        assert (await star_get_by_name("wildstartest")).id == sid
+        assert (await star_get_by_name("wildaliastest")).id == sid
+        assert await star_get_by_name("Wild_tarTest") is None
+        assert await star_get_by_name("Wild%") is None
+        assert await star_get_by_name("Wild_liasTest") is None
+
     async def test_star_list(self):
         await star_insert(self._star("Alpha1"))
         await star_insert(self._star("Alpha2", ra=10.0, dec=10.0))
@@ -1254,6 +1265,14 @@ class TestTargetsDB:
 
     async def test_program_get_by_name_missing(self):
         assert await program_get_by_name("PasDansLaBase") is None
+
+    async def test_program_get_by_name_ignores_case_not_wildcards(self):
+        """Case-insensitive, but "_" is a plain character, never a LIKE
+        wildcard: "Wild_Prog" must not find "WildXProg"."""
+        await program_insert(self._program("WildXProg"))
+        assert (await program_get_by_name("wildxprog")).name == "WildXProg"
+        assert await program_get_by_name("Wild_Prog") is None
+        assert await program_get_by_name("Wild%") is None
 
     async def test_program_list(self):
         await program_insert(self._program("ListA"))
@@ -2587,6 +2606,22 @@ class TestApiEndpoints:
         assert results[("BulkProgramTest", "BulkLinkStarTest")]["status"] == "linked"
         assert results[("BulkProgramTest", "UnknownStarBulkTest")]["status"] == "star_not_found"
         assert results[("UnknownProgramBulkTest", "BulkLinkStarTest")]["status"] == "program_not_found"
+
+    def test_create_program_rejects_duplicate_name(self):
+        """A name already taken, whatever its case, is refused with a 409;
+        a name that only matches through LIKE's "_" wildcard is accepted."""
+        with self._client() as client:
+            first = client.post("/programs", json={"name": "DupProgramTest"})
+            same = client.post("/programs", json={"name": "DupProgramTest"})
+            other_case = client.post("/programs", json={"name": "dupprogramtest"})
+            wildcard = client.post("/programs", json={"name": "DupProgra_Test"})
+            listed = client.get("/programs").json()
+
+        assert first.status_code == 201
+        assert same.status_code == 409
+        assert other_case.status_code == 409
+        assert wildcard.status_code == 201
+        assert sum(p["name"].lower() == "dupprogramtest" for p in listed) == 1
 
     def test_create_program_rejects_path_traversal_name(self):
         """ProgramCreate.name feeds a file path and a Python import path

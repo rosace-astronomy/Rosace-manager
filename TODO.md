@@ -141,6 +141,15 @@ Claude peut le suggérer, jamais le faire lui-même.
       refaire la mesure par une nuit claire (trace 25 % plus large la nuit
       du 13 que la veille, focuser inchangé — focus ou turbulence ?)
       (2026-10-14)
+- [ ] Focus et température : sur les médianes des 7 nuits du 27/09 au
+      29/10, FWHM du guidage +0,21″/°C (r = +0,78) et largeur de la trace
+      +0,18 px/°C (r = +0,86), focuser fixe ; à l'intérieur d'une nuit le
+      lien est moins net (graphe
+      `~/Téléchargements/Rosace_focus_temperature_2026-09-27_2026-10-29_v1.0.pdf`).
+      1) Une nuit d'essai : faire varier la position du focuser à
+      température à peu près constante, pour séparer focus et turbulence.
+      2) Si le lien se confirme : compensation en température du focuser
+      (pas de focuser par °C) (2026-10-30)
 - [ ] Étoile de guidage PHD2 loin de la fente et des bords : le 14 au soir,
       NGC 6543 a échoué parce que PHD2 guidait sur l'objet lui-même, à 5 px
       au-dessus de la fente ; amené dans la fente, il a disparu en partie et
@@ -170,6 +179,9 @@ Claude peut le suggérer, jamais le faire lui-même.
 - [ ] GUI : version anglaise de l'interface (libellés, messages, menus d'aide),
       avec choix de la langue — x4js a un module de traduction (`core_i18n`)
       à regarder (2026-10-11)
+- [ ] GUI : écran de gestion du catalogue (programmes, import d'étoiles
+      depuis Simbad, liens, temps de pose) — aujourd'hui seulement par la
+      page API `/docs` ; demandé par un utilisateur externe (2026-10-31)
 
 ## Chantiers plus lointains
 
@@ -184,6 +196,10 @@ Claude peut le suggérer, jamais le faire lui-même.
       YAML matériel (comme sequencer_prefix) (idée 2026-10-05)
 
 ## Petits items
+
+- [ ] `POST /programs` accepte un second programme du même nom (pas de
+      contrainte UNIQUE sur `programs.name`) — refuser avec un 409
+      (2026-10-31)
 
 - [ ] Supprimer `~/ROSACE/analyses/` (analyse de la réponse
       instrumentale, 3,5 Go, créé par Claude hors du dépôt) une fois le
@@ -204,6 +220,30 @@ Claude peut le suggérer, jamais le faire lui-même.
       Le rejet min/max du master l'écarte, mais une pause de stabilisation
       avant la série (comme light_settle_seconds de slit_xy) serait plus
       propre (idée 2026-10-07)
+- [ ] Simbad : rendre l'URL modifiable dans la configuration (aujourd'hui
+      écrite en dur dans `simbad.py`), éventuellement une liste essayée dans
+      l'ordre — CDS (simbad.cds.unistra.fr) puis le miroir de Harvard
+      (simbad.harvard.edu, même service TAP, mêmes réponses) — avant de
+      renvoyer une erreur 502. Le 2026-10-30, le CDS était injoignable et
+      λ Lep a dû être ajoutée par un script (2026-10-30)
+- [ ] Masque d'horizon trop bas vers le nord : le 2026-10-30 à 18:34 UT,
+      del UMi (az 355,7°, haut. 46,9°) était dans la maison — champ en partie
+      reconnu, pas d'étoile dans la fente — alors que `Horizon St-Pan.txt`
+      donne 46° à cet azimut. Remesurer le bord de la maison entre ~340° et
+      10° et corriger le fichier (hors session) (2026-10-30)
+- [ ] Bibliothèque de darks : une option (commande `rosace`, ou bouton) pour
+      copier les darks d'une nuit dans `dark_library/`, dans le dossier de
+      leur température (`TempMinus5degrees`...), lue dans le nom des fichiers
+      comme le fait déjà `dark_acquisition`. Aujourd'hui seul un transfert à
+      la main les y met. À préciser : quelles séries (la plus récente, toutes
+      les complètes), que faire d'une série déjà présente, vérification de la
+      taille et de l'EXPTIME (2026-10-30)
+- [ ] Liste d'observation : une commande qui vérifie à l'avance, pour une
+      nuit donnée, chaque ligne fenêtrée avec les contrôles mêmes du
+      sélecteur (`checks.py` : hauteur, masque d'horizon, méridien), sans
+      démarrer de session. Le 2026-10-30, une trentaine de lignes RI
+      (HD 172728 après 20:00, Vega après 19:55, del UMi après 19:50) étaient
+      impossibles d'avance à cause du masque NO et N (2026-10-31)
 
 ## Réduction
 

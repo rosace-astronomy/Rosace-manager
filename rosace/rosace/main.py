@@ -880,7 +880,9 @@ async def get_star_programs(name: str):
 
 @protected.post("/programs", response_model=Program, status_code=201)
 async def create_program(program: ProgramCreate):
-    """Creates a scientific program."""
+    """Creates a scientific program; 409 if the name is already taken (any case)."""
+    if await program_get_by_name(program.name):
+        raise HTTPException(status_code=409, detail="Programme déjà existant")
     prog_id = await program_insert(program)
     return await program_get(prog_id)
 

@@ -157,7 +157,7 @@ async def star_get_by_name(name: str) -> Optional[Star]:
     async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM stars WHERE name LIKE ?", (name,)
+            "SELECT * FROM stars WHERE name = ? COLLATE NOCASE", (name,)
         ) as cursor:
             row = await cursor.fetchone()
             if row:
@@ -166,7 +166,7 @@ async def star_get_by_name(name: str) -> Optional[Star]:
         async with db.execute(
             """SELECT s.* FROM stars s
                JOIN star_aliases a ON a.star_id = s.id
-               WHERE a.alias_name LIKE ?""",
+               WHERE a.alias_name = ? COLLATE NOCASE""",
             (name,)
         ) as cursor:
             row = await cursor.fetchone()
@@ -291,7 +291,7 @@ async def program_get_by_name(name: str) -> Optional[Program]:
     """Retrieves a program by its name (case-insensitive)."""
     async with aiosqlite.connect(TARGETS_DB_PATH, timeout=30.0) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM programs WHERE name LIKE ?", (name,)) as cursor:
+        async with db.execute("SELECT * FROM programs WHERE name = ? COLLATE NOCASE", (name,)) as cursor:
             row = await cursor.fetchone()
             return Program(**dict(row)) if row else None
 
