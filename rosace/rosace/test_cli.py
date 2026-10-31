@@ -61,12 +61,12 @@ class TestMain:
     def test_defaults(self):
         main([])
 
-        assert self.calls == [("rosace.main:app", {"host": "0.0.0.0", "port": 8000})]
+        assert self.calls == [("rosace.main:app", {"host": "0.0.0.0", "port": 8000, "access_log": False})]
 
     def test_host_and_port(self):
         main(["--port", "8001", "--host", "127.0.0.1"])
 
-        assert self.calls == [("rosace.main:app", {"host": "127.0.0.1", "port": 8001})]
+        assert self.calls == [("rosace.main:app", {"host": "127.0.0.1", "port": 8001, "access_log": False})]
 
     def test_port_before_a_config_path(self):
         main(["--port", "8001", "/some/where/config.yaml"])

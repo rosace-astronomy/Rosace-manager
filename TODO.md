@@ -30,11 +30,7 @@ Claude peut le suggérer, jamais le faire lui-même.
       `pointing_72ed["corrected_guide_image"]`, mais `pointing_72ed`
       enregistre `guide_image` — le repli ne marche jamais (HD 206773,
       nuit du 27) ; puis `--build-validation-data --apply` (2026-10-28)
-- [ ] Caméra de pointage décalée d'environ 1,6° par rapport au tube : la
-      cible est à 96–97′ du centre des images grand champ, donc hors champ
-      (5 images sur 5, nuit du 27) ; à aligner de jour, puis
-      `wide_field.sampling_arcsec: 20.1` (2026-10-28)
-
+      
 ## Gros chantiers
 
 - [ ] Passer sur le RC8 sous abri : nouvel instrument, donc nouveau profil
@@ -72,23 +68,10 @@ Claude peut le suggérer, jamais le faire lui-même.
 
 ## Chantiers proposés
 
-- [ ] Publier l'image Docker de la démo sur ghcr.io, et le jeu de rejeu en
-      pièce jointe d'une release GitHub, pour qu'un autre poste n'ait pas à
-      le reconstruire depuis `~/.rosace` (2026-10-16)
+
 - [ ] Plus tard : construction automatique de l'image à chaque push
       (Forgejo Actions / GitHub Actions) — télécharger le jeu de rejeu
       demande un jeton tant que le dépôt est privé (2026-10-25)
-- [ ] Mettre à jour la doc Sphinx (`~/ROSACE/Rosace-docs`, publiée sur
-      rosace-astronomy.github.io, en anglais) au moment où l'image Docker
-      sera publiée sur un dépôt public : « Get started » (démo Docker), et
-      ce qu'a apporté septembre-octobre — partir du manuel utilisateur
-      `~/Téléchargements/Rosace_manuel_utilisateur_v1.0.pdf` (2026-10-18)
-- [ ] L'image de démo est publique sur Codeberg mais son mode d'emploi
-      (`docker/README.md`) est dans un dépôt privé : avant de donner la
-      commande `docker run` à quelqu'un, publier les instructions
-      (lancer, arrêter, purger, effacer, Mac Apple Silicon avec
-      `--platform linux/amd64`) dans un endroit public — la page « Get
-      started » de la doc Sphinx (2026-10-25)
 - [ ] Démarrer les simulateurs INDI et PHD2 depuis Rosace (serveur INDI
       avec le profil « simulators », PHD2 avec son profil équivalent) pour un
       premier essai sans les avoir lancés à la main — aujourd'hui, un premier
@@ -197,10 +180,6 @@ Claude peut le suggérer, jamais le faire lui-même.
 
 ## Petits items
 
-- [ ] `POST /programs` accepte un second programme du même nom (pas de
-      contrainte UNIQUE sur `programs.name`) — refuser avec un 409
-      (2026-10-31)
-
 - [ ] Supprimer `~/ROSACE/analyses/` (analyse de la réponse
       instrumentale, 3,5 Go, créé par Claude hors du dépôt) une fois le
       travail sur la RI terminé (2026-10-28)
@@ -220,12 +199,6 @@ Claude peut le suggérer, jamais le faire lui-même.
       Le rejet min/max du master l'écarte, mais une pause de stabilisation
       avant la série (comme light_settle_seconds de slit_xy) serait plus
       propre (idée 2026-10-07)
-- [ ] Simbad : rendre l'URL modifiable dans la configuration (aujourd'hui
-      écrite en dur dans `simbad.py`), éventuellement une liste essayée dans
-      l'ordre — CDS (simbad.cds.unistra.fr) puis le miroir de Harvard
-      (simbad.harvard.edu, même service TAP, mêmes réponses) — avant de
-      renvoyer une erreur 502. Le 2026-10-30, le CDS était injoignable et
-      λ Lep a dû être ajoutée par un script (2026-10-30)
 - [ ] Masque d'horizon trop bas vers le nord : le 2026-10-30 à 18:34 UT,
       del UMi (az 355,7°, haut. 46,9°) était dans la maison — champ en partie
       reconnu, pas d'étoile dans la fente — alors que `Horizon St-Pan.txt`

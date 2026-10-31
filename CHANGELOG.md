@@ -48,6 +48,9 @@ are listed, newest first. The reasons behind the changes are in
   `_` or `%` as wildcards (`A_B` could find `AxB`, even for a `DELETE`).
 - The API page `/docs` (and `/redoc`) asks to log in to the interface first,
   with a link, instead of showing operations that then all fail with 401.
+- The terminal where Rosace runs no longer shows a line for every web
+  request (`GET /status ...`), nor Rosace's DEBUG lines: only what the
+  interface's Journal shows. `rosace.log` still holds the DEBUG lines.
 
 ## [0.1.0.0] — 2026-10-25
 

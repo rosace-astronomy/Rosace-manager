@@ -198,7 +198,9 @@ def main(argv: list[str] | None = None) -> None:
         argcomplete.autocomplete(parser)
     args = run_cli(sys.argv[1:] if argv is None else argv, parser)
     import uvicorn
-    uvicorn.run("rosace.main:app", host=args.host, port=args.port)
+    # No access log: one line per GUI request (several every few seconds) is
+    # of no use to an observer; uvicorn's own errors are still printed.
+    uvicorn.run("rosace.main:app", host=args.host, port=args.port, access_log=False)
 
 
 def run_cli(argv: list[str], parser: argparse.ArgumentParser | None = None) -> argparse.Namespace:
