@@ -51,8 +51,16 @@ reduction step, the databases, the API — on simulated devices and synthetic
 images, with no telescope needed. Every change is expected to keep them all
 passing, and new code comes with its own tests.
 
-Run them from the repo root, with the environment active and ROSACE
-installed with `[dev]` (see Quick start):
+The tests need the development tools (pytest and its plugins), which a plain
+installation does not include. Install them once, from the repo root with the
+environment active — `[dev]` is the group of these tools, declared in
+`rosace/pyproject.toml`:
+
+```bash
+pip install -e "rosace/[dev]"
+```
+
+Then run the tests, from the repo root:
 
 ```bash
 python -m pytest rosace/rosace
