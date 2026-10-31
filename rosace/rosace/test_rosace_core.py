@@ -2240,6 +2240,33 @@ class TestApiEndpoints:
             "hardware_test_running", "hardware_test_available", "demo_mode",
         }
 
+    def test_api_docs_pages_ask_to_log_in_first(self):
+        """Not logged in, /docs and /redoc explain how to log in instead of
+        showing operations that would all answer 401; /openapi.json is
+        protected like any route."""
+        with self._anon_client() as client:
+            docs = client.get("/docs")
+            redoc = client.get("/redoc")
+            openapi = client.get("/openapi.json")
+        for page in (docs, redoc):
+            assert page.status_code == 200
+            assert 'href="/"' in page.text
+            assert "swagger-ui" not in page.text
+            assert "redoc.standalone" not in page.text
+        assert openapi.status_code == 401
+
+    def test_api_docs_pages_for_a_logged_in_user(self):
+        with self._client() as client:
+            docs = client.get("/docs")
+            redoc = client.get("/redoc")
+            openapi = client.get("/openapi.json")
+        assert docs.status_code == 200
+        assert "swagger-ui" in docs.text and "/openapi.json" in docs.text
+        assert redoc.status_code == 200 and "redoc.standalone" in redoc.text
+        assert openapi.status_code == 200
+        assert "/programs" in openapi.json()["paths"]
+        assert "/openapi.json" not in openapi.json()["paths"]
+
     def test_hardware_test_refused_in_simulation(self, monkeypatch):
         import rosace.main as main_mod
         monkeypatch.setattr(main_mod, "SEQUENCER_BACKEND", "internal")

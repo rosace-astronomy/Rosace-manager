@@ -40,6 +40,8 @@ are listed, newest first. The reasons behind the changes are in
   409 « Programme déjà existant »), instead of creating a second program of
   the same name. Looking a program or a star up by name no longer treats
   `_` or `%` as wildcards (`A_B` could find `AxB`, even for a `DELETE`).
+- The API page `/docs` (and `/redoc`) asks to log in to the interface first,
+  with a link, instead of showing operations that then all fail with 401.
 
 ## [0.1.0.0] — 2026-10-25
 

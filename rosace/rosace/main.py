@@ -47,7 +47,8 @@ from fastapi import (
     APIRouter, Depends, FastAPI, HTTPException,
     Request, Response, UploadFile, WebSocket, WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -135,13 +136,20 @@ app = FastAPI(
     description="Orchestrateur d'observations spectroscopiques",
     version=_rosace_version(),
     lifespan=lifespan,
+    # FastAPI would serve these three publicly; Rosace serves them itself, for
+    # a logged-in user only (see "Endpoints — API documentation" below).
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 # Any route on "protected" requires a valid session; "admin_router" additionally
 # requires is_admin. Default-closed: only /auth/login and the static GUI (mounted
 # directly on "app" further below) stay public — a new route must consciously
 # choose to be public, rather than the reverse (an allowlist someone could forget
-# to update). /ws (WebSocket) is deliberately not part of this: an HTTPException
+# to update). /docs and /redoc are public too, but show the API's operations only
+# to a logged-in user (an explanation otherwise); /openapi.json, which they read,
+# is protected. /ws (WebSocket) is deliberately not part of this: an HTTPException
 # raised by Depends() doesn't close a WebSocket handshake cleanly — it's checked
 # by hand, inside ws_logs() itself.
 protected = APIRouter(dependencies=[Depends(get_current_user)])
@@ -971,6 +979,79 @@ async def get_me(user: UserOut = Depends(get_current_user)):
     """Currently logged-in user — used by the GUI at startup to know whether
     to show the login screen or the application."""
     return user
+
+# ─────────────────────────────────────────────────────────────
+# Endpoints — API documentation
+# ─────────────────────────────────────────────────────────────
+# The pages are public routes, so that a visitor who is not logged in gets an
+# explanation instead of operations that would all answer 401; the OpenAPI
+# description they read is protected like any route.
+
+# Colours copied from the GUI (gui/src/_common.scss, light and dark), and the
+# GUI's own dark-mode choice read from the browser (localStorage "settings").
+_LOGIN_FIRST_PAGE = """<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Rosace — API</title>
+<script>
+try {{
+  if ((JSON.parse(localStorage.getItem("settings")) || {{}}).darkMode)
+    document.documentElement.setAttribute("data-theme", "dark");
+}} catch (e) {{}}
+</script>
+<style>
+:root {{ --bg: #e6e1d2; --bg-panel: #dcdcd9; --accent: #3f6b45; --text: #3a352d;
+        --border: rgba(58, 53, 45, 0.22); }}
+:root[data-theme="dark"] {{ --bg: #080c14; --bg-panel: #0d1626; --accent: #00d4ff;
+        --text: #d6d6d6; --border: rgba(0, 212, 255, 0.12); }}
+body {{ margin: 0; min-height: 100vh; display: flex; align-items: center;
+       justify-content: center; background: var(--bg); color: var(--text);
+       font-family: montserrat, "Helvetica Neue", Arial, sans-serif; line-height: 1.5; }}
+.panel {{ max-width: 34em; padding: 2em 2.5em; background: var(--bg-panel);
+         border: 1px solid var(--border); border-radius: 10px;
+         box-shadow: 0 1px 2px rgba(40, 32, 20, 0.10), 0 2px 6px rgba(40, 32, 20, 0.08); }}
+h1 {{ margin-top: 0; color: var(--accent); font-size: 1.4em; letter-spacing: 0.05em; }}
+a {{ color: var(--accent); font-weight: bold; }}
+</style>
+</head>
+<body>
+<div class="panel">
+<h1>ROSACE — API</h1>
+<p>Cette page est réservée aux utilisateurs connectés.</p>
+<p>Connectez-vous d'abord à <a href="/">l'interface de Rosace</a>, dans ce même
+navigateur, puis revenez sur <a href="{path}">cette page</a>.</p>
+</div>
+</body>
+</html>
+"""
+
+
+async def _is_logged_in(request: Request) -> bool:
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    return token is not None and await session_get_user(token) is not None
+
+
+@protected.get("/openapi.json", include_in_schema=False)
+async def openapi_description():
+    """The OpenAPI description of the API, read by /docs and /redoc."""
+    return app.openapi()
+
+
+@app.get("/docs", include_in_schema=False)
+async def api_docs(request: Request):
+    """The interactive API page (Swagger UI), for a logged-in user."""
+    if not await _is_logged_in(request):
+        return HTMLResponse(_LOGIN_FIRST_PAGE.format(path="/docs"))
+    return get_swagger_ui_html(openapi_url="/openapi.json", title=f"{app.title} — API")
+
+
+@app.get("/redoc", include_in_schema=False)
+async def api_redoc(request: Request):
+    """The same API description, as ReDoc, for a logged-in user."""
+    if not await _is_logged_in(request):
+        return HTMLResponse(_LOGIN_FIRST_PAGE.format(path="/redoc"))
+    return get_redoc_html(openapi_url="/openapi.json", title=f"{app.title} — API")
 
 # ─────────────────────────────────────────────────────────────
 # Endpoints — Account management (admin only)
