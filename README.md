@@ -43,8 +43,16 @@ cd rosace/rosace/gui && npm install && npm run build
 The web GUI is served at http://localhost:8000/, and the interactive API
 docs at http://localhost:8000/docs.
 
-Run the test suite, from the repo root, with the environment active and
-ROSACE installed with `[dev]` (above):
+## Run the tests
+
+ROSACE relies heavily on automated tests: More than 1 500 (Oct. 2026) of them check every
+part of the code — the orchestrator, the schedulers, each acquisition and
+reduction step, the databases, the API — on simulated devices and synthetic
+images, with no telescope needed. Every change is expected to keep them all
+passing, and new code comes with its own tests.
+
+Run them from the repo root, with the environment active and ROSACE
+installed with `[dev]` (see Quick start):
 
 ```bash
 python -m pytest rosace/rosace
