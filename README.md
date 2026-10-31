@@ -6,56 +6,39 @@ The ROSACE project aims to develop a network of amateur and  professional observ
 
 The project is based on Open Source software tools only.
 
-Robotic observation means that **no human action** is required. From opening the dome (or shelter) to processing the data and sharing the result, all is automated.
+Robotic observation means that **no human action** is required during the night: from choosing the next target to processing the data and sharing the result, all is automated. Deciding when to observe and protecting the instrument (Sun, weather, roof or dome) is left to the observatory's own system, which starts and stops ROSACE.
 
 The project is developed by the community: your contribution is welcome. Our intention is to propose a system that can be adapted from smallest to biggest telescopes.
 
+## Get started
+
+The user documentation explains, step by step, how to start with ROSACE:
+[Get started](https://rosace-astronomy.github.io/rosace-docs/GetStarted.html)
+— step 1, the Docker demo (nothing to install but Docker); step 2, ROSACE
+installed on your computer, running the same demo (Python environment, demo
+data, astrometry.net, optional `rosace` command and Tab completion).
+
 ## Quick start (development)
 
-The fastest way to try Rosace is the [Docker demo](docker/README.md) — no
-Python setup needed. To run it from source instead:
+To work on the code, install ROSACE as in
+[Get started, step 2](https://rosace-astronomy.github.io/rosace-docs/GetStarted.html#step-2-install-rosace-on-your-computer-and-run-the-same-demo),
+with the development tools (from the repo root, the environment active):
 
 ```bash
-# Activate the virtual environment
-source rosace-manager/bin/activate
-
-# Install in editable mode with dev dependencies (from the repo root)
 pip install -e "rosace/[dev]"
-
-# First run only: bootstrap the first admin account
-rosace --create-admin <username>
-
-# Start the server (rosace --help lists the options)
-rosace
 ```
 
-### Using `rosace` from any terminal, with Tab completion
+To run ROSACE outside the demo, create the first admin account once
+(`rosace --create-admin <username>`), then start the server with `rosace`
+(`rosace --help` lists the options).
 
-Two steps, done once. In the examples, the repository is in
-`/home/observatoire/ROSACE/Rosace-manager`: replace it with yours.
-
-**1. Make the `rosace` command available everywhere.** Run this command once
-in a terminal. It puts a link to the command in `~/.local/bin`, a folder the
-terminal already searches; the command then works without activating the
-virtual environment (it already knows which Python to use).
+The web GUI comes built in `rosace/rosace/gui/bin/`. After changing its
+sources (`rosace/rosace/gui/src/`), rebuild it (Node.js needed) and commit
+`gui/bin/` with them:
 
 ```bash
-ln -s /home/observatoire/ROSACE/Rosace-manager/rosace-manager/bin/rosace ~/.local/bin/rosace
+cd rosace/rosace/gui && npm install && npm run build
 ```
-
-**2. Turn on Tab completion of the options.** Add this line at the end of
-the file `~/.bashrc` (with a text editor), then open a new terminal. The full
-path is needed: the virtual environment is not active when `~/.bashrc` runs.
-
-```bash
-eval "$(/home/observatoire/ROSACE/Rosace-manager/rosace-manager/bin/register-python-argcomplete rosace)"
-```
-
-Check: in a new terminal, `rosace --version` prints the version, and
-`rosace --pu` followed by Tab offers `--purge-simulated` and `--purge-demo`.
-
-Activating the virtual environment is then only needed to work on the code
-(tests, `pip install -e`).
 
 The web GUI is served at http://localhost:8000/, and the interactive API
 docs at http://localhost:8000/docs.
@@ -78,7 +61,7 @@ Contents:
 - [ROSACE at a glance](https://rosace-astronomy.github.io/rosace-docs/ROSACE_at_glance.html)
 - [Technical choices](https://rosace-astronomy.github.io/rosace-docs/Technical_choices.html)
 - [Get started](https://rosace-astronomy.github.io/rosace-docs/GetStarted.html)
-- [How to Contribute](https://rosace-astronomy.github.io/rosace-docs/Contribute.html)
+- [Adapt ROSACE to your observatory, and contribute](https://rosace-astronomy.github.io/rosace-docs/Contribute.html)
 - [Step 1: session initialization](https://rosace-astronomy.github.io/rosace-docs/Modules/Module1.html)
 - [Step 2: Scheduler](https://rosace-astronomy.github.io/rosace-docs/Modules/Module2.html)
 - [Step 3: Sequencer](https://rosace-astronomy.github.io/rosace-docs/Modules/Module3.html)

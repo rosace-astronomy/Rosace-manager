@@ -1255,3 +1255,9 @@ Night 2026-10-29 clouded over at about 19:45 UT and stayed so until the user sto
 
 Rejected: selecting files by time window alone, as `--purge-simulated` does. A dry run on the two nights showed it would have deleted files the post-obs thread wrote for a kept observation during later attempts (HD 194335's validation-page JSON and PNGs, a FRIPON lens fit). Files are therefore deleted only when clearly the attempt's own — named by its YAML or after it, or a `GUIDING_*`/`WIDEFIELD_*` file (written by the SEQUENCER only) inside its window — and never when a kept observation names them. On the two nights it then selects only guide images and the failed observations' YAMLs (1 367 and 2 315 files).
 
+
+## 2026-10-31 — The built web GUI is committed; installing from source without Node.js
+
+*Relates to: "GUI" (the `gui/bin/` line) in CLAUDE.md.*
+
+An external user installing Rosace from source (Get started, step 2) found that the README's commands assumed our own layout — the virtual environment `rosace-manager/` inside the repository — without saying so; with his environment elsewhere (`~/.venvs/rosace`), the `ln -s` and Tab-completion commands failed. The README and the Sphinx step 2 now create the environment anywhere and derive the paths from the active environment (`command -v rosace`, `$VIRTUAL_ENV`). Checking the procedure also showed that `gui/bin/` was not in git: a source install needed Node.js and `npm run build`, or the page stayed blank. The user chose to commit the built GUI (5.8 MB) rather than attach it to each release like the demo dataset: the simplest for a user (a `git clone` is enough), at the cost of a few MB of history per GUI change and the rule of rebuilding before committing GUI sources. A pip package, planned later, would ship the built GUI anyway.

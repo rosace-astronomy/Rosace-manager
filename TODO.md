@@ -244,6 +244,11 @@ Claude peut le suggérer, jamais le faire lui-même.
       démarrer de session. Le 2026-10-30, une trentaine de lignes RI
       (HD 172728 après 20:00, Vega après 19:55, del UMi après 19:50) étaient
       impossibles d'avance à cause du masque NO et N (2026-10-31)
+- [ ] Démo : le WARNING « Replay dataset not found » (`demo_seed.py`) dit
+      de construire le jeu avec `scripts/build_demo_dataset.py`, ce qu'un
+      utilisateur ne peut pas faire (il faut les données de l'observatoire) ;
+      il devrait renvoyer au téléchargement de la release
+      `demo-data-2026-10-14` (2026-10-31)
 
 ## Réduction
 
