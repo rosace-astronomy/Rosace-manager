@@ -248,3 +248,7 @@ Claude peut le suggérer, jamais le faire lui-même.
       donne `GUIDRMS = 1311.26` dans le FITS livré. Limiter aux poses
       retenues par `stack`, ou signaler un guidage perdu — à discuter
       (2026-10-28)
+- [ ] `--purge-simulated` ne supprime que les fichiers du haut du répertoire
+      de session : les sous-répertoires de réduction des observations
+      (`<nom>_<id>/`) restent (1,9 Go laissés par le salon le 2026-11-01).
+      Les supprimer avec leur observation (2026-11-01)

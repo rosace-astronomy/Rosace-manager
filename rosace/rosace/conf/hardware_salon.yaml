@@ -1,0 +1,144 @@
+# Salon hardware profile (template), used by the salon mode
+# (`rosace --salon-mode <night>`, conf/config_salon.yaml).
+#
+# The 72ED's real devices, driven by day, indoors, while the light of the sky
+# is replayed from one real night (rosace/hardware_replay/salon_devices.py):
+# - the mount is real, its sky shifted so that it takes the positions of the
+#   recorded night (ShiftedSkyMount);
+# - the spectrograph's lamps are real (BenchSpectroscope);
+# - a camera is either real (HybridCamera, HybridASICamera: it really
+#   exposes, at most max_wait_seconds, and hands back the recorded frame) or
+#   left unplugged (ReplayCamera, the demo's): one line, class_name, chooses;
+# - PHD2 is the fake one, started by the server (the real one would find no
+#   star indoors).
+# An installation copies this file next to its config_salon.yaml, in
+# ~/.config/rosace/, and sets its own INDI server address (indi_host).
+
+# Not a night under the sky: every salon session is recorded as simulated
+# (sessions.simulated in rosace.db), so that its data can be purged with
+# `rosace --purge-simulated` under the salon config.
+simulated: true
+
+# The salon's replay manifest, written by salon.py at every start (it names
+# the recorded night's frames where they are, in the real installation).
+replay_dataset_dir: ~/.rosace-salon/replay
+
+# Every N-th observation, a cloud passes: its first guide image shows no star
+# and its pointing fails, as under a real cloud (0: never).
+failure_every: 5
+
+INDI_drivers:
+
+    guiding_camera:
+        role: camera
+        module: salon_devices
+        module_dir: rosace.hardware_replay
+        class_name: HybridCamera
+        indi_name: QHY CCD QHY5III174M-4c7
+        indi_client:
+            indi_host: 192.168.1.50   # this installation's INDI server
+            indi_port: 7624
+        replay_frames: guiding
+        # Longest real exposure (seconds)
+        max_wait_seconds: 10
+        cooling: false
+        gain: 10
+        offset: 10
+
+    science_camera:
+        role: camera
+        # Left unplugged: no cooling to run for days. For the real camera:
+        # module: salon_devices, class_name: HybridCamera, indi_name: Atik 314L
+        # and indi_client as the other devices.
+        module: devices
+        module_dir: rosace.hardware_replay
+        class_name: ReplayCamera
+        indi_name: replay science camera
+        indi_client:
+            indi_host: none
+            indi_port: 0
+        replay_frames: science
+        # Longest wait for one exposure (seconds): a 180 s frame takes 30 s
+        max_wait_seconds: 30
+        cooling: true
+        cooling_capability: -30
+        temperature_tolerance_deg_c: 2
+
+    pointing_camera:
+        role: camera
+        module: salon_devices
+        module_dir: rosace.hardware_replay
+        class_name: HybridASICamera
+        indi_name: ZWO CCD ASI224MC
+        indi_client:
+            indi_host: 192.168.1.50
+            indi_port: 7624
+        replay_frames: wide_field
+        max_wait_seconds: 5
+        cooling: false
+        gain: 50
+        offset: 15
+
+    mount:
+        role: mount
+        module: salon_devices
+        module_dir: rosace.hardware_replay
+        class_name: ShiftedSkyMount
+        indi_name: ZWO AM3 USB
+        indi_client:
+            indi_host: 192.168.1.50
+            indi_port: 7624
+        backlash_offset_deg: 2
+
+    focuser:
+        role: focuser
+        module: focuser
+        module_dir: rosace.hardware_indi.devices
+        class_name: IndiFocuser
+        # Fields IndiFocuser requires (the 72ED profiles' values)
+        indi_name: ZWO EAF
+        indi_client:
+            indi_host: 192.168.1.50
+            indi_port: 7624
+        port: /dev/serial/by-id/usb-Optec__Inc._Optec_USB_Serial_Cable_OP5AORA9-if00-port0
+        focus_range:
+            min: 10200
+            max: 11400
+        autofocus_step:
+            fine: 300
+            coarse: 300
+        autofocus_range:
+            fine: 2000
+            coarse: 2000
+
+    spectroscope:
+        role: spectroscope
+        module: salon_devices
+        module_dir: rosace.hardware_replay
+        class_name: BenchSpectroscope
+        indi_name: SM Pro
+        indi_client:
+            indi_host: 192.168.1.50
+            indi_port: 7624
+
+# The fake PHD2 (hardware_replay/fake_phd2.py), started by the server: a
+# port of its own, never the real PHD2's 4400.
+PHD2_config:
+    host: 127.0.0.1
+    port: 4499
+    do_calibration: False
+    profile_name: Replay
+    settle:
+        pixels: 0.8
+        time: 3
+        timeout: 180
+    # Seconds between a guide call and the fake PHD2's SettleDone
+    replay_settle_seconds: 3
+    # Seconds between two replayed frames of the recorded guide log
+    replay_step_seconds: 0.2
+
+# No home_sync_am3: the homing aims at a random point of the current sky and
+# plate-solves around it, which the replayed sky cannot serve (see
+# conf/hardware_replay.yaml). INIT_SESSION still unparks the mount.
+sequencer_prefix:
+    - guiding_dark_acquisition

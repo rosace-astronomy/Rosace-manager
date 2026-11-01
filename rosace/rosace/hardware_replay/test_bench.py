@@ -11,6 +11,7 @@ from astropy.io import fits
 
 from rosace.hardware.spectroscope import LightSource
 from rosace.hardware_replay.bench import ReplayBench
+from rosace.hardware_replay.testing import make_dataset
 
 
 def _value(path):
@@ -99,3 +100,45 @@ class TestRecordedValues:
         assert replay_bench.lock_position() is None
         replay_bench.point_at(10.0, 50.0)
         assert replay_bench.lock_position() == (501.0, 401.0)
+
+
+class TestSalonKeys:
+    """Optional manifest keys and failure_every, used by the salon mode."""
+
+    def test_nearest_star_however_far(self, replay_bench):
+        assert replay_bench.nearest_star(200.0, -10.0)["queried_name"] == "Star B"
+
+    def test_observation_calibrations_served_instead_of_the_nights(self, replay_bench):
+        replay_bench.stars[1]["calibrations"] = {"dark": [replay_bench.stars[1]["science"][0]]}
+        replay_bench.point_at(80.0, 20.0)
+        replay_bench.light_source = LightSource.DARK
+        assert _value(replay_bench.science_frame(180.0)) == 201
+
+    def test_guide_order_of_the_observation(self, replay_bench):
+        replay_bench.stars[1]["guide_order"] = ["slew", "pointing", "stop"]
+        replay_bench.point_at(80.0, 20.0)
+        assert [_value(replay_bench.guide_frame()) for _ in range(4)] == [210, 212, 214, 214]
+
+    def test_wide_field_frame(self, replay_bench):
+        replay_bench.stars[0]["wide_field"] = replay_bench.stars[0]["science"][1]
+        replay_bench.point_at(10.0, 50.0)
+        assert _value(replay_bench.wide_field_frame()) == 102
+        replay_bench.point_at(80.0, 20.0)
+        with pytest.raises(RuntimeError, match="no wide-field image recorded for Star B"):
+            replay_bench.wide_field_frame()
+
+    def test_failure_every_clouds_the_first_guide_image(self, tmp_path):
+        bench = ReplayBench(make_dataset(tmp_path / "replay"), failure_every=2)
+        bench.manifest["cloudy"] = bench.manifest["homing"]
+        bench.point_at(10.0, 50.0)                        # 1st observation: clear
+        assert _value(bench.guide_frame()) == 110
+        bench.point_at(80.0, 20.0)                        # 2nd: a cloud
+        assert [_value(bench.guide_frame()) for _ in range(2)] == [9, 212]
+        bench.point_at(10.0, 50.0)                        # 3rd: clear again
+        assert _value(bench.guide_frame()) == 110
+
+    def test_no_failure_without_the_setting(self, replay_bench):
+        replay_bench.manifest["cloudy"] = replay_bench.manifest["homing"]
+        for ra, dec in ((10.0, 50.0), (80.0, 20.0)) * 3:
+            replay_bench.point_at(ra, dec)
+            assert _value(replay_bench.guide_frame()) != 9

@@ -76,6 +76,9 @@ CONFIG_PATH = _CONFIG_PATH
 # Optional — absent (False) in every normal config.yaml. Only conf/config_demo.yaml
 # sets this, to trigger demo_seed.py's one-time catalogue seeding at startup.
 IS_DEMO_MODE: bool = bool(_cfg.get("is_demo", False))
+# Optional too — only conf/config_salon.yaml (and an installation's copy of it)
+# sets this: the GUI then shows "MODE SALON" (see salon.py).
+IS_SALON_MODE: bool = bool(_cfg.get("is_salon", False))
 
 # ── Directories ───────────────────────────────────────────────
 BASE_DATA_DIR = Path(_cfg["base_data_dir"]).expanduser()
@@ -119,8 +122,9 @@ HORIZON_FILE: Path | None = Path(_horizon_file).expanduser() if _horizon_file el
 # Name of the YAML file (without extension) describing the hardware to use,
 # next to the active config.yaml or packaged in conf/ (_resolve_hardware_path).
 # Lets you switch between several configurations (simulator, real
-# observatory…) by changing only this value.
-ACTIVE_HARDWARE = _cfg["active_hardware"]
+# observatory…) by changing only this value. The ROSACE_HARDWARE env var, when
+# set, replaces it — set by `rosace --salon-mode --no-hardware` only (cli.py).
+ACTIVE_HARDWARE = os.environ.get("ROSACE_HARDWARE") or _cfg["active_hardware"]
 HARDWARE_CONFIG_PATH = _resolve_hardware_path(_CONFIG_PATH, ACTIVE_HARDWARE)
 
 # ── Scheduling ──────────────────────────────────────────────

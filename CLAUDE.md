@@ -242,7 +242,7 @@ Tests patch `BASE_DATA_DIR`, `DB_PATH`, and `TARGETS_DB_PATH` via a session-scop
 
 `plugins/test_hardware_connectivity.py` covers `plugins/hardware_connectivity.py` the same way, next to it.
 
-`hardware_replay/test_bench.py`, `test_devices.py` (through the real adapters, and a whole replay profile connected by `connect_session_hardware()`) and `test_fake_phd2.py` (driven by the real `Phd2Client`) cover the demo's replay devices, on the synthetic dataset of `hardware_replay/testing.py` (fixture `replay_bench`, `hardware_replay/conftest.py`). `test_demo_seed.py` and `test_demo_purge.py` cover `demo_seed.py` and `demo_purge.py`.
+`hardware_replay/test_bench.py`, `test_devices.py` (through the real adapters, and a whole replay profile connected by `connect_session_hardware()`) and `test_fake_phd2.py` (driven by the real `Phd2Client`) cover the demo's replay devices, on the synthetic dataset of `hardware_replay/testing.py` (fixture `replay_bench`, `hardware_replay/conftest.py`). `test_demo_seed.py` and `test_demo_purge.py` cover `demo_seed.py` and `demo_purge.py`. `test_salon.py` covers `salon.py` (on a small synthetic installation) and `hardware_replay/test_salon_devices.py` the salon's device classes (their INDI parent classes replaced).
 
 `test_bess_archive.py` covers `bess_archive.py` (BeSS's queries and downloads replaced by fakes; the route itself in `test_rosace_core.py`). `test_time_helpers.py` covers `time_helpers.py` the same way, next to it, and `test_control_schedule.py` covers `control_schedule.py`; so do `test_horizon.py` (`horizon.py`, local horizon file parsing/interpolation) and `test_cli.py` (`cli.py`: the command-line options not already exercised through the real process in `test_rosace_core.py`). `test_log_config.py` covers `log_config.py`'s own behavior (the UTC `converter` switch) the same way — separate from `test_log_broadcast.py`, which covers the WebSocket-streaming handler, not the file/console formatter setup.
 
@@ -302,7 +302,7 @@ For a sub-plugin whose own work spans several internal steps (e.g. `star_spectra
 
   **Shared, purpose-named keys, when a stage can have more than one interchangeable way to produce the same kind of output**: a *downstream* reader shouldn't need to know exactly which sub-plugin produced the data it needs. `star_spectra_acquisition.py` (both backends) appends every produced filename straight to `sequencer_data["star_spectra_images"]` — a fixed, purpose-named key. `calculate_flux.py` (and `blank_red.py`, the REDUCTION template) read only `sequencer_data["star_spectra_images"]`: REDUCTION must never need to know which specific SEQUENCER sub-plugin produced the raw science files, only that they land under this one fixed key. Any future alternative acquisition sub-plugin is expected to append to the same shared key rather than inventing its own. The calibration series follow the same rule: `bias_acquisition`, `dark_acquisition`, `flat_acquisition` and `calib_acquisition` put their series' filenames under `sequencer_data["bias_images"]`/`["dark_images"]`/`["flat_images"]`/`["calib_images"]` (one series per observation, plain assignment), and their own casier only keeps `origin` — a reader (`export_demetra`, the native masters) never reads an acquisition's casier.
 - Sharing sub-plugins: `plugins/sharing_plugins/<name>/` — read what they need from the observation (preferably its files, never assuming a given REDUCTION sub-plugin ran, since every program declares its own list; nothing to share is not an error), may write their own nested key in `obs.sharing_data`. Unlike SEQUENCER/REDUCTION, a program declares exactly **one** (`sharing: <name>`, a singular YAML key, not a list) — `SharingPlugin.run()` (`plugins/sharing.py`) resolves and calls that single sub-plugin via `pipeline_loader.py::load_sharing_plugin()`, instead of iterating a list. A program that needs to notify several destinations handles that *inside* its one sharing sub-plugin — the mechanism itself deliberately doesn't support a list, to keep it simple. `sharing_plugins/blank_share/` is the only one that exists today — a placeholder (logs the observation dossier, no real email/FTP/API yet) used by every program for now, and doubles as the copyable template (its docstring documents the contract in full, in English), same idea as `schedulers/blank/`. The ARCHIVE stage plugin (`plugins/archive.py`) is a placeholder too, logging the dossier only: archiving is not designed yet, and will work from the observation's own files, never from a given sub-plugin's casier.
-- Programme definitions: `rosace/programs/*.yaml` — declare which sub-plugins run in order (`sequencer`, `reduction`) plus the single `sharing` sub-plugin. `demo.yaml` is a minimal, backend-agnostic program (same step names as any other) used as the default for a fresh install and for quick end-to-end verification; `Be_stars.yaml`, `bright_stars.yaml`, `nova_monitoring.yaml` are real-hardware/scenario programs.
+- Programme definitions: `rosace/programs/*.yaml` — declare which sub-plugins run in order (`sequencer`, `reduction`) plus the single `sharing` sub-plugin. `demo.yaml` is a minimal, backend-agnostic program (same step names as any other) used as the default for a fresh install and for quick end-to-end verification; `Be_stars.yaml`, `bright_stars.yaml`, `nova_monitoring.yaml` are real-hardware/scenario programs; `salon_*.yaml` are the salon mode's (see there).
 
 To add a new sub-plugin: create `plugins/<sequencer_plugins|reduction_plugins|sharing_plugins>/<name>/<name>.py` (and `<name>_internal.py` too, only if a demo counterpart is actually needed — SEQUENCER only) with its own `test_<name>.py`, then declare its name in the relevant program YAML (a list entry for `sequencer`/`reduction`, the single `sharing` value for sharing) — no registry file to edit.
 
@@ -749,6 +749,7 @@ The configuration files shipped with the code live in `conf/`, split into separa
 |---|---|
 | `config.yaml` | Core application settings (data paths, site name, active hardware profile, active scheduler) — the packaged copy is the INDI simulators, with every key explained: the template `rosace --init-config` copies to `~/.config/rosace/config.yaml`, where an installation's own config lives |
 | `config_demo.yaml` | The replay demo's config (`--demo-mode`) — the 72ED's settings with neutral names |
+| `config_salon.yaml` | The salon mode's config template (`--salon-mode`), with its profile `hardware_salon.yaml` |
 | `logging.cfg` | Logging setup (`fileConfig` ini format — see below) |
 | `hardware_<variant>.yaml` | Hardware/instrument definitions, one file per variant: packaged, `hardware_indi_simu.yaml` (INDI simulators) and `hardware_replay.yaml` (demo); an installation's own next to its config (`hardware_indi_72ED-LAN.yaml`/`-WIFI.yaml` in `~/.config/rosace/` for the real telescope). Which variant is active is selected via `active_hardware` in `config.yaml`, resolved to `HARDWARE_CONFIG_PATH` by `config.py::_resolve_hardware_path()`: `<active_hardware>.yaml` next to the active `config.yaml` first, else the packaged one, else a startup error naming both places. Declares, under `INDI_drivers`, one entry per device (`role`, `module`/`module_dir`/`class_name` for dynamic loading, plus device-specific fields incl. `indi_client: {indi_host, indi_port}`), and a `PHD2_config` section (`host`/`port`/...) — parsed by `plugins/hardware_connectivity.py` when `sequencer_backend=indi`. |
 
@@ -774,7 +775,7 @@ The tests never see this machine's own config: `conftest.py` sets `ROSACE_CONFIG
 
 `rosace --check-config [path]` validates a config without starting the server: with no argument, it validates whatever step 1–3 above would resolve to; with a path, it validates that file specifically (via the same `ROSACE_CONFIG` mechanism). It prints the config file and the hardware profile file it found. Prints `[OK]`/`[FAIL]` and exits 0/1 — never reaches `uvicorn.run()` either way, so it's safe to run against a candidate config without risking a real session starting. When the config declares `horizon_file`, it also parses and validates that file (`horizon.py::load_horizon()`) and prints its point count (`[OK] horizon file valid: <path> (N points)`, or `[FAIL] horizon file invalid: ...` and exit 1) — so a freshly copied KStars export can be checked before a session ever reaches the SCHEDULER. Finally it imports the plugin registry, which instantiates the active scheduler and validates the sub-plugin catalogue: an unknown `active_scheduler` (or a bad catalogue) prints `[FAIL] plugins invalid: ...` and exits 1, otherwise `[OK] plugins valid (active scheduler: <name>)`.
 
-`rosace --help` (or `-h`; `python -m rosace.main` is the same command) prints this same CLI's usage — the positional `config_path` argument, `--demo-mode`, `--host`, `--port`, the tool options `--check-config`, `--init-config`, `--create-admin`, `--list-subplugins`, `--purge-simulated`, `--purge-failed`, `--purge-demo`, `--build-validation-data` (with `--apply` for the last four), and `--version` — and exits, without starting the server either. The options are declared once, in `cli.py::build_parser()` (argparse): `--option=value` works, the tool options are mutually exclusive, and a usage error — an unknown option or a typo (`--prot`), a bad `--port`, an unknown `--list-subplugins` family, `--apply` without its tool option, a config path with a tool option or with `--demo-mode` — is reported on stderr with argparse's usage line and exit code 2, nothing run (a tool option's own failure stays a `[FAIL]` line on stdout, exit 1). Tab completion (argcomplete, a dependency; `# PYTHON_ARGCOMPLETE_OK` at the top of `cli.py`, where argcomplete looks for it) reads the same parser, so a new option is completed with nothing else to do; `.yaml` files are offered for `config_path` and `--check-config`, the families for `--list-subplugins`. Enabled once per user with `eval "$(<venv>/bin/register-python-argcomplete rosace)"` in `~/.bashrc` — the full path, since the environment is not active when `~/.bashrc` runs (a bare `register-python-argcomplete` fails there silently and nothing completes) — and `rosace` itself found without activation through a link in `~/.local/bin` (zsh: after `autoload -U bashcompinit && bashcompinit`); without argcomplete installed, everything works but Tab. For a published package, pipx (`pipx install rosace`) will do both the environment and the link. `cli.py::main()` is the entry point of both commands: it builds the parser, hands it to argcomplete, lets `run_cli()` run a tool option or set `ROSACE_CONFIG` (defaults `--host 0.0.0.0`, reachable from the local network, and `--port 8000`), then starts uvicorn; the server's first log line gives the version and the active config (`[MAIN] Rosace <version> started (config <path>)`). Run as a script, `main.py` calls `main()` before importing anything else and stops there, so the application is loaded once, by uvicorn.
+`rosace --help` (or `-h`; `python -m rosace.main` is the same command) prints this same CLI's usage — the positional `config_path` argument, `--demo-mode`, `--salon-mode` (with `--no-hardware`), `--host`, `--port`, the tool options `--check-config`, `--init-config`, `--create-admin`, `--list-subplugins`, `--purge-simulated`, `--purge-failed`, `--purge-demo`, `--build-validation-data` (with `--apply` for the last four), and `--version` — and exits, without starting the server either. The options are declared once, in `cli.py::build_parser()` (argparse): `--option=value` works, the tool options are mutually exclusive, and a usage error — an unknown option or a typo (`--prot`), a bad `--port`, an unknown `--list-subplugins` family, `--apply` without its tool option, a config path with a tool option or with `--demo-mode`, `--salon-mode` with any of them — is reported on stderr with argparse's usage line and exit code 2, nothing run (a tool option's own failure stays a `[FAIL]` line on stdout, exit 1). Tab completion (argcomplete, a dependency; `# PYTHON_ARGCOMPLETE_OK` at the top of `cli.py`, where argcomplete looks for it) reads the same parser, so a new option is completed with nothing else to do; `.yaml` files are offered for `config_path` and `--check-config`, the families for `--list-subplugins`. Enabled once per user with `eval "$(<venv>/bin/register-python-argcomplete rosace)"` in `~/.bashrc` — the full path, since the environment is not active when `~/.bashrc` runs (a bare `register-python-argcomplete` fails there silently and nothing completes) — and `rosace` itself found without activation through a link in `~/.local/bin` (zsh: after `autoload -U bashcompinit && bashcompinit`); without argcomplete installed, everything works but Tab. For a published package, pipx (`pipx install rosace`) will do both the environment and the link. `cli.py::main()` is the entry point of both commands: it builds the parser, hands it to argcomplete, lets `run_cli()` run a tool option or set `ROSACE_CONFIG` (defaults `--host 0.0.0.0`, reachable from the local network, and `--port 8000`), then starts uvicorn; the server's first log line gives the version and the active config (`[MAIN] Rosace <version> started (config <path>)`). Run as a script, `main.py` calls `main()` before importing anything else and stops there, so the application is loaded once, by uvicorn.
 
 `python -m rosace.main --create-admin <username>` bootstraps the first admin account (see Authentication above) and exits — also never starts the server.
 
@@ -841,9 +842,9 @@ Rosace's (see HISTORY.md 2026-10-16).
   (`bench.guide_log()`), one frame every `replay_step_seconds` (0.2 s), with
   their recorded values and times — StartGuiding/GuidingStopped carry the recorded section's own times, so the guide log lines up with the replayed frames (which keep their recording night's dates) and the summary shows the exposures — so the demo writes a real guide log and
   `guiding_stats`/the summary page have data; settling and lock lines come
-  from Rosace's own calls. Without a section in the dataset, no frame. Started by `main.py`'s `lifespan()` next to
-  `seed_demo_data()`, under the same `IS_DEMO_MODE` (`start_fake_phd2()`
-  does nothing for a profile without `replay_dataset_dir`), on the replay
+  from Rosace's own calls. Without a section in the dataset, no frame. Started by `main.py`'s `lifespan()` at every
+  start (`start_fake_phd2()` does nothing for a profile without
+  `replay_dataset_dir`: only the demo and salon profiles get one), on the replay
   profile's `PHD2_config` port (4499, never the real PHD2's 4400).
   `stop()` closes its clients' connections before waiting (at most 2 s): a
   session still running at shutdown keeps its PHD2 client connected, and
@@ -938,8 +939,8 @@ at the packaged `conf/config_demo.yaml` (resolved from
 `Path(__file__).parent`, so it works wherever `pip` put the package) and
 falls through to the normal startup, on port 8000. Beside a running real
 server, add `--port 8001`. What triggers the demo behaviour is
-not the flag but the config's `is_demo: true` (`IS_DEMO_MODE`): the seed,
-the fake PHD2, and `GET /status`'s `demo_mode`, which makes the GUI show an
+not the flag but the config's `is_demo: true` (`IS_DEMO_MODE`): the seed
+and `GET /status`'s `demo_mode` (the fake PHD2 follows the replay profile), which makes the GUI show an
 orange **DEMO MODE** badge next to its title and "DEMO mode" in the browser
 tab.
 
@@ -952,6 +953,103 @@ demo; refused unless the config is the demo one, and while a demo server
 runs (the fake PHD2's port answers). Without `--apply` it only lists what
 would go. Each demo session is also recorded as simulated
 (`hardware_replay.yaml` declares `simulated: true`).
+
+### The salon mode (`--salon-mode <night>`)
+
+Shows the real instrument at work by day, indoors (an astronomy fair, the
+first one 2026-11-13/15): Rosace drives the real mount, the spectrograph's
+lamps and the guiding and pointing cameras, while **the light of the sky is
+replayed** from one real night, named on the command line
+(`rosace --salon-mode 2026-10-16`, the date of its session directory or that
+directory's full name). Every successful acquisition of that night is
+replayed, again and again. Generic: it works whatever the day it runs and
+whatever the night chosen. Built on the demo's replay (same bench, same fake
+PHD2); no sub-plugin and no orchestrator code knows about it.
+
+- **`salon.py::prepare_salon()`**, run by `cli.py` before uvicorn, with the
+  salon config already active: reads the night in the real installation
+  (`subplugin_params.salon.source_data_dir`, `~/.rosace` — read only: its
+  `rosace.db` for the night's successful acquisitions, `sequencer_status =
+  'done'`; each one's YAML dossier; the night's `*_session.log` for PHD2's
+  lock positions; `targets.db` for spectral types) and writes the salon's
+  replay manifest (`manifest.yaml` in the profile's `replay_dataset_dir`),
+  naming the night's frames **by absolute path** — nothing copied
+  (`bench.path()` returns an absolute path as is). Per observation: science
+  frames, guide images by role (`slew`, `pointing`, `stop`, focus found by
+  time as in the demo builder, `slit`), its own calibration series, wide-field
+  image and guide log when recorded, `recorded_at` (its `created_at`). An
+  observation missing a file is skipped with its reason, printed. It also
+  writes `cloudy.fits` next to the manifest (`write_cloudy_frame()`: a guide
+  image's median and noise, no star), the fixed `rosace`/`rosace` account
+  (isolated network, as the demo), the reference files copied from the
+  source, the GUI's first images, the night's targets in their salon
+  programs (`targets.db` of `~/.rosace-salon`, idempotent) and the
+  observation list: the night's observations in their order, `cycles` (20)
+  times over, each named as that night's list named it (its queried name,
+  e.g. Vega, declared as an alias of the star when not its canonical name). Refused while a session of the real installation runs (a
+  `running` session started less than 24 h ago): both would drive the same
+  instrument. Prints the observations kept (recorded program → salon
+  program), the skipped ones and the warnings; `[FAIL]` and exit 1 when it
+  cannot.
+- **Each recorded program is replayed through a salon program**
+  (`subplugin_params.salon.programs`; absent: `Be_stars`), so a visitor sees
+  on the GUI's step chips that each program runs its own process:
+  `Be_stars` itself; `programs/salon_PN.yaml` (no `focus`, none of the
+  star-only measurements `calculate_flux`/`snr`/`guiding_stats`, no FRIPON);
+  `salon_Cataclysmic.yaml` (no wide field, no FRIPON); `salon_All_stars.yaml`
+  (the Be chain); none of the three has `bess_validation` or
+  `export_demetra`, nor a `scheduler:` block (the selector never activates
+  them). A program without `focus` takes one guide image fewer: the
+  manifest's `guide_order` drops the focus image so the bench keeps serving
+  each image to the step that took it.
+- **Devices** (`hardware_replay/salon_devices.py`, declared by
+  `conf/hardware_salon.yaml`; `hardware_indi/` unchanged):
+  `ShiftedSkyMount(IndiMount)` sends RA + `sky_shift_deg()` — the sidereal
+  time elapsed since the `recorded_at` of the observation nearest to the
+  position asked for (`bench.nearest_star()`, however far, so the backlash
+  approach point gets its target's shift) — so the mount takes the hour
+  angle, hence the altitude, azimuth and pier side, it had on the recorded
+  night, positions already travelled; the site's longitude cancels out. The
+  position read back is shifted back by the same amount, so
+  `_wait_for_slew()`'s on-target check is unchanged, and Rosace only ever
+  sees the original coordinates. One `[SALON]` INFO line per coordinate sent.
+  `HybridCamera`/`HybridASICamera` (`HybridCameraMixin` before
+  `IndiCamera`/`IndiASICamera`): the real camera exposes at most
+  `max_wait_seconds`, its image is received then set aside and the bench's
+  recorded frame returned (`replay_frames`: `science`, `guiding` or
+  `wide_field`), `get_roi()` gives the recorded frames' size. A camera can be
+  left unplugged instead: the profile declares the demo's `ReplayCamera` for
+  it — the packaged profile does so for the science camera (no cooling for
+  days; `cooling: true` kept so the session's target temperature is still
+  computed, from the real focuser's ambient temperature, and reached at
+  once). `BenchSpectroscope(IndiSpectroAlpy600)`: the real lamp, then the
+  bench's light source. The focuser is the real `IndiFocuser`. No homing
+  (`sequencer_prefix: [guiding_dark_acquisition]`, as the demo).
+- **Showing a failure**: the profile's `failure_every` (5; 0 or absent:
+  never) makes every N-th observation pointed at get `cloudy.fits` as its
+  first guide image (`bench.py`), so `slew_72ed`'s real plate solve fails and
+  Rosace handles it as under a real cloud (error recorded, next target).
+- **Configs**: `conf/config_salon.yaml` and `conf/hardware_salon.yaml` are
+  templates; `--salon-mode` uses `~/.config/rosace/config_salon.yaml` when it
+  exists (its `hardware_salon.yaml` next to it, with the installation's INDI
+  address), else the template (`cli.py::salon_config_path()`). `is_salon:
+  true` (`IS_SALON_MODE`) makes `GET /status`'s `salon_mode` true and the GUI
+  show **MODE SALON** instead of DEMO MODE. Data under `~/.rosace-salon`;
+  sessions recorded as simulated (`--purge-simulated` with the salon config).
+  The fake PHD2 is started by `lifespan()` for any profile declaring
+  `replay_dataset_dir` (demo and salon), no longer only in demo mode.
+- **Without the instrument** (`rosace --salon-mode <night> --no-hardware`):
+  the salon tested at home, every device replayed as in the demo
+  (`conf/hardware_salon_replay.yaml`: the demo's replay classes, the salon's
+  manifest, `failure_every: 5`; exposures of a few seconds, no shifted sky —
+  nothing moves). Same night, programs and failures. The CLI sets
+  `ROSACE_HARDWARE`, which replaces the config's `active_hardware`
+  (`config.py`; set by nothing else). Not refused while a real session runs
+  (`prepare_salon(check_running=False)`: no instrument driven) — give another
+  `--port`, and the fake PHD2's 4499 must be free.
+- **On site**: PHD2 on the Stellarmate must not loop on the guiding camera
+  (Rosace uses it); STOP lets the observation finish, so the mount's own
+  abort/park (Ekos) or its power switch must be at hand.
 
 ### Key configuration (`config.py` loads the active `config.yaml`)
 
@@ -988,7 +1086,8 @@ would go. Each demo session is also recorded as simulated
 | `CONFIG_PATH` | *(derived)* | — | Path of the active `config.yaml` (named in each observation's summary) |
 | `SIMULATED_EQUIPMENT` | *(derived)* | `false` | `sequencer_backend: internal`, or the active hardware profile declares `simulated: true` (top-level key) — recorded with every session (`sessions.simulated`), see `--purge-simulated` |
 | `SIMBAD_TAP_URLS` | `simbad_tap_urls` | *(required)* — CDS, then Harvard in the shipped configs | Simbad TAP servers, tried in order, the first preferred (see "Simbad client"); missing, or not a non-empty list of URLs: startup error. Read with `.get` so that its absence is reported by name |
-| `IS_DEMO_MODE` | `is_demo` | `false` | Optional — absent (so `false`) in every normal config; only `conf/config_demo.yaml` sets it: demo seeding, fake PHD2, `/status`'s `demo_mode` — see `--demo-mode` above |
+| `IS_DEMO_MODE` | `is_demo` | `false` | Optional — absent (so `false`) in every normal config; only `conf/config_demo.yaml` sets it: demo seeding, `/status`'s `demo_mode` — see `--demo-mode` above |
+| `IS_SALON_MODE` | `is_salon` | `false` | Optional — only `conf/config_salon.yaml` (and an installation's copy) sets it: `/status`'s `salon_mode`, the GUI's MODE SALON badge — see the salon mode above |
 
 `TARGETS_DB_PATH` is defined in `targets.py` as `DATABASES_DIR / "targets.db"`.
 
@@ -1020,6 +1119,7 @@ would go. Each demo session is also recorded as simulated
 | `exposure_seconds` / `sampling_arcsec` | `wide_field` | `5` / none (every scale tried) | Exposure of the pointing camera's wide-field image (`wide_field_acquisition`); scale of its 2×2-binned image, from the first plate solves' log line (`wide_field_image`) — see "Wide-field image" below |
 | `station` / `max_offset_minutes` / `lens` / `latitude_deg` / `longitude_deg` | `fripon` | none (step disabled) / `15` / none (fitted on each image; no marks on a cloudy one) / the observatory's | FRIPON camera whose image is shown, farthest capture from mid-observation accepted, its lens model (from `scripts/fit_fripon_lens.py`), its position — see "FRIPON sky image" above |
 | `global` / `individual` | `export_demetra` | `true` / `false` | One Demetra ZIP per session and/or per observation (both false: no export) |
+| `source_data_dir` / `cycles` / `programs` | `salon` | `~/.rosace` / `20` / none (all through `Be_stars`) | Salon mode only (`salon.py`): the real installation's data directory (read only), how many times the night's observations are listed, the salon program replaying each recorded program — see the salon mode above |
 
 **When adding a new config key**: if it's read by `main.py`/`auth.py`/`database.py`, or is a plugin-family selector, it's Core — add it to `test_rosace_core.py`'s `_write_tmp_config` test helper too, or tests that don't pass it will fail outright (`config.py` indexes it directly, no fallback). Otherwise it's Plugin — add it under `subplugin_params:` (nested under the plugin's name, or at the root only if genuinely shared by several interchangeable sub-plugins), read it with `.get(key, default)` inside the consuming sub-plugin's own module, and `test_rosace_core.py` needs no change at all.
 
@@ -1064,7 +1164,7 @@ Known x4js behaviour: a tooltip closes only on its element's `mouseleave`, which
 - Live SEQUENCER/REDUCTION step progress: each observation row's primary stage-chip line can grow up to two extra, temporary lines underneath — one showing SEQUENCER's own sub-plugin steps, one showing REDUCTION's — each a row of `Tag` chips (pending/running/done, reusing `.stage`'s color semantics via a lighter `.substep` variant in `main.scss`) built from `entry.steps`/`entry.step` and labelled via `subplugin_display_names` (`GET /subplugins/display-names`, fetched once at startup — see `DISPLAY_NAME` above — not polled, since it's static for the server's lifetime). Backed by `step_progress.py`: an in-memory-only `dict[obs_id][stage] -> {step, steps}` (behind a `threading.Lock`: SEQUENCER writes from the main loop, REDUCTION from the post-obs thread, while the API reads), deliberately never persisted to `rosace.db` (a sub-plugin name is plugin identity — the DB stays plugin-agnostic, same principle as `SUBPLUGIN_PARAMS`) and never pushed over `/ws` either — folded into the GUI's existing `fetchObs()` poll (`GET /observations/steps`) instead, since a completed step simply showing as done at the next ~3s poll is an accepted tradeoff over true mid-step liveness. Keyed per (obs_id, **stage**), not just per obs_id, specifically so SEQUENCER's line still renders "all done" once REDUCTION starts (REDUCTION would otherwise overwrite SEQUENCER's entry). Each line stays visible while its own stage is `"running"`, or for `STEP_PROGRESS_HOLD_SECONDS` (10s, `main.ts`) after the whole observation finishes (`obs.stages["archive"].done_at`) — a display-only grace period, not tracked server-side, giving the observer time to see the full pipeline at a glance before it collapses back to the primary stage row alone. SHARING is excluded (a program declares exactly one sub-plugin, not a list — no "current step" to show progress through).
 - Header "Test" button (`AppHeader`, `#hwtest`, between the observation count and the settings menu): discreet (muted text and border); click → "Test…" disabled while `POST /control/hardware-test` runs (timeout 120 s), then green (`.ok`) or red (`.fail`) for 5 s, not clickable, the tooltip giving "Matériel OK", the failures or the refusal; greyed during a session, in simulation ("Pas de matériel à tester (simulation)") and while a test started from another page runs (`status.hardware_test_running`). START is disabled while a test runs. The details reach the Journal as the server's `[HW_TEST]` log lines.
 - « Arrêt demandé » (`MainView.stop_notice`, orange, centred between START and STOP in the controls bar): shown while `status.session_active && !status.is_running` — a stop was asked and the current observation goes on to its end (a stop lets it finish, see the State machine section), then CLOSE_SESSION runs. The two words only, kept short on purpose.
-- DEMO MODE badge (`AppHeader`, `#demo-badge`, white on orange, right of the title): shown only when `status.demo_mode` is true (`AppHeader.refreshTitle()`, on every `/status` poll), which also sets the browser tab's title to "… — DEMO mode" (plain text only there). Orange, not red: red already means an error in this GUI.
+- DEMO MODE badge (`AppHeader`, `#demo-badge`, white on orange, right of the title): shown only when `status.demo_mode` is true (`AppHeader.refreshTitle()`, on every `/status` poll), which also sets the browser tab's title to "… — DEMO mode" (plain text only there); the same badge reads MODE SALON when `status.salon_mode` is true (tab "… — MODE SALON"). Orange, not red: red already means an error in this GUI.
 - Footer (`AppFooter`): three clocks ticking every second — "UTC", "Heure sidérale locale (TSL)" (middle) and "Heure locale" (the browser's). The sidereal time is computed in the browser (`formatSiderealTime()`, the same Meeus GMST polynomial as `astro_math.py`, duplicated on purpose for a display) from `site_longitude_deg`, the configuration's `observatory.longitude_deg` returned by `GET /status`; `--:--:--` until the first `/status` answer.
 - Login: `auth.ts::LoginView` is shown before the dashboard by `AppShell` (`main.ts`) — the actual `setMainView()` target (x4js doesn't support calling `setMainView()` a second time to swap the root view — its `mounted` guard is declared but never actually set to `true` anywhere in `core_application.ts`), which instead swaps its own content between `LoginView` and a freshly-built `MainView` via `setContent()`. `fetchStatus()`/`fetchObs()` stop rescheduling themselves and fire a local `"auth.logout"` global event on a 401 (session expired) rather than polling forever unauthenticated in the background; `AppShell` listens for that same event (also fired by the "Déconnexion" item in `AppHeader`'s menu) to show the login screen again. `MainView` is deliberately rebuilt from scratch on every `showMain()` rather than cached — a cached instance's polling loop, once stopped by a 401, would never resume on the next login.
 - Two non-obvious x4js behaviors worth knowing before writing another form: `Button._on_click()` always calls `preventDefault()`/`stopPropagation()`, whether or not a `click` prop was given — a `<button>` inside a `Form` therefore never triggers the browser's native submit-on-click, so wire the button's own `click` prop directly rather than relying on the form's `submit` event for anything a click should do. And `Form` extends `Box`, not `VBox` — `%box` (`shared.scss`) only sets `position:relative`, no `display:flex` — so a `Form`'s own stylesheet needs explicit `display:flex;flex-direction:column` (or `row`) for `gap`/child stacking to work at all; it isn't inherited the way it would be from `VBox`/`HBox`.

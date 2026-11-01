@@ -24,6 +24,17 @@ a position far from every observation in between (slew_72ed's approach
 point, offset by backlash_offset_deg) does not count as leaving it, so the
 guide images keep the night's order.
 
+Optional, for the salon mode (salon.py), absent from the demo's dataset:
+- an observation's own calibration series (the "calibrations" key of its
+  manifest entry, when the night had several sessions), served instead of
+  the night's;
+- its wide-field image (the "wide_field" key), served by the pointing camera;
+- its own guide image order (the "guide_order" key), for a program that
+  takes fewer guide images than the recorded one (no focus step);
+- the profile's failure_every: every N-th observation pointed at, the first
+  guide image is the manifest's "cloudy" frame (sky background, no star), so
+  slew_72ed's real plate solve fails as under a cloud.
+
 Device methods run in worker threads (the adapters use asyncio.to_thread),
 hence the lock. The dataset directory is the hardware profile's top-level
 replay_dataset_dir key, read once.
@@ -45,6 +56,7 @@ from ..hardware.spectroscope import LightSource
 log = logging.getLogger("spectro.replay.bench")
 
 REPLAY_DATASET_KEY = "replay_dataset_dir"
+FAILURE_EVERY_KEY = "failure_every"
 HOMING_DISTANCE_DEG = 2.0
 GUIDE_ORDER = ("slew", "pointing", "focus", "stop")
 
@@ -56,7 +68,7 @@ def _separation_deg(ra1: float, dec1: float, ra2: float, dec2: float) -> float:
 
 
 class ReplayBench:
-    def __init__(self, dataset_dir: Path) -> None:
+    def __init__(self, dataset_dir: Path, failure_every: int = 0) -> None:
         self.dataset_dir = Path(dataset_dir).expanduser()
         manifest_path = self.dataset_dir / "manifest.yaml"
         if not manifest_path.is_file():
@@ -72,6 +84,9 @@ class ReplayBench:
         self._last_star: dict[str, Any] | None = None
         self._next: dict[str, int] = {}
         self._lock = threading.Lock()
+        self.failure_every = int(failure_every or 0)
+        self._observations = 0
+        self._cloudy = False
 
     def path(self, relative: str) -> Path:
         return self.dataset_dir / relative
@@ -81,18 +96,28 @@ class ReplayBench:
         """The dataset observation the mount points at, None when far from all."""
         return self._star
 
+    def nearest_star(self, ra_deg: float, dec_deg: float) -> dict[str, Any]:
+        """The dataset observation nearest to a position, however far."""
+        return min(self.stars, key=lambda s: _separation_deg(ra_deg, dec_deg, s["ra_deg"], s["dec_deg"]))
+
     def point_at(self, ra_deg: float, dec_deg: float) -> None:
         with self._lock:
             self.ra_deg, self.dec_deg = ra_deg, dec_deg
-            nearest = min(self.stars, key=lambda s: _separation_deg(ra_deg, dec_deg, s["ra_deg"], s["dec_deg"]))
+            nearest = self.nearest_star(ra_deg, dec_deg)
             if _separation_deg(ra_deg, dec_deg, nearest["ra_deg"], nearest["dec_deg"]) > HOMING_DISTANCE_DEG:
                 nearest = None
             self._star = nearest
             if nearest is not None and nearest is not self._last_star:
                 self._last_star = nearest
                 self._next = {}
+                self._observations += 1
+                self._cloudy = (self.failure_every > 0 and "cloudy" in self.manifest
+                                and self._observations % self.failure_every == 0)
                 log.info(f"[REPLAY] Pointing at {nearest['queried_name']}: replaying the frames of "
                          f"observation {nearest['observation_id']} ({self.manifest['source'].split(',')[0]})")
+                if self._cloudy:
+                    log.info(f"[REPLAY] A cloud passes over {nearest['queried_name']} "
+                             f"(failure_every: {self.failure_every}): its first guide image shows no star")
 
     def _cycle(self, key: str, files: list[str], repeat_last: bool = False) -> Path:
         index = self._next.get(key, 0)
@@ -103,7 +128,7 @@ class ReplayBench:
 
     def science_frame(self, exposure_s: float) -> Path:
         with self._lock:
-            calibrations = self.manifest["calibrations"]
+            calibrations = (self._star or {}).get("calibrations") or self.manifest["calibrations"]
             source = self.light_source
             if source is LightSource.DARK:
                 kind = "bias" if exposure_s == 0 else "dark"
@@ -124,7 +149,20 @@ class ReplayBench:
             guiding = self._star["guiding"]
             if self.light_source is not LightSource.SKY:
                 return self.path(guiding["slit"])
-            return self._cycle("guide", [guiding[role] for role in GUIDE_ORDER], repeat_last=True)
+            if self._cloudy and self._next.get("guide", 0) == 0:
+                self._next["guide"] = 1
+                return self.path(self.manifest["cloudy"])
+            order = self._star.get("guide_order") or GUIDE_ORDER
+            return self._cycle("guide", [guiding[role] for role in order], repeat_last=True)
+
+    def wide_field_frame(self) -> Path:
+        """The wide-field image recorded for the observation pointed at."""
+        with self._lock:
+            star = self._star
+            if star is None or not star.get("wide_field"):
+                name = star["queried_name"] if star is not None else "this position"
+                raise RuntimeError(f"no wide-field image recorded for {name}")
+            return self.path(star["wide_field"])
 
     def ambient_temp_c(self) -> float:
         star = self._star
@@ -134,7 +172,7 @@ class ReplayBench:
 
     def lock_position(self) -> tuple[float, float] | None:
         star = self._star
-        return tuple(star["lock_position"]) if star is not None else None
+        return tuple(star["lock_position"]) if star is not None and star.get("lock_position") else None
 
     def guide_log(self) -> Path | None:
         """The recorded PHD2 guide log section of the observation pointed at
@@ -147,12 +185,15 @@ _bench: ReplayBench | None = None
 _bench_lock = threading.Lock()
 
 
+def _profile() -> dict[str, Any]:
+    with open(HARDWARE_CONFIG_PATH, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
 def dataset_dir_from_profile() -> Path | None:
     """The active hardware profile's replay_dataset_dir, None if it has none
     (not a replay profile)."""
-    with open(HARDWARE_CONFIG_PATH, encoding="utf-8") as f:
-        profile = yaml.safe_load(f) or {}
-    value = profile.get(REPLAY_DATASET_KEY)
+    value = _profile().get(REPLAY_DATASET_KEY)
     return Path(value).expanduser() if value else None
 
 
@@ -165,7 +206,7 @@ def get_bench() -> ReplayBench:
             dataset_dir = dataset_dir_from_profile()
             if dataset_dir is None:
                 raise RuntimeError(f"{HARDWARE_CONFIG_PATH} declares no {REPLAY_DATASET_KEY}")
-            _bench = ReplayBench(dataset_dir)
+            _bench = ReplayBench(dataset_dir, failure_every=_profile().get(FAILURE_EVERY_KEY, 0))
         return _bench
 
 

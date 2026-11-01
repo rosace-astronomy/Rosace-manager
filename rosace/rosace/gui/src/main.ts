@@ -88,6 +88,7 @@ interface ApiStatus {
     hardware_test_running: boolean;		// the hardware test (POST /control/hardware-test) is running
     hardware_test_available: boolean;	// false in simulation (no hardware to test)
     demo_mode: boolean;					// demo configuration: shown in the title
+    salon_mode: boolean;				// salon configuration: shown in the title
 }
 
 type ScheduleKind = "start" | "stop";
@@ -110,7 +111,7 @@ interface AppData {
 const app_data = makeState<AppData>( {
 	status: { stage: "idle", is_running: false, session_active: false, completed_count: 0, pending_post_obs_count: 0,
 		scheduled_start: null, scheduled_stop: null, site_longitude_deg: null,
-		hardware_test_running: false, hardware_test_available: false, demo_mode: false },
+		hardware_test_running: false, hardware_test_available: false, demo_mode: false, salon_mode: false },
 	connected: false,
 	observations: [],
 	step_progress: {},
@@ -146,6 +147,7 @@ const FAKE_STATUS: ApiStatus = {
 	hardware_test_running: false,
 	hardware_test_available: true,
 	demo_mode: false,
+	salon_mode: false,
 }
 
 
@@ -260,14 +262,19 @@ class AppHeader extends HBox {
 	}
 
 	/**
-	 * A red "DEMO MODE" badge next to the title, and "DEMO mode" in the
-	 * browser tab (plain text only there), when the server runs the demo
-	 * configuration (status.demo_mode).
+	 * An orange "DEMO MODE" or "MODE SALON" badge next to the title, and the
+	 * same words in the browser tab (plain text only there), when the server
+	 * runs the demo or the salon configuration (status.demo_mode,
+	 * status.salon_mode).
 	 */
 	private refreshTitle( ) {
-		const demo = app_data.status.demo_mode;
-		this.demo_badge.show( demo );
-		document.title = demo ? `${APP_TITLE} — DEMO mode` : APP_TITLE;
+		const mode = app_data.status.demo_mode ? "DEMO MODE" : app_data.status.salon_mode ? "MODE SALON" : null;
+		this.demo_badge.show( mode !== null );
+		if( mode !== null ) {
+			this.demo_badge.setText( mode );
+		}
+		const tab = app_data.status.demo_mode ? "DEMO mode" : mode;
+		document.title = tab !== null ? `${APP_TITLE} — ${tab}` : APP_TITLE;
 	}
 
 	/**

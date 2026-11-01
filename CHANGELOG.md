@@ -9,6 +9,17 @@ are listed, newest first. The reasons behind the changes are in
 
 ### Added
 
+- `rosace --salon-mode <night>`: the real instrument at work by day,
+  indoors (an astronomy fair). The mount, the spectrograph's lamps and the
+  guiding and pointing cameras are driven for real, while the sky is
+  replayed from the named night: every successful observation of it, again
+  and again, each type of object through its own program so the different
+  steps show on screen, and every fifth observation failing on a "cloud".
+  The science camera may stay unplugged. Configured by
+  `~/.config/rosace/config_salon.yaml` and `hardware_salon.yaml` (templates
+  in `conf/`), data under `~/.rosace-salon`; the real installation's data
+  are only read. The GUI shows MODE SALON. `--no-hardware` tests it at home
+  without the instrument, every device replayed as in the demo.
 - The Simbad servers used to import stars are set in the configuration,
   tried in order: when the first does not answer, the next one is used, and
   the rest of an import list no longer waits for the dead server star after

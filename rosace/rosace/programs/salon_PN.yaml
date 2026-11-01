@@ -1,0 +1,42 @@
+# Salon mode only (`rosace --salon-mode`, salon.py): replays the observations
+# recorded under the program PN. No scheduler block: the selector never
+# activates it. Its steps differ from Be_stars' on purpose, so a visitor sees
+# on the GUI that each program runs its own process.
+program: salon_PN
+description: "Salon: planetary nebulae (extended objects) -- no focus nor star-only measurements"
+sequencer:
+  # The active hardware profile may prepend its own steps here (equipment-specific,
+  # e.g. guiding_dark_acquisition and a mount's own homing/sync) -- see its
+  # sequencer_prefix, if it declares one.
+  - slew_72ed                    # Slew + plate-solve correction (mount in its final position)
+  - slit_xy                      # Slit position in the guiding field (lamp-lit image), never blocking
+  - pointing_72ed                # PHD2 guiding, star put on the slit in force
+  - star_spectra_acquisition     # Science exposure acquisition (switches spectro to SKY)
+  - wide_field_acquisition       # Wide-field image with the pointing camera, still on target, never blocking
+  - stop_phd2_guiding            # Stops guiding (PHD2) -- unnecessary/lost during darks/bias
+  - dark_acquisition             # Darks (session/library/camera) -- before the SKY reset below
+  - bias_acquisition             # Bias (session/camera) -- before the SKY reset below
+  - calib_acquisition            # Calibration lamp (session/camera) -- before the SKY reset below
+  - flat_acquisition             # Flats (session/camera) -- before the SKY reset below
+  - spectro_light_source_to_sky  # Resets the spectroscope to SKY (safety at end of observation)
+reduction:
+  - master_bias         # Master bias
+  - master_dark         # Master dark (keeps its bias)
+  - master_flat         # Master flat
+  - preproc_target      # Science frames corrected with the masters
+  - preproc_calib       # Calibration-lamp frames corrected with the masters
+  - tilt                # Tilt measured on the target, removed from target and lamp
+  - smile               # Smile measured on the lamp, removed from lamp and target
+  - extract             # 1D spectrum of each frame
+  - stack               # Stacking of the 1D spectra
+  - dispersion_law      # Pixel-to-wavelength law of the lamp series (reused if already computed)
+  - lambda_calibration  # Law applied, constant wavelength step
+  - response            # Instrumental response correction
+  - scaling             # Division by the mean level in a wavelength zone (set to 1)
+  - crop                # Wavelength bounds
+  - write_spectrum      # Final 1D FITS with BeSS keywords
+  - plot_spectrum       # PNG / PDF / SVG plot
+  - wide_field_image    # Pointing camera's wide-field image, plate-solved, target marked, never blocking
+  - summary             # Few-page PDF showing how the observation went
+
+sharing: blank_share

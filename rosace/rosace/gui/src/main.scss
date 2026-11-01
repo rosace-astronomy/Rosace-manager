@@ -5,7 +5,7 @@
 // Header: what only the main page shows in it
 .appheader {
 	.header-logo {
-		// Shown only with the demo configuration (status.demo_mode)
+		// Shown only with the demo or salon configuration (status.demo_mode, status.salon_mode)
 		#demo-badge {
 			font-size: 0.9rem;
 			font-weight: 700;

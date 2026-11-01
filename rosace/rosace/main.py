@@ -52,7 +52,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .config     import CONFIG_PATH, GUI_PREVIEW_DIR, SITE_NAME, SITE_LONGITUDE_DEG, SCHEDULER_RETRY_SECONDS, SEQUENCER_BACKEND, SESSION_COOKIE_SECURE, SESSION_TTL_HOURS, IS_DEMO_MODE
+from .config     import CONFIG_PATH, GUI_PREVIEW_DIR, SITE_NAME, SITE_LONGITUDE_DEG, SCHEDULER_RETRY_SECONDS, SEQUENCER_BACKEND, SESSION_COOKIE_SECURE, SESSION_TTL_HOURS, IS_DEMO_MODE, IS_SALON_MODE
 from .log_config import configure_logging
 
 configure_logging()
@@ -107,13 +107,14 @@ async def lifespan(_app: FastAPI):
     await db_init()
     await targets_db_init()
     await auth_db_init()
-    fake_phd2 = None
     if IS_DEMO_MODE:
         await seed_demo_data()
-        try:
-            fake_phd2 = await start_fake_phd2()
-        except OSError as e:
-            log.error(f"Fake PHD2 not started: {e}")
+    # Only for a replay profile (demo, salon): does nothing for any other
+    fake_phd2 = None
+    try:
+        fake_phd2 = await start_fake_phd2()
+    except OSError as e:
+        log.error(f"Fake PHD2 not started: {e}")
     ws_log_handler.bind_loop(asyncio.get_running_loop())
     ws_image_broadcaster.bind_loop(asyncio.get_running_loop())
     logging.getLogger("spectro").addHandler(ws_log_handler)
@@ -424,6 +425,7 @@ async def get_status():
         "hardware_test_running": state.hardware_test_running,
         "hardware_test_available": SEQUENCER_BACKEND == "indi",
         "demo_mode": IS_DEMO_MODE,   # the GUI says "DEMO mode" in its title
+        "salon_mode": IS_SALON_MODE,   # the GUI says "MODE SALON"
     }
 
 @protected.get("/observations/completed")

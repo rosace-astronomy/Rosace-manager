@@ -8,7 +8,8 @@ shortened so a demo shows a whole observation in a few minutes.
 
 Constructor signature as every device class: (config, logger,
 connect_on_create), config being the device's hardware YAML entry. Device
-params read here: ReplayCamera's replay_frames (science or guiding) and
+params read here: ReplayCamera's replay_frames (science, guiding or
+wide_field) and
 max_wait_seconds, ReplayMount's slew_seconds.
 """
 
@@ -16,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 from astropy import units as u
@@ -26,6 +28,32 @@ from ..astro_math import hour_angle_deg, local_sidereal_time_deg
 from ..config import SITE_LONGITUDE_DEG
 from ..hardware.spectroscope import LightSource
 from .bench import get_bench
+
+
+REPLAY_FRAMES = ("science", "guiding", "wide_field")
+
+
+def recorded_frame(frames: str, exposure_s: float) -> Path:
+    """The recorded frame a camera serving `frames` hands back now."""
+    bench = get_bench()
+    if frames == "science":
+        return bench.science_frame(exposure_s)
+    if frames == "wide_field":
+        return bench.wide_field_frame()
+    return bench.guide_frame()
+
+
+def recorded_roi(frames: str) -> dict[str, Any]:
+    """Size of the recorded frames a camera serving `frames` hands back."""
+    bench = get_bench()
+    if frames == "science":
+        sample = bench.stars[0]["science"][0]
+    elif frames == "wide_field":
+        sample = next((s["wide_field"] for s in bench.stars if s.get("wide_field")), bench.manifest["homing"])
+    else:
+        sample = bench.manifest["homing"]
+    header = fits.getheader(bench.path(sample))
+    return {"X": 0, "Y": 0, "WIDTH": header["NAXIS1"], "HEIGHT": header["NAXIS2"]}
 
 
 class _ReplayDevice:
@@ -89,15 +117,16 @@ class ReplayMount(_ReplayDevice):
 
 class ReplayCamera(_ReplayDevice):
     """Serves recorded frames: the science series or the guide images
-    (replay_frames: science|guiding), chosen when the exposure starts. The
+    or the wide-field images (replay_frames: science|guiding|wide_field),
+    chosen when the exposure starts. The
     wait is the exposure time, at most max_wait_seconds; the frame keeps its
     recorded header, so its EXPTIME is the real one."""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.frames = self.config.get("replay_frames", "science")
-        if self.frames not in ("science", "guiding"):
-            raise ValueError(f"replay_frames must be 'science' or 'guiding', got {self.frames!r}")
+        if self.frames not in REPLAY_FRAMES:
+            raise ValueError(f"replay_frames must be one of {', '.join(REPLAY_FRAMES)}, got {self.frames!r}")
         self.max_wait_seconds = float(self.config.get("max_wait_seconds", 5.0))
         self.exp_time_sec = 0.0
         self._setpoint_c: float | None = None
@@ -110,8 +139,7 @@ class ReplayCamera(_ReplayDevice):
         self.exp_time_sec = float(exp_time_sec)
 
     def shoot_async(self) -> None:
-        bench = get_bench()
-        self._frame = bench.science_frame(self.exp_time_sec) if self.frames == "science" else bench.guide_frame()
+        self._frame = recorded_frame(self.frames, self.exp_time_sec)
         self.logger.debug(f"Exposure of {self.exp_time_sec}s -> {self._frame.name} (replay)")
 
     def synchronize_with_image_reception(self, exp_time_sec: float | None = None) -> None:
@@ -124,10 +152,7 @@ class ReplayCamera(_ReplayDevice):
 
     def get_roi(self) -> dict[str, Any]:
         """Size of the frames this camera serves."""
-        bench = get_bench()
-        sample = bench.path(bench.stars[0]["science"][0] if self.frames == "science" else bench.manifest["homing"])
-        header = fits.getheader(sample)
-        return {"X": 0, "Y": 0, "WIDTH": header["NAXIS1"], "HEIGHT": header["NAXIS2"]}
+        return recorded_roi(self.frames)
 
     def set_temperature(self, temperature_deg_c: float) -> None:
         self._setpoint_c = float(temperature_deg_c)

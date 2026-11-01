@@ -1,0 +1,120 @@
+# Salon hardware profile WITHOUT the instrument (`rosace --salon-mode <night>
+# --no-hardware`): the salon tested at home, every device replayed as in the
+# demo (rosace/hardware_replay/devices.py) -- no INDI server, no telescope.
+# Same night, same salon programs, same failures as the salon itself
+# (conf/hardware_salon.yaml): it reads the manifest salon.py writes. The
+# mount does not need the salon's shifted sky (nothing moves); exposures are
+# shortened to a few seconds.
+
+# Not a night under the sky: recorded as simulated, purged with
+# `rosace --purge-simulated` under the salon config.
+simulated: true
+
+# The salon's replay manifest, written by salon.py at every start.
+replay_dataset_dir: ~/.rosace-salon/replay
+
+# Every N-th observation, a cloud passes and its pointing fails (0: never).
+failure_every: 5
+
+INDI_drivers:
+
+    guiding_camera:
+        role: camera
+        module: devices
+        module_dir: rosace.hardware_replay
+        class_name: ReplayCamera
+        # Plumbing fields every device declares; unused by replay devices
+        indi_name: replay guiding camera
+        indi_client:
+            indi_host: none
+            indi_port: 0
+        replay_frames: guiding
+        # Longest wait for one exposure (seconds): a 10 s guide image takes 2 s
+        max_wait_seconds: 2
+        cooling: false
+
+    science_camera:
+        role: camera
+        module: devices
+        module_dir: rosace.hardware_replay
+        class_name: ReplayCamera
+        indi_name: replay science camera
+        indi_client:
+            indi_host: none
+            indi_port: 0
+        replay_frames: science
+        # Longest wait for one exposure (seconds): a 180 s frame takes 5 s
+        max_wait_seconds: 5
+        cooling: true
+        cooling_capability: -30
+        temperature_tolerance_deg_c: 2
+
+    pointing_camera:
+        role: camera
+        module: devices
+        module_dir: rosace.hardware_replay
+        class_name: ReplayCamera
+        indi_name: replay pointing camera
+        indi_client:
+            indi_host: none
+            indi_port: 0
+        replay_frames: wide_field
+        max_wait_seconds: 2
+        cooling: false
+
+    mount:
+        role: mount
+        module: devices
+        module_dir: rosace.hardware_replay
+        class_name: ReplayMount
+        indi_name: replay mount
+        indi_client:
+            indi_host: none
+            indi_port: 0
+        # Duration of every slew (seconds)
+        slew_seconds: 2
+        backlash_offset_deg: 2
+
+    focuser:
+        role: focuser
+        module: devices
+        module_dir: rosace.hardware_replay
+        class_name: ReplayFocuser
+        indi_name: replay focuser
+        indi_client:
+            indi_host: none
+            indi_port: 0
+
+    spectroscope:
+        role: spectroscope
+        module: devices
+        module_dir: rosace.hardware_replay
+        class_name: ReplaySpectroscope
+        indi_name: replay spectroscope
+        indi_client:
+            indi_host: none
+            indi_port: 0
+
+# The fake PHD2 (hardware_replay/fake_phd2.py), started by the server: a
+# port of its own, never the real PHD2's 4400.
+PHD2_config:
+    host: 127.0.0.1
+    port: 4499
+    do_calibration: False
+    profile_name: Replay
+    settle:
+        pixels: 0.8
+        time: 3
+        timeout: 180
+    # Seconds between a guide call and the fake PHD2's SettleDone
+    replay_settle_seconds: 3
+    # Seconds between two replayed frames of the recorded guide log
+    replay_step_seconds: 0.2
+
+# The 72ED profiles' mandatory steps, without home_sync_am3: the homing aims at
+# a random point of the current sky and plate-solves around it, while replay
+# can only serve the homing image recorded on the real night -- its field is
+# never there, and every attempt times out (4 minutes lost at the first
+# observation). INIT_SESSION still unparks the mount.
+sequencer_prefix:
+    - guiding_dark_acquisition

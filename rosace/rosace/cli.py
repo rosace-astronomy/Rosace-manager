@@ -13,7 +13,7 @@ prepares the server start, then main() starts the server.
 Kept out of main.py so the orchestrator knows nothing of the installation
 tools behind these options (config creation and validation, horizon-file
 validation, admin bootstrap, sub-plugin listing, purge of simulated data and of failed
-acquisitions).
+acquisitions, salon preparation).
 
 Import order matters: some options choose which config.yaml gets loaded
 (ROSACE_CONFIG), and rosace.config reads it once, when first imported. So
@@ -28,6 +28,9 @@ import sys
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8000
+
+# The salon's hardware profile with every device replayed (--no-hardware)
+SALON_NO_HARDWARE_PROFILE = "hardware_salon_replay"
 
 # The sub-plugin families (pipeline_loader._SUBPLUGIN_FAMILY_DIRS, not
 # imported here: it would load the config).
@@ -103,6 +106,24 @@ def build_parser() -> argparse.ArgumentParser:
              "~/.rosace-demo. Needs the replay dataset (scripts/build_demo_dataset.py "
              "--output ~/.rosace-demo/replay) and solve-field; the Docker image "
              "runs the same, dataset included",
+    )
+    server.add_argument(
+        "--salon-mode", metavar="NIGHT",
+        help="start the salon mode: the real instrument driven by day, indoors, "
+             "the light of the sky replayed from the night NIGHT (YYYY-MM-DD, the "
+             "date of its session directory, or that directory's full name) -- "
+             "every successful observation of it, again and again. Uses "
+             "~/.config/rosace/config_salon.yaml (with hardware_salon.yaml next to "
+             "it), else the packaged template; isolated under ~/.rosace-salon, the "
+             "real installation's data only read. Refused while a real session runs",
+    )
+    server.add_argument(
+        "--no-hardware", action="store_true",
+        help="with --salon-mode: test the salon without the instrument -- every "
+             "device replayed, as in the demo (packaged profile "
+             "conf/hardware_salon_replay.yaml), exposures shortened to a few "
+             "seconds; same night, programs and failures. Not refused while a "
+             "real session runs (no instrument driven): give another --port then",
     )
     server.add_argument(
         "--host", default=DEFAULT_HOST,
@@ -207,9 +228,10 @@ def run_cli(argv: list[str], parser: argparse.ArgumentParser | None = None) -> a
     """Parses argv (sys.argv[1:]). A tool option (--check-config, --init-config,
     --create-admin, --list-subplugins, --purge-simulated, --purge-failed, --purge-demo,
     --build-validation-data) runs and exits the process, as do --help,
-    --version and a usage error (exit 2); otherwise --demo-mode or a config
-    path set ROSACE_CONFIG where needed, and the parsed options are returned
-    so main() goes on to start the server."""
+    --version and a usage error (exit 2); otherwise --demo-mode, --salon-mode
+    or a config path set ROSACE_CONFIG where needed (--salon-mode also
+    prepares the salon, exit 1 when it cannot), and the parsed options are
+    returned so main() goes on to start the server."""
     parser = parser or build_parser()
     args = parser.parse_args(argv)
     tool = next((name for name in _TOOL_OPTIONS
@@ -224,6 +246,12 @@ def run_cli(argv: list[str], parser: argparse.ArgumentParser | None = None) -> a
         parser.error(f"--demo-mode cannot go with --{tool.replace('_', '-')}")
     if args.demo_mode and args.config_path:
         parser.error("--demo-mode and a config path cannot go together")
+    if args.salon_mode and (tool or args.demo_mode or args.config_path):
+        other = (f"--{tool.replace('_', '-')}" if tool else "--demo-mode" if args.demo_mode
+                 else "a config path")
+        parser.error(f"--salon-mode cannot go with {other}")
+    if args.no_hardware and not args.salon_mode:
+        parser.error("--no-hardware only goes with --salon-mode")
 
     if tool == "check_config":
         if args.check_config:
@@ -358,6 +386,27 @@ def run_cli(argv: list[str], parser: argparse.ArgumentParser | None = None) -> a
         # isolation) lives entirely in conf/config_demo.yaml, demo_seed.py and
         # hardware_replay/, triggered by IS_DEMO_MODE — not by this flag itself.
         os.environ["ROSACE_CONFIG"] = os.path.join(os.path.dirname(__file__), "conf", "config_demo.yaml")
+    elif args.salon_mode:
+        os.environ["ROSACE_CONFIG"] = str(salon_config_path())
+        if args.no_hardware:
+            os.environ["ROSACE_HARDWARE"] = SALON_NO_HARDWARE_PROFILE
+        from rosace.salon import SalonError, prepare_salon
+        try:
+            print(prepare_salon(args.salon_mode, check_running=not args.no_hardware))
+        except SalonError as error:
+            print(f"[FAIL] {error}")
+            sys.exit(1)
     elif args.config_path:
         os.environ["ROSACE_CONFIG"] = args.config_path
     return args
+
+
+def salon_config_path():
+    """This installation's salon config (~/.config/rosace/config_salon.yaml,
+    following $XDG_CONFIG_HOME), else the packaged template. Mirrors
+    config.py::_user_config_dir(), which cannot be imported before the
+    config is chosen."""
+    from pathlib import Path
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    own = Path(base).expanduser() / "rosace" / "config_salon.yaml"
+    return own if own.is_file() else Path(__file__).parent / "conf" / "config_salon.yaml"

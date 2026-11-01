@@ -1,0 +1,181 @@
+# ═══════════════════════════════════════════════════════════════
+# Rosace — SALON configuration (template).
+# Activated by `rosace --salon-mode <night>`, which uses this installation's
+# own copy, ~/.config/rosace/config_salon.yaml, when there is one (with its
+# hardware profile hardware_salon.yaml next to it), else this packaged
+# template. A full sibling of conf/config.yaml: config.py reads every Core
+# key unconditionally.
+#
+# Purpose: show the real instrument at work by day, indoors (an astronomy
+# fair). The mount, the spectrograph's lamps and the cameras are real; the
+# light of the sky is replayed from one real night, named on the command line
+# (salon.py, hardware_replay/salon_devices.py). Every successful observation
+# of that night is replayed, each through the salon program its recorded
+# program maps to (salon.programs below). Isolated under its own
+# base_data_dir; the real installation's data are only ever read.
+# ═══════════════════════════════════════════════════════════════
+
+# Marks this config as the salon config — config.py exposes this as
+# IS_SALON_MODE, which makes the GUI show "MODE SALON". Optional everywhere
+# else (defaults to false).
+is_salon: true
+
+# A dedicated sibling of the real ~/.rosace — own databases, own log, own
+# observations, own observation list. Never touches a real install's data.
+base_data_dir: ~/.rosace-salon
+
+databases_dir: databases
+
+log_dir: log
+
+observations_dir: observations
+
+dark_library_dir: dark_library
+
+# Neutral names and an approximate site (to the degree). The site does not
+# matter to the replay: the mount's shifted sky only depends on the sidereal
+# time elapsed since the recorded night.
+observatory:
+  site_name: Rosace-Salon
+  latitude_deg: 45.0
+  longitude_deg: 6.0 # East positive
+  elevation_m: 1000
+  observer: Rosace salon
+  site: Rosace salon
+  equipment: Rosace salon
+  telescope: 72ED refractor
+  spectrograph: Alpy 600
+  camera: Atik 314L
+  resolving_power: 600
+  site_uai_code: ""
+  telescope_diameter_mm: 72
+  telescope_focal_mm: 420
+  sensor_type: CCD
+
+# The real instrument with its sky replayed, and the fake PHD2 — see
+# conf/hardware_salon.yaml.
+active_hardware: hardware_salon
+
+# The real scheduler, reading the observation list written by salon.py (the
+# night's observations in their order, cycles times over).
+active_scheduler: scheduler_rosace_2026
+
+# The real SEQUENCER sub-plugins, as on the telescope.
+sequencer_backend: indi
+
+scheduler_retry_seconds: 60
+
+hardware_connect_timeout_seconds: 5
+camera_cooldown_timeout_seconds: 300
+
+session_ttl_hours: 336 # 336h = 14 days
+session_cookie_secure: false
+
+# Simbad servers, tried in this order (see the packaged config.yaml).
+simbad_tap_urls:
+  - https://simbad.cds.unistra.fr/simbad/sim-tap/sync
+  - https://simbad.cfa.harvard.edu/simbad/sim-tap/sync
+
+subplugin_params:
+  exposure_time_mag0_seconds: 4.0
+  max_exposure_time_seconds: 180
+  min_exposure_count: 5
+
+  guiding:
+    exposure_seconds: 10
+    sampling_arcsec: 2.69
+    slit_x: 958
+    slit_y: 529.3
+
+  pointing_72ed:
+    phase2_search_radius_deg: 1
+
+  slit_xy:
+    light_source: FLAT
+    exposure_seconds: 0.01
+    light_settle_seconds: 1
+    slit_x_area: 600
+    slit_y_area: 60
+    offset_y: 0.15
+
+  # Written by salon.py at every start: the night's targets, `cycles` times over.
+  observation_list_path: ~/.rosace-salon/targets/ObservationList.txt
+
+  scheduler_rosace_2026:
+    # The recorded targets are offered whatever the time of the salon: no sky
+    # filter. The mount's safety comes from its shifted sky
+    # (hardware_replay/salon_devices.py::ShiftedSkyMount): it takes the
+    # positions of the recorded night, already travelled.
+    min_target_altitude_deg: -90
+    min_meridian_distance_deg: 0
+
+  dark_acquisition:
+    count: 5
+
+  bias_acquisition:
+    count: 5
+    exposure_time_seconds: 0.0
+
+  calib_acquisition:
+    count: 3
+    exposure_time_seconds: 3.0
+    max_age_hours: 24.0
+
+  flat_acquisition:
+    count: 5
+    exposure_time_seconds: 3.0
+
+  focus:
+    window_fraction: 0.9
+
+  calculate_flux:
+    target_peak_fraction: 0.7
+
+  # Reference lines and response copied by salon.py from the real
+  # installation (salon.source_data_dir) into ~/.rosace-salon/reference_lines/
+  # and response/.
+  dispersion_law:
+    reference_lines: Alpy600_ArNe.txt
+    unit: A
+    tolerance: 1.0
+    degree: 3
+    min_lines: 7
+
+  response:
+    file: Vega_Object_C_RI.fit
+
+  scaling:
+    wavelength_min: 6600
+    wavelength_max: 6700
+
+  crop:
+    wavelength_min: 3750
+    wavelength_max: 7500
+
+  snr:
+    zones: [[3750, 7500], [6000, 7000]]
+
+  plot_spectrum:
+    png: true
+    pdf: true
+    svg: true
+    balmer_lines: true
+
+  export_demetra:
+    individual: false
+    global: true
+
+  # The salon mode (salon.py)
+  salon:
+    # The real installation's data directory, read only: the night named on
+    # the command line, its rosace.db, its targets.db, its reference files.
+    source_data_dir: ~/.rosace
+    # How many times the night's targets are listed in the observation list
+    cycles: 20
+    # Salon program replaying each recorded program (programs/salon_*.yaml);
+    # a program absent here is replayed through Be_stars.
+    programs:
+      Be_stars: Be_stars
+      PN: salon_PN
+      Cataclysmic: salon_Cataclysmic
+      All_stars: salon_All_stars

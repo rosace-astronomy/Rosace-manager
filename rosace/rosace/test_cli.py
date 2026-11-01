@@ -94,6 +94,58 @@ class TestMain:
         assert self.calls == []
 
 
+class TestSalonMode:
+    """--salon-mode chooses the salon config, prepares the salon (salon.py,
+    replaced here) and returns so main() starts the server."""
+
+    @pytest.fixture(autouse=True)
+    def _isolated(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("ROSACE_CONFIG", raising=False)
+        monkeypatch.delenv("ROSACE_HARDWARE", raising=False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    def test_packaged_template_without_an_installation_copy(self, monkeypatch, capsys):
+        import rosace.salon
+        calls = []
+        monkeypatch.setattr(rosace.salon, "prepare_salon",
+                            lambda night, check_running: calls.append((night, check_running)) or "Night ok")
+        args = run_cli(["--salon-mode", "2026-10-16", "--port", "8002"])
+        assert calls == [("2026-10-16", True)] and args.port == 8002
+        assert Path(os.environ["ROSACE_CONFIG"]) == Path(__file__).parent / "conf" / "config_salon.yaml"
+        assert "ROSACE_HARDWARE" not in os.environ
+        assert "Night ok" in capsys.readouterr().out
+
+    def test_no_hardware_replays_every_device(self, monkeypatch):
+        import rosace.salon
+        calls = []
+        monkeypatch.setattr(rosace.salon, "prepare_salon",
+                            lambda night, check_running: calls.append(check_running) or "")
+        run_cli(["--salon-mode", "2026-10-16", "--no-hardware"])
+        assert os.environ["ROSACE_HARDWARE"] == "hardware_salon_replay"
+        assert (Path(__file__).parent / "conf" / "hardware_salon_replay.yaml").is_file()
+        assert calls == [False]   # no instrument driven: not refused while a real session runs
+
+    def test_installation_copy_preferred(self, monkeypatch, tmp_path):
+        import rosace.salon
+        own = tmp_path / "xdg" / "rosace" / "config_salon.yaml"
+        own.parent.mkdir(parents=True)
+        own.write_text("is_salon: true\n")
+        monkeypatch.setattr(rosace.salon, "prepare_salon", lambda night, check_running: "")
+        run_cli(["--salon-mode", "2026-10-16"])
+        assert Path(os.environ["ROSACE_CONFIG"]) == own
+
+    def test_preparation_failure_exits_1(self, monkeypatch, capsys):
+        import rosace.salon
+
+        def refuse(night, check_running):
+            raise rosace.salon.SalonError("no night directory")
+        monkeypatch.setattr(rosace.salon, "prepare_salon", refuse)
+        with pytest.raises(SystemExit) as exit_info:
+            run_cli(["--salon-mode", "2026-10-01"])
+        assert exit_info.value.code == 1
+        assert "[FAIL] no night directory" in capsys.readouterr().out
+
+
 class TestUsageErrors:
     """Mistakes in the command line: argparse's error on stderr, exit code 2,
     nothing run."""
@@ -108,6 +160,11 @@ class TestUsageErrors:
         (["--demo-mode", "--purge-demo"], "--demo-mode cannot go with --purge-demo"),
         (["--purge-failed", "29/10/2026"], "not a YYYY-MM-DD date"),
         (["--purge-failed"], "expected one argument"),
+        (["--salon-mode", "2026-10-16", "--demo-mode"], "--salon-mode cannot go with --demo-mode"),
+        (["--salon-mode", "2026-10-16", "/some/where/config.yaml"], "--salon-mode cannot go with a config path"),
+        (["--salon-mode", "2026-10-16", "--purge-simulated"], "--salon-mode cannot go with --purge-simulated"),
+        (["--no-hardware"], "--no-hardware only goes with --salon-mode"),
+        (["--demo-mode", "--no-hardware"], "--no-hardware only goes with --salon-mode"),
     ])
     def test_reported_with_exit_code_2(self, argv, message, capsys, monkeypatch):
         monkeypatch.delenv("ROSACE_CONFIG", raising=False)
