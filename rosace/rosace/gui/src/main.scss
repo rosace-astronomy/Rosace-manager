@@ -369,6 +369,34 @@
 					gap: 0.2rem;
 				}
 
+				// The observation's documents (Résumé, Spectre), pushed to the right end
+				// of the row; a soft tan, close to brown, matching the warm palette.
+				.obs-docs {
+					margin-left: auto;
+					flex: 0 0 auto;
+					gap: 0.35rem;
+					align-items: center;
+
+					// Same size as the stage chips (.stage, an x4js Tag): same padding,
+					// border, radius and text; an x4js Button otherwise adds its own
+					// 8px padding and 2px margin.
+					.obs-doc {
+						color: var(--doc-btn-text);
+						background: var(--doc-btn-bg);
+						border: 2px solid var(--doc-btn-border);
+						border-radius: 6px;
+						padding: 2px 8px;
+						margin: 0;
+						gap: 4px;
+						font-size: inherit;
+						font-weight: 600;
+
+						&:hover {
+							background: var(--doc-btn-bg-hover);
+						}
+					}
+				}
+
 				.obs-substeps {
 					gap: 0.24rem;
 					padding: 0 4px;

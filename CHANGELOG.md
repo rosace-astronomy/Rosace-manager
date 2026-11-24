@@ -9,6 +9,10 @@ are listed, newest first. The reasons behind the changes are in
 
 ### Added
 
+- On the main page, each observation's row ends with « Résumé » and
+  « Spectre » buttons, which open its summary PDF and its final spectrum in
+  a new tab — shown only when the observation has that document (a program
+  that makes no summary or no spectrum plot has no button).
 - The night's time budget: at the end of each session, Rosace writes where
   the night's time went — science exposure (shutter open), readout, slew,
   fine pointing, PHD2 settling, calibrations, measurements on the target,

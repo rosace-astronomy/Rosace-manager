@@ -82,5 +82,11 @@ class PlotSpectrumPlugin(SubPlugin):
             figure.savefig(out, dpi=PNG_DPI if extension == "png" else None)
             written.append(out.name)
         obs.reduction_data["plot_spectrum"] = {"files": written}
+        # The spectrum offered on the GUI's observation list: the PDF when
+        # produced, else the PNG, else the SVG.
+        for extension in ("pdf", "png", "svg"):
+            if extension in formats:
+                obs.documents["spectrum"] = source.with_suffix(f".{extension}").name
+                break
         log.info(f"[PLOT_SPECTRUM] Wrote {', '.join(written)}")
         return obs

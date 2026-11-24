@@ -140,6 +140,7 @@ class TestSummaryPlugin:
         result = await SummaryPlugin().execute(obs)
 
         name = result.reduction_data["summary_file"]
+        assert result.documents["summary"] == name
         assert name == "20260925T213751_Vega_0e37017f_summary.pdf"
         assert _page_count(session / name) == 5
         assert "PHD2 guiding not available" not in caplog.text

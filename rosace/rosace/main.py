@@ -74,6 +74,7 @@ from .database import (
     db_insert_observation, db_set_yaml_file,
     db_stamp_stage, db_set_error,
     db_set_stage_status, db_get_recent_observations, db_record_measurements,
+    db_record_documents, db_get_document,
 )
 from .bess_validation_api import router as bess_validation_router
 from .demo_seed import seed_demo_data
@@ -209,12 +210,13 @@ async def run_stage(
 
 
 async def _persist_observation(obs: Observation) -> None:
-    """Writes the observation's YAML dossier and copies its measurements into
+    """Writes the observation's YAML dossier and copies its measurements and documents into
     rosace.db (the columns declared by database.py) — after every stage, on
     success and on error alike. Plugin-agnostic: obs.measurements is a plain
     dict, filled by sub-plugins main.py knows nothing about."""
     write_observation_file(obs)
     await db_record_measurements(obs.id, obs.measurements)
+    await db_record_documents(obs.id, obs.documents)
 
 
 # One worker thread, with its own event loop per observation, runs the post-obs
@@ -461,6 +463,23 @@ async def list_recent_observations(limit: int | None = None):
     """Returns observations from the current astronomical day, with per-stage statuses and
     timestamps from the database. No limit by default — see db_get_recent_observations()."""
     return await db_get_recent_observations(limit)
+
+@protected.get("/observations/{obs_id}/documents/{name}")
+async def get_observation_document(obs_id: str, name: str):
+    """Serves one of an observation's final documents (summary PDF, spectrum
+    plot...), shown in the browser -- only a file its sub-plugin declared in
+    Observation.documents (table observation_documents), inside the
+    observation's session directory: no other path is ever served."""
+    found = await db_get_document(obs_id, name)
+    if not found:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    file, session_dir = found
+    root = Path(session_dir).resolve()
+    path = (root / file).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    return FileResponse(path, content_disposition_type="inline")
+
 
 @protected.get("/observations/steps")
 async def get_observation_steps():

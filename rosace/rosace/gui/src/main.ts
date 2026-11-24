@@ -55,8 +55,20 @@ interface ObsRow {
     priority: number | null;
     created_at: string | Date;
     error_message: string;
+    documents?: string[];		// final documents the server can serve (GET /observations/{id}/documents/{name})
     stages: Record<string, StageInfo>;
 }
+
+/**
+ * Buttons at the end of an observation's row, one per final document the
+ * observation has (Observation.documents, recorded by the server) -- a row
+ * without a document has no button.
+ */
+
+const DOCUMENT_BUTTONS = [
+	{ name: "summary",  label: "Résumé",  tooltip: "PDF de résumé de l'observation" },
+	{ name: "spectrum", label: "Spectre", tooltip: "Spectre final" },
+];
 
 /**
  * returned by GET /observations/steps -- see step_progress.py.
@@ -766,6 +778,14 @@ class MainView extends VBox {
 					new SimpleText({ cls: "obs-id",        text: obs.id }),
 					new SimpleText({ cls: "obs-time",      text: time }),
 					stagesColumn,
+					new HBox({ cls: "obs-docs", content: DOCUMENT_BUTTONS
+						.filter( doc => obs.documents?.includes( doc.name ) )
+						.map( doc => new Button({
+							cls:     "obs-doc",
+							label:   doc.label,
+							tooltip: doc.tooltip,
+							click:   ( ) => window.open( `/observations/${encodeURIComponent( obs.id )}/documents/${doc.name}`, "_blank" ),
+						}) ) }),
 				]
 			}
 

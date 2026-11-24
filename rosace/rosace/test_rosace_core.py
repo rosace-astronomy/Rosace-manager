@@ -1779,6 +1779,29 @@ class TestSessionRunner:
         for previous, current in zip(rows, rows[1:]):   # no gap, no overlap
             assert current[3] == previous[4]
 
+    async def test_persist_observation_records_its_documents(self):
+        """main.py copies Observation.documents into observation_documents, without
+        knowing which sub-plugin wrote them."""
+        import sqlite3
+        import rosace.main as main_mod
+        from rosace import database as db_mod
+        from rosace.database import db_init
+
+        import uuid
+        from datetime import datetime, timezone
+
+        await db_init()
+        obs = Observation(id=uuid.uuid4().hex[:8], created_at=datetime.now(timezone.utc),
+                          session_id="docs", documents={"summary": "x_summary.pdf"})
+        await main_mod._persist_observation(obs)
+        obs.documents["summary"] = "y_summary.pdf"         # rewritten: replaced, not added
+        await main_mod._persist_observation(obs)
+
+        with sqlite3.connect(db_mod.DB_PATH) as db:
+            rows = db.execute("SELECT name, file FROM observation_documents WHERE observation_id = ?",
+                              (obs.id,)).fetchall()
+        assert rows == [("summary", "y_summary.pdf")]
+
     async def test_yaml_file_recorded_in_db_is_basename_not_full_path(self, monkeypatch):
         """Regression: main.py used to pass create_observation_file()'s full Path
         return value to db_set_yaml_file() instead of obs.yaml_file (already just
@@ -2859,6 +2882,54 @@ class TestApiEndpoints:
             res = client.get("/observations/recent?limit=5")
         assert res.status_code == 200
         assert isinstance(res.json(), list)
+
+    def _observation_with_document(self, tmp_path, name="summary", file="obs_summary.pdf"):
+        """An observation of today with one declared document (rows written
+        directly: the tables exist once the client's lifespan ran db_init)."""
+        import sqlite3
+        import uuid
+        from datetime import datetime, timezone
+        from rosace import database as db_mod
+
+        sid, oid = uuid.uuid4().hex[:8], uuid.uuid4().hex[:8]
+        now = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(db_mod.DB_PATH) as db:
+            db.execute("INSERT INTO sessions (id, started_at, status, session_dir) VALUES (?, ?, 'running', ?)",
+                       (sid, now, str(tmp_path)))
+            db.execute("INSERT INTO observations (id, session_id, target_name, created_at) VALUES (?, ?, 'Vega', ?)",
+                       (oid, sid, now))
+            db.execute("INSERT INTO observation_documents VALUES (?, ?, ?)", (oid, name, file))
+        return oid
+
+    def test_observation_document_is_served_and_listed(self, tmp_path):
+        (tmp_path / "obs_summary.pdf").write_bytes(b"%PDF-1.4 test")
+        with self._client() as client:
+            oid = self._observation_with_document(tmp_path)
+            res = client.get(f"/observations/{oid}/documents/summary")
+            recent = {o["id"]: o for o in client.get("/observations/recent").json()}
+        assert res.status_code == 200 and res.content.startswith(b"%PDF")
+        assert res.headers["content-type"] == "application/pdf"
+        assert "attachment" not in res.headers.get("content-disposition", "")
+        assert recent[oid]["documents"] == ["summary"]
+
+    def test_observation_document_unknown_or_missing_is_404(self, tmp_path):
+        with self._client() as client:
+            oid = self._observation_with_document(tmp_path)          # file not on disk
+            assert client.get(f"/observations/{oid}/documents/summary").status_code == 404
+            assert client.get(f"/observations/{oid}/documents/spectrum").status_code == 404
+            assert client.get("/observations/nosuchid/documents/summary").status_code == 404
+
+    def test_observation_document_outside_the_session_dir_is_refused(self, tmp_path):
+        night = tmp_path / "night"
+        night.mkdir()
+        (tmp_path / "secret.txt").write_text("no")
+        with self._client() as client:
+            oid = self._observation_with_document(night, file="../secret.txt")
+            assert client.get(f"/observations/{oid}/documents/summary").status_code == 404
+
+    def test_observation_document_needs_login(self, tmp_path):
+        with self._anon_client() as client:
+            assert client.get("/observations/x/documents/summary").status_code == 401
 
     def test_observations_steps_endpoint(self):
         """GET /observations/steps -- see step_progress.py. No fixture setup

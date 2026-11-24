@@ -91,6 +91,17 @@ async def db_init() -> None:
                 guiding_settle_s     REAL
             )
         """)
+        # The observation's final documents (Observation.documents), copied after
+        # every stage: the GUI offers them, GET /observations/{id}/documents/{name}
+        # serves only the files listed here.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS observation_documents (
+                observation_id  TEXT NOT NULL,
+                name            TEXT NOT NULL,
+                file            TEXT NOT NULL,
+                PRIMARY KEY (observation_id, name)
+            )
+        """)
         # The session's time line: consecutive, exclusive intervals recorded by
         # the orchestrator (time_ledger.py); outcome 'failed' marks the
         # intervals of an observation whose acquisition failed. Kept when
@@ -486,6 +497,16 @@ async def db_get_recent_observations(limit: int | None = None) -> list[dict]:
         db.row_factory = aiosqlite.Row
         async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()
+        documents: dict[str, list[str]] = {}
+        ids = [row["id"] for row in rows]
+        if ids:
+            marks = ",".join("?" * len(ids))
+            async with db.execute(
+                f"SELECT observation_id, name FROM observation_documents "
+                f"WHERE observation_id IN ({marks}) ORDER BY name", ids,
+            ) as cursor:
+                for doc in await cursor.fetchall():
+                    documents.setdefault(doc["observation_id"], []).append(doc["name"])
     return [
         {
             "id":            row["id"],
@@ -495,6 +516,7 @@ async def db_get_recent_observations(limit: int | None = None) -> list[dict]:
             "priority":      row["priority"],
             "created_at":    row["created_at"],
             "error_message": row["error_message"],
+            "documents":     documents.get(row["id"], []),
             "stages": {
                 "scheduler": {
                     "status": row["scheduler_status"] or "pending",
@@ -820,3 +842,34 @@ async def db_replace_night_time_budget(night: str, seconds: dict[str, float]) ->
              for category, value in seconds.items()],
         )
         await db.commit()
+
+
+# ─────────────────────────────────────────────────────────────
+# Observation documents (Observation.documents)
+# ─────────────────────────────────────────────────────────────
+
+async def db_record_documents(obs_id: str, documents: dict[str, str]) -> None:
+    """Copies an observation's final documents into observation_documents
+    (one row per name, replaced when the file changes)."""
+    if not documents:
+        return
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        await db.executemany(
+            "INSERT OR REPLACE INTO observation_documents (observation_id, name, file) VALUES (?, ?, ?)",
+            [(obs_id, name, file) for name, file in documents.items()],
+        )
+        await db.commit()
+
+
+async def db_get_document(obs_id: str, name: str) -> tuple[str, str] | None:
+    """(file name, session directory) of an observation's document, or None."""
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        async with db.execute(
+            "SELECT d.file, s.session_dir FROM observation_documents d "
+            "JOIN observations o ON o.id = d.observation_id "
+            "JOIN sessions s ON s.id = o.session_id "
+            "WHERE d.observation_id = ? AND d.name = ?",
+            (obs_id, name),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return (row[0], row[1]) if row and row[1] else None

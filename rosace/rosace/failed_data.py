@@ -187,11 +187,15 @@ def find_failed(night: str, db_path: Path | None = None, now: datetime | None = 
 def _delete_rows(db_path: Path, purges: list[SessionPurge]) -> None:
     db = sqlite3.connect(db_path)
     try:
+        # observation_documents: absent from a database the server never
+        # initialised since it was added.
+        tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         with db:   # one transaction
             for purge in purges:
                 ids = [(oid,) for oid in purge.failed]
-                for table in ("spectrum_flux", "pointing_errors", "bess_validation"):
-                    db.executemany(f"DELETE FROM {table} WHERE observation_id = ?", ids)
+                for table in ("spectrum_flux", "pointing_errors", "bess_validation", "observation_documents"):
+                    if table in tables:
+                        db.executemany(f"DELETE FROM {table} WHERE observation_id = ?", ids)
                 db.executemany("DELETE FROM observations WHERE id = ?", ids)
                 if purge.whole_session:
                     db.execute("DELETE FROM sessions WHERE id = ?", (purge.session_id,))

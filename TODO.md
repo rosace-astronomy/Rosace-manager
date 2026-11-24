@@ -111,6 +111,12 @@ Claude peut le suggérer, jamais le faire lui-même.
       `~/Téléchargements/night_time_budget_prototype.py` ; déplacement et
       stabilisation PHD2 estimés depuis le log, ces mesures n'existant pas
       avant), pour avoir l'historique depuis septembre (2026-11-24)
+- [ ] Documentation Sphinx (dépôt `Rosace-docs`) : ajouter le bilan de temps
+      d'une nuit et `TIME_CATEGORY` — texte prêt dans
+      `~/Téléchargements/sphinx_time_category.rst` (un point dans la liste des
+      principes de `Modules/Module3.rst`, une courte section dans la même
+      page, un paragraphe pour `Contribute.rst` quand la partie « écrire un
+      plugin » sera rédigée) (2026-11-24)
 - [ ] Revoir les bibliothèques "fragiles"/peu maintenues du projet — une ou
       deux repérées, probablement liées au chantier ASCOM/Windows (à
       confirmer/préciser lesquelles) (2026-09-20)

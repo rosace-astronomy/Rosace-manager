@@ -799,5 +799,6 @@ class SummaryPlugin(SubPlugin):
                 pdf.savefig(figure)
                 pages += 1
         obs.reduction_data["summary_file"] = name
+        obs.documents["summary"] = name   # offered on the GUI's observation list
         log.info(f"[SUMMARY] Wrote {name} ({pages} pages)")
         return obs

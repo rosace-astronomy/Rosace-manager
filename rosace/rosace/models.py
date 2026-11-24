@@ -121,6 +121,13 @@ class Observation(BaseModel):
     # the observations table, without knowing who produced them.
     measurements: dict[str, Any] = {}
 
+    # The observation's final documents, under agreed names (e.g. "summary",
+    # "spectrum"): file names in the observation's session directory. Written
+    # by the sub-plugins that make them; after every stage main.py copies them
+    # into rosace.db (observation_documents), so the GUI can offer them and
+    # the API serve them, without knowing who produced them.
+    documents: dict[str, str] = {}
+
     # Connected hardware adapters (see hardware/, hardware_indi/adapters/), keyed
     # by device name from the hardware YAML (e.g. "mount", "science_camera") —
     # copied from SessionContext.hardware by session_runner() before SEQUENCER

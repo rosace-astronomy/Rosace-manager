@@ -6,6 +6,11 @@
 	// Spring palette — green / warm gray / brown (deeper, less washed out)
 	--bg: #e6e1d2;
 	--bg-panel: #dcdcd9;
+	// Document buttons of the observation list (Résumé, Spectre): soft tan
+	--doc-btn-bg: #c9a987;
+	--doc-btn-bg-hover: #b8936c;
+	--doc-btn-border: #9c7752;
+	--doc-btn-text: #3d2b1a;
 	--bg-card: #cfcfcb;
 
 	--accent: #3f6b45;
@@ -29,6 +34,10 @@
 
 :root[data-theme="dark"] {
 	--bg: #080c14;
+	--doc-btn-bg: #8a6d4e;
+	--doc-btn-bg-hover: #a0815f;
+	--doc-btn-border: #b8966f;
+	--doc-btn-text: #f3e7d8;
 	--bg-panel: #0d1626;
 	--bg-card: #111e33;
 	--accent: #00d4ff;

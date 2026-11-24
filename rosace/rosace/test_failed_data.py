@@ -186,3 +186,18 @@ def test_malformed_night_rejected(night):
     path, *_ = night
     with pytest.raises(ValueError):
         find_failed("29/10/2026", path)
+
+
+def test_apply_deletes_the_failed_observations_documents(night):
+    path, db, _, _ = night
+    db.executescript("""
+        CREATE TABLE observation_documents (observation_id TEXT, name TEXT, file TEXT);
+        INSERT INTO observation_documents VALUES ('o1', 'summary', 'o1_summary.pdf');
+        INSERT INTO observation_documents VALUES ('o2', 'summary', 'o2_summary.pdf');
+    """)
+    db.commit()
+
+    purge_failed(NIGHT, apply=True, db_path=path)
+
+    left = sqlite3.connect(path).execute("SELECT observation_id FROM observation_documents").fetchall()
+    assert left == [("o1",)]

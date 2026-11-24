@@ -159,3 +159,17 @@ def test_apply_deletes_the_time_line_and_the_budget_of_an_emptied_night(tmp_path
     check = sqlite3.connect(path)
     assert [r[0] for r in check.execute("SELECT session_id FROM time_segments")] == ["real1"]
     assert [r[0] for r in check.execute("SELECT night FROM night_time_budget")] == ["2026-10-04"]
+
+
+def test_apply_deletes_the_simulated_observations_documents(tmp_path):
+    path, db = _db(tmp_path)
+    db.execute("CREATE TABLE observation_documents (observation_id TEXT, name TEXT, file TEXT)")
+    _session(db, "sim1", T0, T0 + timedelta(minutes=10), tmp_path / "sim", 1, observations=["o1"])
+    _session(db, "real1", T0 + timedelta(hours=5), T0 + timedelta(hours=6), tmp_path / "real", 0, observations=["o2"])
+    db.executemany("INSERT INTO observation_documents VALUES (?, 'summary', 'x.pdf')", [("o1",), ("o2",)])
+    db.commit()
+
+    purge_simulated(apply=True, db_path=path)
+
+    left = sqlite3.connect(path).execute("SELECT observation_id FROM observation_documents").fetchall()
+    assert left == [("o2",)]

@@ -98,7 +98,7 @@ def _delete_rows(db_path: Path, session_ids: list[str]) -> None:
     db = sqlite3.connect(db_path)
     try:
         with db:   # one transaction
-            # Time budget tables: absent from a database the server never
+            # Time budget and document tables: absent from a database the server never
             # initialised since they were added.
             tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
             for sid in session_ids:
@@ -106,6 +106,8 @@ def _delete_rows(db_path: Path, session_ids: list[str]) -> None:
                 obs = "(SELECT id FROM observations WHERE session_id = ?)"
                 db.execute(f"DELETE FROM spectrum_flux WHERE observation_id IN {obs}", (sid,))
                 db.execute(f"DELETE FROM pointing_errors WHERE observation_id IN {obs}", (sid,))
+                if "observation_documents" in tables:
+                    db.execute(f"DELETE FROM observation_documents WHERE observation_id IN {obs}", (sid,))
                 db.execute("DELETE FROM observations WHERE session_id = ?", (sid,))
                 db.execute("DELETE FROM sessions WHERE id = ?", (sid,))
                 if "time_segments" in tables:

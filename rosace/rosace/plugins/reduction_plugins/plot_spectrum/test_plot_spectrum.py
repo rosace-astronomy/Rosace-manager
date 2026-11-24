@@ -45,6 +45,7 @@ class TestPlotSpectrumPlugin:
 
         stem = FINAL.removesuffix(".fits")
         assert result.reduction_data["plot_spectrum"]["files"] == [f"{stem}.png", f"{stem}.pdf", f"{stem}.svg"]
+        assert result.documents == {"spectrum": f"{stem}.pdf"}   # the PDF first
         assert (tmp_path / f"{stem}.png").read_bytes()[:4] == b"\x89PNG"
         assert (tmp_path / f"{stem}.pdf").read_bytes()[:4] == b"%PDF"
         assert b"<svg" in (tmp_path / f"{stem}.svg").read_bytes()[:500]
@@ -56,6 +57,7 @@ class TestPlotSpectrumPlugin:
         result = await PlotSpectrumPlugin().execute(obs)
 
         assert result.reduction_data["plot_spectrum"]["files"] == [FINAL.replace(".fits", f".{fmt}")]
+        assert result.documents == {"spectrum": FINAL.replace(".fits", f".{fmt}")}
         assert {p.suffix for p in tmp_path.iterdir()} == {".fits", f".{fmt}"}
 
     async def test_nothing_when_no_format_is_requested(self, tmp_path, monkeypatch):
@@ -64,4 +66,5 @@ class TestPlotSpectrumPlugin:
         result = await PlotSpectrumPlugin().execute(obs)
 
         assert "plot_spectrum" not in result.reduction_data
+        assert result.documents == {}
         assert {p.suffix for p in tmp_path.iterdir()} == {".fits", ".yaml"}
