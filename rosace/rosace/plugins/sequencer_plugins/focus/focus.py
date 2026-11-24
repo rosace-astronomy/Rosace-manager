@@ -48,6 +48,7 @@ shown to actually need to vary.
 from __future__ import annotations
 
 DISPLAY_NAME = "Focus"
+TIME_CATEGORY = "target_measurements"
 
 import logging
 import warnings

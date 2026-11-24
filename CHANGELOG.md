@@ -9,6 +9,17 @@ are listed, newest first. The reasons behind the changes are in
 
 ### Added
 
+- The night's time budget: at the end of each session, Rosace writes where
+  the night's time went — science exposure (shutter open), readout, slew,
+  fine pointing, PHD2 settling, calibrations, measurements on the target,
+  waits, failed attempts... — as a one-page PDF and a CSV in the night's
+  directory (`<date>_time_budget.pdf`/`.csv`), and as rows of the new table
+  `night_time_budget` of `rosace.db`, for statistics over weeks or months.
+  **Before starting this version**, add three columns to the
+  `observations` table of an existing `rosace.db` (`science_exposure_s`,
+  `slew_s`, `guiding_settle_s`, all `REAL`), or every observation fails:
+  `ALTER TABLE observations ADD COLUMN science_exposure_s REAL;` and the
+  same for the two others.
 - `rosace --salon-mode <night>`: the real instrument at work by day,
   indoors (an astronomy fair). The mount, the spectrograph's lamps and the
   guiding and pointing cameras are driven for real, while the sky is

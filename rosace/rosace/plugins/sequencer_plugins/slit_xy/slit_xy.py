@@ -46,6 +46,7 @@ beyond adding the search zone's own corner offset.
 from __future__ import annotations
 
 DISPLAY_NAME = "Slit XY"
+TIME_CATEGORY = "pointing"
 
 import asyncio
 import logging

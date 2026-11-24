@@ -231,3 +231,22 @@ class TestSlew72edPlugin:
         assert data["guide_image"] == IMAGE_NAME
         assert data["corrected_ra_deg"] == pytest.approx(CORRECTED_COORD.ra.deg)
         assert data["corrected_dec_deg"] == pytest.approx(CORRECTED_COORD.dec.deg)
+
+    async def test_records_the_time_of_the_first_slew_only(self):
+        """slew_s, for the night's time budget: the two-step slew to the
+        catalogue position, not the corrected re-pointing (fine pointing)."""
+        import asyncio
+
+        obs = _make_obs()
+        calls = []
+
+        async def slow_slew(ra, dec):
+            calls.append((ra, dec))
+            await asyncio.sleep(0.05 if len(calls) <= 2 else 0.5)
+
+        obs.hardware["mount"].slew_to.side_effect = slow_slew
+
+        await Slew72edPlugin().execute(obs)
+
+        assert len(calls) == 4
+        assert 0.09 <= obs.measurements["slew_s"] < 0.4

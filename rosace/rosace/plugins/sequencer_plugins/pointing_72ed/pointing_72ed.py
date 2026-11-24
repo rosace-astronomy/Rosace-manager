@@ -15,6 +15,7 @@ mount's own slew precision can't reach.
 from __future__ import annotations
 
 DISPLAY_NAME = "Pointing"
+TIME_CATEGORY = "pointing"
 
 import logging
 import time
@@ -96,7 +97,8 @@ class Pointing72edPlugin(SubPlugin):
         # replaying would then guide on the wrong position without any error.
         settle_start = time.monotonic()
         await run_with_guiding_recovery(obs, phd2.start_guiding, "PHD2 start_guiding")
-        log.info(f"[POINTING_72ED] PHD2 first settle took {time.monotonic() - settle_start:.1f}s")
+        first_settle_s = time.monotonic() - settle_start
+        log.info(f"[POINTING_72ED] PHD2 first settle took {first_settle_s:.1f}s")
 
         # Step 3: lock position PHD2 chose (its own guide star, generally not the target itself).
         # DEBUG only, added 2026-09-02: needed to later cross-check PHD2's own pixel-coordinate
@@ -144,7 +146,11 @@ class Pointing72edPlugin(SubPlugin):
         log.info(f"[POINTING_72ED] Refining PHD2 lock position on {queried_name}")
         settle_start = time.monotonic()
         await phd2.start_guiding()
-        log.info(f"[POINTING_72ED] PHD2 refine settle took {time.monotonic() - settle_start:.1f}s")
+        refine_settle_s = time.monotonic() - settle_start
+        log.info(f"[POINTING_72ED] PHD2 refine settle took {refine_settle_s:.1f}s")
+        # PHD2 settling time of this step, for the night's time budget: the rest of
+        # the step's duration (recorded by the orchestrator) is fine pointing.
+        obs.measurements["guiding_settle_s"] = round(first_settle_s + refine_settle_s, 1)
 
         # Step 8: done -- star in the slit, guiding active. Only the image this step
         # actually produced (the target is already in scheduler_data, the slit in

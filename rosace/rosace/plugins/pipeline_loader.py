@@ -48,6 +48,7 @@ sub-plugins out of program YAMLs entirely.
 from __future__ import annotations
 
 import ast
+import functools
 import importlib
 import logging
 import re
@@ -167,15 +168,12 @@ def _module_docstring(family_dir: Path, name: str) -> str | None:
     return ast.get_docstring(tree)
 
 
-def _read_display_name_constant(module_path: Path) -> str | None:
-    """Parses a single module file and returns its top-level DISPLAY_NAME
-    constant, or None if the file doesn't exist or declares none. Uses
-    ast.parse rather than importing -- same reasoning as _module_docstring()
-    above: never triggers a sub-plugin's own import-time side effects, safe
-    regardless of backend. Exposed at module level (rather than inlined in
-    _module_display_name() below) so it can also be pointed at a
-    "<name>_internal.py" file, e.g. to verify both backend variants of the
-    same sub-plugin declare the same label (see TestSubpluginDisplayNames)."""
+def _read_str_constant(module_path: Path, constant: str) -> str | None:
+    """Parses a single module file and returns its top-level string constant
+    named `constant` (DISPLAY_NAME, TIME_CATEGORY), or None if the file
+    doesn't exist or declares none. Uses ast.parse rather than importing --
+    same reasoning as _module_docstring() above: never triggers a
+    sub-plugin's own import-time side effects, safe regardless of backend."""
     if not module_path.is_file():
         return None
     tree = ast.parse(module_path.read_text(encoding="utf-8"))
@@ -184,12 +182,21 @@ def _read_display_name_constant(module_path: Path) -> str | None:
             isinstance(node, ast.Assign)
             and len(node.targets) == 1
             and isinstance(node.targets[0], ast.Name)
-            and node.targets[0].id == "DISPLAY_NAME"
+            and node.targets[0].id == constant
             and isinstance(node.value, ast.Constant)
             and isinstance(node.value.value, str)
         ):
             return node.value.value
     return None
+
+
+def _read_display_name_constant(module_path: Path) -> str | None:
+    """Returns a module file's DISPLAY_NAME constant, or None. Exposed at
+    module level (rather than inlined in _module_display_name() below) so it
+    can also be pointed at a "<name>_internal.py" file, e.g. to verify both
+    backend variants of the same sub-plugin declare the same label (see
+    TestSubpluginDisplayNames)."""
+    return _read_str_constant(module_path, "DISPLAY_NAME")
 
 
 def _module_display_name(family_dir: Path, name: str) -> str | None:
@@ -220,6 +227,23 @@ def get_display_names(families: Iterable[str] | None = None) -> dict[str, dict[s
             for name in _discover_subplugin_names(family_dir)
         }
     return result
+
+
+@functools.cache
+def time_category(name: str) -> str:
+    """Time-budget category declared by the SEQUENCER sub-plugin `name` (its
+    TIME_CATEGORY constant, read from <name>/<name>.py, or from
+    <name>_internal.py when only that one exists), or "other" when it
+    declares none -- a missing category only blurs the time budget, it is
+    no reason to fail a step (see TestSubpluginTimeCategories for the check
+    on the real catalogue). Cached: the files don't change while the server
+    runs."""
+    family_dir = _SUBPLUGIN_FAMILY_DIRS["sequencer"]
+    for module_path in (family_dir / name / f"{name}.py", family_dir / name / f"{name}_internal.py"):
+        category = _read_str_constant(module_path, "TIME_CATEGORY")
+        if category:
+            return category
+    return "other"
 
 
 def list_subplugins(families: Iterable[str] | None = None) -> list[tuple[str, str, str]]:

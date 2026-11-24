@@ -24,8 +24,10 @@ pointing_72ed corrects the rest against the slit actually in force.
 from __future__ import annotations
 
 DISPLAY_NAME = "Slew"
+TIME_CATEGORY = "pointing"
 
 import logging
+import time
 
 from astropy.coordinates import SkyCoord
 
@@ -81,7 +83,11 @@ class Slew72edPlugin(SubPlugin):
         # Step 1: two-step slew toward the target
         target_coord = SkyCoord(ra=target.ra, dec=target.dec, unit="deg", frame="icrs")
         log.info(f"[SLEW_72ED] Initial pointing toward {queried_name}")
+        slew_start = time.monotonic()
         await _slew_with_backlash_approach(mount, target_coord, backlash_offset_deg)
+        # Time spent moving the mount to the target, for the night's time budget:
+        # the rest of this step (plate solve, corrected re-pointing) is fine pointing.
+        obs.measurements["slew_s"] = round(time.monotonic() - slew_start, 1)
         # DEBUG only, added 2026-08-30 while investigating a large initial pointing miss --
         # distinguishes the mount executing the GOTO inaccurately (reported position would
         # then differ from commanded) from the commanded position itself already being off

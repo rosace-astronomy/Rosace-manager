@@ -1725,6 +1725,60 @@ class TestSessionRunner:
         assert close_called == [True]
         assert main_mod.state.stage == OrchestratorStage.IDLE
 
+    async def test_records_the_session_time_line(self, monkeypatch):
+        """The orchestrator records every interval of the session (time_ledger.py),
+        a failed acquisition's intervals marked failed, from INIT to CLOSE."""
+        import sqlite3
+        import rosace.main as main_mod
+        from rosace import database as db_mod
+
+        session_ids, obs_ids, scheduler_calls = [], [], []
+
+        class FakeInit:
+            async def run(self, ctx):
+                Path("/tmp/fake_session_dir").mkdir(parents=True, exist_ok=True)
+                ctx.session_dir = "/tmp/fake_session_dir"
+                session_ids.append(ctx.session_id)
+                return ctx
+
+        class FakeScheduler:
+            async def run(self, obs):
+                scheduler_calls.append(1)
+                if len(scheduler_calls) == 1:
+                    obs.scheduler_data["target"] = Target(name="LedgerStar", ra=0.0, dec=0.0)
+                    obs.scheduler_data["program"] = "test_program"
+                    obs_ids.append(obs.id)
+                else:
+                    main_mod.state.is_running = False
+                return obs
+
+        class FakeSequencer:
+            async def run(self, obs):
+                raise RuntimeError("clouds")
+
+        class FakeClose:
+            async def run(self, ctx): return ctx
+
+        monkeypatch.setattr(main_mod, "SCHEDULER_RETRY_SECONDS", 0)
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.INIT_SESSION, FakeInit())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SCHEDULER, FakeScheduler())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.SEQUENCER, FakeSequencer())
+        monkeypatch.setitem(main_mod.plugins, OrchestratorStage.CLOSE_SESSION, FakeClose())
+
+        main_mod.state.is_running = True
+        await main_mod.session_runner()
+
+        with sqlite3.connect(db_mod.DB_PATH) as db:
+            rows = db.execute(
+                "SELECT category, observation_id, outcome, started_at, ended_at FROM time_segments "
+                "WHERE session_id = ? ORDER BY started_at, id", (session_ids[0],)).fetchall()
+        categories = [r[0] for r in rows]
+        assert categories[0] == "init" and categories[-1] == "close"
+        assert "scheduler" in categories and "waiting_for_target" in categories
+        assert [r[2] for r in rows if r[1] == obs_ids[0]] == ["failed"]
+        for previous, current in zip(rows, rows[1:]):   # no gap, no overlap
+            assert current[3] == previous[4]
+
     async def test_yaml_file_recorded_in_db_is_basename_not_full_path(self, monkeypatch):
         """Regression: main.py used to pass create_observation_file()'s full Path
         return value to db_set_yaml_file() instead of obs.yaml_file (already just

@@ -59,6 +59,38 @@ canonical file and an _internal.py counterpart, both must declare the
 *same* DISPLAY_NAME — they represent one logical step, and the GUI must
 show the same label no matter which backend is active.
 
+TIME_CATEGORY (night's time budget)
+-------------------------------------
+Next to DISPLAY_NAME, every SEQUENCER sub-plugin declares a TIME_CATEGORY
+constant: where the time it takes goes in the night's time budget
+(time_budget.py, built at CLOSE_SESSION). You never record any time
+yourself: the orchestrator writes each step's interval to the database
+under the category you declare (read via ast.parse, like DISPLAY_NAME;
+both files of a canonical/_internal.py pair declare the same one). The
+categories (time_ledger.py::STEP_CATEGORIES):
+
+    slew                 moving the mount to the target, nothing else
+    pointing             slew + fine pointing + PHD2 settling (mixed, see below)
+    homing               mount homing, once per session
+    science              science exposures + readout (mixed, see below)
+    target_measurements  measurements on the target (focus, wide field...)
+    calibrations         dark, bias, lamp, flat, light-source changes
+    other                anything else -- this template's own value; change it
+
+Choose the one that says what the telescope is busy doing during your
+step. "pointing" and "science" are mixed: only your step knows how its
+time divides, so it reports durations (seconds) in obs.measurements, and
+the budget takes them out of the step's time, the rest going to fine
+pointing or readout:
+
+    science   obs.measurements["science_exposure_s"]  shutter-open time
+    pointing  obs.measurements["slew_s"]              mount moving to the target
+              obs.measurements["guiding_settle_s"]    waiting for PHD2 to settle
+
+A missing measurement is 0 (the whole step counts as fine pointing or
+readout). Add to an existing value rather than overwrite it, if another
+step of the same observation may already have set it.
+
 BACKEND AXIS (SEQUENCER only)
 -------------------------------
 SEQUENCER sub-plugins are the only family with a backend axis
@@ -74,7 +106,7 @@ TO WRITE YOUR OWN SEQUENCER SUB-PLUGIN
    plugins/sequencer_plugins/<your_name>/, rename this file and its class.
    <your_name> must be all-lowercase (letters, digits, underscores only) —
    enforced at server startup, see pipeline_loader.py::validate_subplugin_catalogue().
-2. Implement your own execute(obs).
+2. Set DISPLAY_NAME and TIME_CATEGORY, implement your own execute(obs).
 3. Write plugins/sequencer_plugins/<your_name>/test_<your_name>.py.
 4. No registry to edit — add "<your_name>" to a program YAML's
    sequencer: list, wherever in the order you want it to run.
@@ -83,6 +115,7 @@ TO WRITE YOUR OWN SEQUENCER SUB-PLUGIN
 from __future__ import annotations
 
 DISPLAY_NAME = "Blank"
+TIME_CATEGORY = "other"
 
 import logging
 

@@ -27,6 +27,12 @@ PLACEHOLDER: the execute() below only logs the observation dossier — real
 email/FTP/API integration is a separate future chantier, expected to work
 from the observation's files, like ARCHIVE.
 
+TIME BUDGET
+-----------
+No TIME_CATEGORY here (SEQUENCER sub-plugins only): SHARING runs in the
+post-observation thread, in parallel with the next observations, so it
+takes no telescope time and is not on the night's time line.
+
 DISPLAY_NAME (GUI label)
 --------------------------
 Right after this docstring, every sub-plugin declares its own short

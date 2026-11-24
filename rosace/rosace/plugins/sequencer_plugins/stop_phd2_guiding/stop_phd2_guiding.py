@@ -37,6 +37,7 @@ started during this observation, or a write error, is only a warning.
 from __future__ import annotations
 
 DISPLAY_NAME = "Stop guiding"
+TIME_CATEGORY = "target_measurements"
 
 import asyncio
 import logging

@@ -135,3 +135,27 @@ def test_apply_deletes_rows_files_and_empty_directory(tmp_path):
     assert mixed_night.is_dir() and real_file.exists() and not (mixed_night / "b.fits").exists()
     assert "Total: 2 sessions, 2 observations" in report(purges)
     assert purge_simulated(apply=False, db_path=path) == []
+
+
+def test_apply_deletes_the_time_line_and_the_budget_of_an_emptied_night(tmp_path):
+    path, db = _db(tmp_path)
+    db.executescript("""
+        CREATE TABLE time_segments (id INTEGER PRIMARY KEY, session_id TEXT);
+        CREATE TABLE night_time_budget (night TEXT, category TEXT);
+    """)
+    sim_night = tmp_path / "2026-10-03_Site"
+    mixed_night = tmp_path / "2026-10-04_Site"
+    _session(db, "sim1", T0, T0 + timedelta(minutes=10), sim_night, 1)
+    _session(db, "sim2", T0 + timedelta(days=1), T0 + timedelta(days=1, minutes=10), mixed_night, 1)
+    _session(db, "real1", T0 + timedelta(days=1, hours=1), T0 + timedelta(days=1, hours=2), mixed_night, 0)
+    for sid in ("sim1", "sim2", "real1"):
+        db.execute("INSERT INTO time_segments (session_id) VALUES (?)", (sid,))
+    for night in ("2026-10-03", "2026-10-04"):
+        db.execute("INSERT INTO night_time_budget VALUES (?, 'init')", (night,))
+    db.commit()
+
+    purge_simulated(apply=True, db_path=path)
+
+    check = sqlite3.connect(path)
+    assert [r[0] for r in check.execute("SELECT session_id FROM time_segments")] == ["real1"]
+    assert [r[0] for r in check.execute("SELECT night FROM night_time_budget")] == ["2026-10-04"]

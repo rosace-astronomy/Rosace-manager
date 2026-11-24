@@ -212,3 +212,18 @@ class TestPointing72edPlugin:
 
         assert result is obs
         assert obs.sequencer_data["pointing_72ed"] == {"guide_image": IMAGE_NAME}
+
+    async def test_records_the_phd2_settling_time(self):
+        """guiding_settle_s, for the night's time budget: both settles."""
+        import asyncio
+
+        obs = _make_obs()
+
+        async def slow_settle(*args, **kwargs):
+            await asyncio.sleep(0.05)
+
+        obs.hardware["phd2"].start_guiding.side_effect = slow_settle
+
+        await Pointing72edPlugin().execute(obs)
+
+        assert 0.09 <= obs.measurements["guiding_settle_s"] < 0.5

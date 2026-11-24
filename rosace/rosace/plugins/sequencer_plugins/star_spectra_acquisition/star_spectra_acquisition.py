@@ -25,6 +25,7 @@ append to the same key.
 from __future__ import annotations
 
 DISPLAY_NAME = "Science"
+TIME_CATEGORY = "science"
 
 import logging
 
@@ -121,6 +122,11 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
         # No sequencer_data["star_spectra_acquisition"] casier: everything descriptive this
         # step produces is already the shared star_spectra_images list below -- REDUCTION
         # (and anyone else) reads that fixed key, never this sub-plugin's own name.
+        # Shutter-open time of this step, for the night's time budget: the rest of
+        # the step's duration (recorded by the orchestrator) is readout.
+        obs.measurements["science_exposure_s"] = round(
+            obs.measurements.get("science_exposure_s", 0.0) + exposure_time * len(raw_files), 1
+        )
         obs.sequencer_data.setdefault("star_spectra_images", []).extend(raw_files)
         log.info(f"[STAR_SPECTRA_ACQUISITION] Acquisition complete -- {raw_files}")
         return obs

@@ -11,6 +11,7 @@ into the next observation.
 from __future__ import annotations
 
 DISPLAY_NAME = "Sky"
+TIME_CATEGORY = "calibrations"
 
 import logging
 

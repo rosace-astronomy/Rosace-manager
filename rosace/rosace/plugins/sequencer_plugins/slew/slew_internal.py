@@ -7,6 +7,7 @@ Backend "internal" — internal simulation, no external dependency.
 from __future__ import annotations
 
 DISPLAY_NAME = "Slew"
+TIME_CATEGORY = "slew"
 
 import asyncio
 import logging

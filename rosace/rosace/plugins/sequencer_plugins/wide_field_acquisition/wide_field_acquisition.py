@@ -24,6 +24,7 @@ guiding-chain recovery: another camera, which the guiding never needs.
 from __future__ import annotations
 
 DISPLAY_NAME = "Grand champ"
+TIME_CATEGORY = "target_measurements"
 
 import logging
 from pathlib import Path

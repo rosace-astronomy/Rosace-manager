@@ -98,12 +98,23 @@ def _delete_rows(db_path: Path, session_ids: list[str]) -> None:
     db = sqlite3.connect(db_path)
     try:
         with db:   # one transaction
+            # Time budget tables: absent from a database the server never
+            # initialised since they were added.
+            tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
             for sid in session_ids:
+                row = db.execute("SELECT session_dir FROM sessions WHERE id = ?", (sid,)).fetchone()
                 obs = "(SELECT id FROM observations WHERE session_id = ?)"
                 db.execute(f"DELETE FROM spectrum_flux WHERE observation_id IN {obs}", (sid,))
                 db.execute(f"DELETE FROM pointing_errors WHERE observation_id IN {obs}", (sid,))
                 db.execute("DELETE FROM observations WHERE session_id = ?", (sid,))
                 db.execute("DELETE FROM sessions WHERE id = ?", (sid,))
+                if "time_segments" in tables:
+                    db.execute("DELETE FROM time_segments WHERE session_id = ?", (sid,))
+                # The night's budget goes with its last session.
+                if "night_time_budget" in tables and row and row[0]:
+                    left = db.execute("SELECT COUNT(*) FROM sessions WHERE session_dir = ?", (row[0],)).fetchone()[0]
+                    if not left:
+                        db.execute("DELETE FROM night_time_budget WHERE night = ?", (Path(row[0]).name[:10],))
     finally:
         db.close()
 

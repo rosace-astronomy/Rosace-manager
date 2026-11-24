@@ -269,7 +269,8 @@ class TestTemperatures:
 
         await StarSpectraAcquisitionPlugin().execute(obs)
 
-        assert obs.measurements == {"ambient_temp_c": 12.35, "camera_temp_c": -10.04}
+        assert obs.measurements["ambient_temp_c"] == 12.35
+        assert obs.measurements["camera_temp_c"] == -10.04
 
     async def test_unreadable_temperature_never_blocks(self, tmp_path, caplog):
         camera = AsyncMock()
@@ -283,6 +284,19 @@ class TestTemperatures:
         assert "camera_temp_c" not in obs.measurements and "ambient_temp_c" not in obs.measurements
         assert obs.sequencer_data["star_spectra_images"]          # the exposures were still taken
         assert any("Could not read camera_temp_c" in r.getMessage() for r in caplog.records)
+
+
+class TestScienceExposureTime:
+
+    async def test_records_the_shutter_open_time(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ssa_mod, "MIN_EXPOSURE_COUNT", 5)
+        camera = AsyncMock()
+        camera.expose.return_value = MagicMock()
+        obs = _make_obs(obs_dir=tmp_path, exposure=ExposureConfig(exposure_time=8.0), camera=camera)
+
+        await StarSpectraAcquisitionPlugin().execute(obs)
+
+        assert obs.measurements["science_exposure_s"] == pytest.approx(40.0)  # 5 x 8 s
 
 
 class TestMinExposureCount:

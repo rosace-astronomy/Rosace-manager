@@ -29,6 +29,7 @@ this casier (see CLAUDE.md, "Shared, purpose-named keys").
 from __future__ import annotations
 
 DISPLAY_NAME = "Calib"
+TIME_CATEGORY = "calibrations"
 
 import logging
 import re

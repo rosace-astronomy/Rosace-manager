@@ -44,6 +44,12 @@ the app. No backend axis either: REDUCTION sub-plugins process
 already-acquired files, no hardware dependency — unlike SEQUENCER, there's
 never a "<name>_internal.py" variant.
 
+TIME BUDGET
+-----------
+No TIME_CATEGORY here (SEQUENCER sub-plugins only): REDUCTION runs in the
+post-observation thread, in parallel with the next observations, so it
+takes no telescope time and is not on the night's time line.
+
 DISPLAY_NAME (GUI label)
 --------------------------
 Right after this docstring, every sub-plugin declares its own short

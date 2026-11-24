@@ -85,7 +85,39 @@ async def db_init() -> None:
                 camera_temp_c        REAL,
                 focus_fwhm_px        REAL,
                 slit_y_px            REAL,
-                pier_side            TEXT
+                pier_side            TEXT,
+                science_exposure_s   REAL,
+                slew_s               REAL,
+                guiding_settle_s     REAL
+            )
+        """)
+        # The session's time line: consecutive, exclusive intervals recorded by
+        # the orchestrator (time_ledger.py); outcome 'failed' marks the
+        # intervals of an observation whose acquisition failed. Kept when
+        # --purge-failed removes that observation's row: the time it cost
+        # still counts in the night's budget.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS time_segments (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id      TEXT NOT NULL,
+                started_at      TEXT NOT NULL,
+                ended_at        TEXT NOT NULL,
+                category        TEXT NOT NULL,
+                step            TEXT,
+                observation_id  TEXT,
+                outcome         TEXT
+            )
+        """)
+        # One row per night and time category, written at CLOSE_SESSION
+        # (time_budget.py): the table to compute statistics over many nights.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS night_time_budget (
+                night        TEXT NOT NULL,
+                category     TEXT NOT NULL,
+                seconds      REAL NOT NULL,
+                percent      REAL NOT NULL,
+                computed_at  TEXT NOT NULL,
+                PRIMARY KEY (night, category)
             )
         """)
         await db.execute("""
@@ -342,6 +374,9 @@ MEASUREMENT_COLUMNS = {
     "focus_fwhm_px": "focus_fwhm_px",
     "slit_y_px": "slit_y_px",
     "pier_side": "pier_side",
+    "science_exposure_s": "science_exposure_s",
+    "slew_s": "slew_s",
+    "guiding_settle_s": "guiding_settle_s",
 }
 
 
@@ -712,3 +747,76 @@ async def db_mark_bess_sent(observation_id: str) -> int:
         )
         await db.commit()
         return cursor.rowcount
+
+
+# ─────────────────────────────────────────────────────────────
+# Time budget (time_ledger.py, time_budget.py)
+# ─────────────────────────────────────────────────────────────
+
+async def db_insert_time_segment(session_id: str, started_at: datetime, ended_at: datetime,
+                                 category: str, step: str | None, observation_id: str | None,
+                                 outcome: str | None) -> None:
+    """Records one closed interval of the session's time line."""
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        await db.execute(
+            "INSERT INTO time_segments (session_id, started_at, ended_at, category, step, "
+            "observation_id, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (session_id, started_at.isoformat(), ended_at.isoformat(), category,
+             step or None, observation_id or None, outcome),
+        )
+        await db.commit()
+
+
+async def db_mark_segments_failed(observation_id: str) -> None:
+    """Marks every recorded interval of an observation as a failed attempt."""
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        await db.execute(
+            "UPDATE time_segments SET outcome = 'failed' WHERE observation_id = ?",
+            (observation_id,),
+        )
+        await db.commit()
+
+
+async def db_get_night_time_data(session_dir: str) -> tuple[list[dict], list[dict], dict[str, dict]]:
+    """Everything the time budget of one night needs: its sessions (oldest
+    first), their time segments (in time order) and the time measurements of
+    their observations, {observation_id: {measurement: value}}."""
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT id, started_at, closed_at FROM sessions WHERE session_dir = ? ORDER BY started_at",
+            (session_dir,),
+        ) as cur:
+            sessions = [dict(r) for r in await cur.fetchall()]
+        ids = [s["id"] for s in sessions]
+        if not ids:
+            return [], [], {}
+        marks = ",".join("?" * len(ids))
+        async with db.execute(
+            f"SELECT session_id, started_at, ended_at, category, step, observation_id, outcome "
+            f"FROM time_segments WHERE session_id IN ({marks}) ORDER BY started_at, id",
+            ids,
+        ) as cur:
+            segments = [dict(r) for r in await cur.fetchall()]
+        async with db.execute(
+            f"SELECT id, science_exposure_s, slew_s, guiding_settle_s "
+            f"FROM observations WHERE session_id IN ({marks})",
+            ids,
+        ) as cur:
+            measurements = {r["id"]: dict(r) for r in await cur.fetchall()}
+    return sessions, segments, measurements
+
+
+async def db_replace_night_time_budget(night: str, seconds: dict[str, float]) -> None:
+    """Replaces the budget rows of one night (one per category), in one transaction."""
+    total = sum(seconds.values())
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        await db.execute("DELETE FROM night_time_budget WHERE night = ?", (night,))
+        await db.executemany(
+            "INSERT INTO night_time_budget (night, category, seconds, percent, computed_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [(night, category, round(value, 1), round(100 * value / total, 2) if total else 0.0, now)
+             for category, value in seconds.items()],
+        )
+        await db.commit()

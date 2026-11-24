@@ -83,6 +83,7 @@ make pointing worse rather than better in the field.
 from __future__ import annotations
 
 DISPLAY_NAME = "Home"
+TIME_CATEGORY = "homing"
 
 import logging
 import random

@@ -638,3 +638,41 @@ class TestSubpluginDisplayNames:
             if canonical != internal:
                 mismatched.append(f"{name}: canonical={canonical!r} internal={internal!r}")
         assert not mismatched, f"DISPLAY_NAME mismatch between backend variants: {mismatched}"
+
+
+class TestSubpluginTimeCategories:
+    """Every SEQUENCER sub-plugin declares where its time goes in the night's
+    time budget (TIME_CATEGORY, read by time_category()). Same posture as
+    TestSubpluginDisplayNames: a missing one only blurs the budget ("other"),
+    so it is caught here rather than at startup."""
+
+    def test_every_sequencer_subplugin_declares_a_valid_category(self):
+        from rosace.plugins.pipeline_loader import (
+            _SUBPLUGIN_FAMILY_DIRS,
+            _discover_subplugin_names,
+            _read_str_constant,
+        )
+        from rosace.time_ledger import STEP_CATEGORIES
+
+        sequencer_dir = _SUBPLUGIN_FAMILY_DIRS["sequencer"]
+        problems = []
+        for name in _discover_subplugin_names(sequencer_dir):
+            for module_path in sorted((sequencer_dir / name).glob(f"{name}*.py")):
+                if module_path.stem not in (name, f"{name}_internal"):
+                    continue
+                category = _read_str_constant(module_path, "TIME_CATEGORY")
+                if category not in STEP_CATEGORIES:
+                    problems.append(f"{module_path.name}: {category!r}")
+        assert not problems, f"Missing or unknown TIME_CATEGORY: {problems}"
+
+    def test_time_category_reads_the_declared_value(self):
+        from rosace.plugins.pipeline_loader import time_category
+
+        assert time_category("slew_72ed") == "pointing"
+        assert time_category("star_spectra_acquisition") == "science"
+        assert time_category("dark_acquisition") == "calibrations"
+
+    def test_unknown_subplugin_falls_back_to_other(self):
+        from rosace.plugins.pipeline_loader import time_category
+
+        assert time_category("no_such_subplugin") == "other"

@@ -3,6 +3,7 @@ import logging
 
 from ..models import SessionContext
 from ..session_log_extractor import extract_session_log
+from ..time_budget import build_night_budget
 from .camera_cooldown import deactivate_cooling_for_every_camera
 
 log = logging.getLogger("spectro.plugin.close_session")
@@ -34,6 +35,15 @@ class CloseSessionPlugin:
                 log.info(f"[CLOSE_SESSION] Device '{device_name}' disconnected")
             except Exception as e:
                 log.error(f"[CLOSE_SESSION] Failed to disconnect '{device_name}': {e}")
+
+        # The night's time budget (time_budget.py): ends the session's time line,
+        # then table, CSV and PDF. Never blocks the close.
+        # Before the log extraction, so its summary line is in the session log.
+        if ctx.session_dir:
+            try:
+                await build_night_budget(ctx.session_dir)
+            except Exception as e:
+                log.error(f"[CLOSE_SESSION] Failed to build the night's time budget: {e}")
 
         # Makes the session directory self-contained for post-mortem diagnosis,
         # without digging through the global rotating log -- same posture as the

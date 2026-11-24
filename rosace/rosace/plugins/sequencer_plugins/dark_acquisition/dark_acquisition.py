@@ -50,6 +50,7 @@ this casier (see CLAUDE.md, "Shared, purpose-named keys").
 from __future__ import annotations
 
 DISPLAY_NAME = "Dark"
+TIME_CATEGORY = "calibrations"
 
 import logging
 from pathlib import Path

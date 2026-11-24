@@ -53,6 +53,7 @@ synthetic filename>"}.
 from __future__ import annotations
 
 DISPLAY_NAME = "Guid. dark"
+TIME_CATEGORY = "calibrations"
 
 import logging
 from pathlib import Path

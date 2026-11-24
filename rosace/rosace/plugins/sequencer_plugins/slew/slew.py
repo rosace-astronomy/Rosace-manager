@@ -10,6 +10,7 @@ sub-plugin becomes a real feature, not just wiring.
 from __future__ import annotations
 
 DISPLAY_NAME = "Slew"
+TIME_CATEGORY = "slew"
 
 import logging
 

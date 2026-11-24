@@ -21,6 +21,7 @@ sub-plugin actually produced the files.
 from __future__ import annotations
 
 DISPLAY_NAME = "Science"
+TIME_CATEGORY = "science"
 
 import asyncio
 import logging
@@ -102,6 +103,11 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
 
             raw_files.append(basename)
 
+        # Shutter-open time of this step, for the night's time budget: the rest of
+        # the step's duration (recorded by the orchestrator) is readout.
+        obs.measurements["science_exposure_s"] = round(
+            obs.measurements.get("science_exposure_s", 0.0) + exposure_time * len(raw_files), 1
+        )
         obs.sequencer_data.setdefault("star_spectra_images", []).extend(raw_files)
 
         log.info(

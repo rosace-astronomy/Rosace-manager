@@ -85,6 +85,7 @@ from .plugins  import plugins
 from .plugins.pipeline_loader import get_display_names
 from .plugins.hardware_connectivity import test_hardware
 from . import step_progress
+from .time_ledger import ledger
 from .simbad   import simbad_search, SimbadNotFoundError, SimbadQueryError, SimbadServers
 from .targets  import (
     targets_db_init,
@@ -285,11 +286,22 @@ async def session_runner():
         state.session_active = False
 
 
+async def _record_stage_failure_time(stage: OrchestratorStage, obs: Observation | None) -> None:
+    """Time line after a stage error: a failed acquisition's intervals become
+    a failed attempt in the night's budget; what follows is the orchestrator's."""
+    if stage == OrchestratorStage.SEQUENCER and obs is not None:
+        await ledger.mark_failed(obs.id)
+    await ledger.switch("orchestrator")
+
+
 async def _session_runner_body():
     await db_init()
     await targets_db_init()
     session = SessionContext(site_name=SITE_NAME)
     session.stop_check = lambda: not state.is_running
+    # The session's time line (time_ledger.py): every change of activity below
+    # closes the current interval and opens the next one.
+    ledger.start(session.session_id, "init", at=session.started_at)
 
     try:
         session = await run_stage(OrchestratorStage.INIT_SESSION, session)
@@ -297,6 +309,7 @@ async def _session_runner_body():
         await db_insert_session(session)
     except Exception as e:
         log.error(f"[INIT_SESSION] Critical failure, session cancelled: {e}")
+        await ledger.stop()
         state.stage = OrchestratorStage.ERROR
         state.is_running = False
         return
@@ -322,6 +335,7 @@ async def _session_runner_body():
                         # No stop_check: a stop request lets the current observation
                         # finish every series it has started (see CLAUDE.md, State machine).
                     )
+                    await ledger.switch("scheduler")
                 else:
                     await db_set_stage_status(obs.id, stage, "running")
 
@@ -329,11 +343,13 @@ async def _session_runner_body():
 
                 if stage == OrchestratorStage.SCHEDULER and obs.scheduler_data.get("target") is None:
                     log.info(f"[SCHEDULER] Nothing to observe — retrying in {SCHEDULER_RETRY_SECONDS}s")
+                    await ledger.switch("waiting_for_target")
                     obs = None
                     await _interruptible_sleep(SCHEDULER_RETRY_SECONDS)
                     break
 
                 if stage == OrchestratorStage.SCHEDULER:
+                    await ledger.switch("orchestrator", observation_id=obs.id)
                     await db_insert_observation(obs, session.session_id)
                     create_observation_file(obs, session_dir)
                     await db_set_yaml_file(obs.id, obs.yaml_file)
@@ -344,6 +360,7 @@ async def _session_runner_body():
 
             except SessionFatalError as e:
                 log.error(f"[{stage.value.upper()}] Fatal error, stopping session: {e}")
+                await _record_stage_failure_time(stage, obs)
                 if obs:
                     await db_set_stage_status(obs.id, stage, "error")
                     await db_set_error(obs.id, str(e))
@@ -353,6 +370,7 @@ async def _session_runner_body():
                 break
             except Exception as e:
                 log.error(f"[{stage.value.upper()}] Error: {e} — restarting from SCHEDULER")
+                await _record_stage_failure_time(stage, obs)
                 if obs:
                     await db_set_stage_status(obs.id, stage, "error")
                     await db_set_error(obs.id, str(e))
@@ -391,8 +409,10 @@ async def _session_runner_body():
     # Wait for all background post-obs tasks before closing the session
     if post_obs_tasks:
         log.info(f"[ORCHESTRATOR] Waiting for {len(post_obs_tasks)} background post-obs task(s)...")
+        await ledger.switch("waiting_post_obs")
         await asyncio.gather(*post_obs_tasks, return_exceptions=True)
 
+    await ledger.switch("close")
     try:
         session = await run_stage(OrchestratorStage.CLOSE_SESSION, session)
         await db_close_session(session, status="closed")
@@ -400,6 +420,8 @@ async def _session_runner_body():
         log.error(f"[CLOSE_SESSION] Error: {e}")
         await db_close_session(session, status="error")
     finally:
+        # Normally already stopped by CLOSE_SESSION's time budget; a no-op then.
+        await ledger.stop()
         state.stage = OrchestratorStage.IDLE
 
 # ─────────────────────────────────────────────────────────────

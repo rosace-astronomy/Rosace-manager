@@ -16,7 +16,8 @@ import logging
 
 from .. import step_progress
 from ..models import Observation
-from .pipeline_loader import hardware_sequencer_prefix, load_pipelines, load_program_yaml
+from ..time_ledger import ledger
+from .pipeline_loader import hardware_sequencer_prefix, load_pipelines, load_program_yaml, time_category
 
 log = logging.getLogger("spectro.plugin.sequencer")
 
@@ -57,6 +58,9 @@ class SequencerPlugin:
         for step_name, sub in zip(obs.program_steps["sequencer"], seq_pipeline):
             step = sub.__class__.__name__
             log.info(f"[SEQUENCER] → {step}")
+            # The orchestrator, not the sub-plugin, records where the time goes,
+            # under the category the sub-plugin declares (TIME_CATEGORY).
+            await ledger.switch(time_category(step_name), step_name, obs.id)
             step_progress.set_step(obs.id, "sequencer", step_name, obs.program_steps["sequencer"])
             try:
                 obs = await sub.execute(obs)
@@ -65,4 +69,5 @@ class SequencerPlugin:
                 raise
 
         log.info("[SEQUENCER] Sequence complete")
+        await ledger.switch("orchestrator", observation_id=obs.id)
         return obs

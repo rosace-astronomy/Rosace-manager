@@ -1,6 +1,6 @@
 # TODO
 
-## Dernière mise à jour : 2026-10-17
+## Dernière mise à jour : 2026-11-22 20:54
 
 Liste des tâches en attente du projet Rosace. Claude peut ajouter une
 ligne dès qu'une nouvelle idée apparaît en conversation. **Seul
@@ -96,6 +96,21 @@ Claude peut le suggérer, jamais le faire lui-même.
       (2026-10-14)
 - [ ] Distance à la Lune : filtre scheduler sur la distance de la cible à la Lune (seuil à définir, probablement selon la phase) — pas urgent
 - [ ] Journalisation temporelle des étapes (time-series DB type InfluxDB). Définir les étapes que je veux suivre (pointing, science, focus, reference images... à compléter)
+- [ ] Bilan de temps d'une nuit (performance = temps d'obturateur science
+      ouvert / temps où Rosace est actif) : plan validé, à réaliser —
+      catégorie déclarée par chaque sous-plugin, intervalles enregistrés par
+      l'orchestrateur dans `rosace.db`, bilan par nuit (table, CSV, PDF A4
+      d'une page) produit par CLOSE_SESSION, guide du `blank_seq` mis à
+      jour. Plan :
+      `~/.claude/plans/ok-a-me-va-mellow-crayon-of-f077e402-c8e3-464d-9195-e0e5e0499deb.md`,
+      prototype : `~/Téléchargements/night_time_budget_prototype.py`
+      (16/10 : 87,7 % d'obturateur ouvert) (2026-11-23)
+- [ ] Bilan de temps des nuits passées : `rosace --build-time-budget <date>
+      [--apply]` reconstruisant `time_segments` et `night_time_budget` à
+      partir des `session.log` (logique du prototype
+      `~/Téléchargements/night_time_budget_prototype.py` ; déplacement et
+      stabilisation PHD2 estimés depuis le log, ces mesures n'existant pas
+      avant), pour avoir l'historique depuis septembre (2026-11-24)
 - [ ] Revoir les bibliothèques "fragiles"/peu maintenues du projet — une ou
       deux repérées, probablement liées au chantier ASCOM/Windows (à
       confirmer/préciser lesquelles) (2026-09-20)
@@ -252,3 +267,23 @@ Claude peut le suggérer, jamais le faire lui-même.
       de session : les sous-répertoires de réduction des observations
       (`<nom>_<id>/`) restent (1,9 Go laissés par le salon le 2026-11-01).
       Les supprimer avec leur observation (2026-11-01)
+- [ ] Réponse instrumentale et atmosphérique (RI × RA), une fois la RI
+      établie par la campagne dédiée : dans le résumé de chaque
+      observation, un graphe montrant la RI et les trois courbes de RA
+      (Rayleigh, aérosols, ozone), avec la valeur de l'AOD utilisée
+      (2026-11-22)
+- [ ] Observer systématiquement une étoile A0V (de préférence CALSPEC) en
+      début de nuit pour mesurer l'AOD de la nuit, et garder en base les
+      résultats de toutes les A0V observées (AOD, masse d'air, forme
+      mesurée), pour des statistiques à terme sur la RI et la RA
+      (2026-11-22)
+- [ ] Pour chaque A0V observée, enregistrer en base l'AOD mesurée (τ₅₅₀)
+      et l'AOD donnée par CAMS au même instant et au même endroit, pour
+      suivre dans la durée la convergence des deux valeurs (2026-11-22)
+- [ ] Comprendre la lumière diffuse en fond d'image des flats : hors de la
+      bande éclairée par la fente, les poses de flat reçoivent 700 à 1 200 ADU
+      au-dessus du bias (5 à 6 % du signal), et sous 3950 Å le flat n'est
+      presque que cette lumière. D'où vient-elle (diffusion dans le
+      spectrographe, fuite de lumière du module de calibration) ? Faut-il la
+      retirer du flat dans l'étape master_flat ? Analyse :
+      ~/ROSACE/analyses/reponse_instrumentale/doc/rapport_flats.md (2026-11-22)
