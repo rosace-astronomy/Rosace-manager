@@ -9,6 +9,12 @@ are listed, newest first. The reasons behind the changes are in
 
 ### Added
 
+- The `A0V` program, for reference stars (CALSPEC and clean A0V) used to
+  measure the instrumental response: the same acquisition and reduction as
+  `Be_stars`, without the BeSS validation queue or the Demetra export. Not
+  active by itself yet: observed through the manual list (Program column
+  `A0V`). To use it, create the program in the catalogue (`POST /programs`)
+  and link its stars to it with their exposure time.
 - On the main page, each observation's row ends with « Résumé » and
   « Spectre » buttons, which open its summary PDF and its final spectrum in
   a new tab — shown only when the observation has that document (a program

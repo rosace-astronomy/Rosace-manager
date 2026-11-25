@@ -236,6 +236,24 @@ class TestLoadPipelines:
         science = program["sequencer"].index("star_spectra_acquisition")
         assert program["sequencer"][science + 1:science + 3] == ["wide_field_acquisition", "stop_phd2_guiding"]
 
+    def test_a0v_reduction_chain_resolves(self):
+        """A0V.yaml runs Be_stars' acquisition and its native reduction chain up
+        to the summary, without the BeSS queue or the Demetra export; every step
+        resolves to a real sub-plugin."""
+        import yaml as _yaml
+        from rosace.plugins import pipeline_loader
+
+        program = _yaml.safe_load((pipeline_loader.PROGRAMS_DIR / "A0V.yaml").read_text())
+        be_stars = _yaml.safe_load((pipeline_loader.PROGRAMS_DIR / "Be_stars.yaml").read_text())
+        pipeline = build_pipeline(program["reduction"], "reduction")
+
+        assert len(pipeline) == len(program["reduction"])
+        assert "scheduler" not in program
+        assert program["sequencer"] == be_stars["sequencer"]
+        assert program["reduction"] == [step for step in be_stars["reduction"]
+                                        if step not in ("bess_validation", "export_demetra")]
+        assert program["reduction"].index("lambda_calibration") < program["reduction"].index("response")
+
     def test_raises_on_unknown_program(self):
         with pytest.raises(FileNotFoundError):
             load_pipelines("programme_inexistant")
