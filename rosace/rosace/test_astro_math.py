@@ -1,11 +1,18 @@
 """Unit tests for astro_math.py (altitude calculation with no IERS dependency)."""
 
-from datetime import datetime, timezone
+import math
+
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from rosace.astro_math import (
     altitude_deg,
+    angular_separation_deg,
+    moon_equatorial_deg,
+    moon_illuminated_fraction,
+    moon_state,
+    sun_equatorial_deg,
     azimuth_deg,
     equatorial_from_horizontal_deg,
     hour_angle_deg,
@@ -217,3 +224,46 @@ class TestLocalSiderealTimeDeg:
     def test_defaults_to_now_when_at_omitted(self):
         lst_deg = local_sidereal_time_deg(5.0)
         assert 0.0 <= lst_deg < 360.0
+
+
+class TestSunAndMoon:
+    """Against AstroPy's geocentric positions (its built-in ephemeris, no
+    download), on dates spread over a year."""
+
+    DATES = [datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(days=37 * i, hours=5 * i) for i in range(10)]
+
+    @pytest.mark.parametrize("at", DATES)
+    def test_positions_and_phase_match_astropy(self, at):
+        import warnings
+        from astropy.coordinates import get_body, get_sun
+        from astropy.time import Time
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            t = Time(at)
+            moon, sun = get_body("moon", t), get_sun(t)
+            elongation = moon.separation(sun).deg
+            moon_ra, moon_dec, sun_ra, sun_dec = moon.ra.deg, moon.dec.deg, sun.ra.deg, sun.dec.deg
+
+        assert angular_separation_deg(*moon_equatorial_deg(at), moon_ra, moon_dec) < 0.1
+        assert angular_separation_deg(*sun_equatorial_deg(at), sun_ra, sun_dec) < 0.05
+        import math
+        assert moon_illuminated_fraction(at) == pytest.approx((1 - math.cos(math.radians(elongation))) / 2,
+                                                              abs=0.005)
+
+    def test_full_and_new_moon(self):
+        assert moon_illuminated_fraction(datetime(2026, 1, 3, 10, 3, tzinfo=timezone.utc)) > 0.99
+        assert moon_illuminated_fraction(datetime(2026, 1, 18, 19, 52, tzinfo=timezone.utc)) < 0.01
+
+    def test_angular_separation(self):
+        assert angular_separation_deg(0, 0, 90, 0) == pytest.approx(90)
+        assert angular_separation_deg(10, 89, 190, 89) == pytest.approx(2)
+        assert angular_separation_deg(45, 30, 45, 30) == 0
+        assert angular_separation_deg(0, -90, 123, 90) == pytest.approx(180)
+
+    def test_moon_state(self):
+        at = datetime(2026, 1, 3, 23, 0, tzinfo=timezone.utc)
+        moon_ra, moon_dec = moon_equatorial_deg(at)
+        state = moon_state(moon_ra + 10, moon_dec, 45.0, 6.0, at)
+        assert state.distance_deg == pytest.approx(10 * math.cos(math.radians(moon_dec)), abs=0.1)
+        assert state.illumination > 0.95
+        assert state.altitude_deg == pytest.approx(altitude_deg(moon_ra, moon_dec, 45.0, 6.0, at))

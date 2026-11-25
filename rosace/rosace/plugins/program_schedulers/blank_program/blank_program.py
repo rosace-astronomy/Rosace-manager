@@ -78,7 +78,7 @@ RULES FOR A PLANNER
   Use the async helpers of targets.py and database.py as usual.
 - At most one candidate, and make sure it is acceptable: only propose a
   candidate for which both checks.check_feasible(star, exposure, ctx.now,
-  min_altitude_deg) and await checks.check_not_recently_failed(program,
+  min_altitude_deg, min_moon_distance_deg=...) and await checks.check_not_recently_failed(program,
   star.name, ctx.now) return None (the second one refuses a target that failed
   less than failure_backoff_hours ago — not applied at level 1, see series).
   With a window, first call checks.check_window(window, ctx.now, duration):
@@ -151,7 +151,9 @@ THIS EXAMPLE
 Proposes, at level 3, the first star linked to its program in targets.db
 that has no successful observation tonight, did not fail in the last
 failure_backoff_hours, and is feasible now. Param:
-min_altitude_deg (default: the installation floor only).
+min_altitude_deg (default: the installation floor only), min_moon_distance_deg
+(default: the installation's only; required distance = that value x the
+Moon's illuminated fraction, while the Moon is up).
 """
 
 import logging
@@ -174,6 +176,7 @@ class BlankProgramScheduler:
             return None
 
         min_altitude_deg = ctx.params.get("min_altitude_deg")
+        min_moon_distance_deg = ctx.params.get("min_moon_distance_deg")
         for star in await program_get_stars(program.id):
             successes, _ = await db_get_successes_for_target(program.name, star.name, ctx.now)
             if successes > 0:
@@ -181,7 +184,8 @@ class BlankProgramScheduler:
             if await check_not_recently_failed(program.name, star.name, ctx.now) is not None:
                 continue
             exposure = ExposureConfig(exposure_time=star.exposure_time)
-            if check_feasible(star, exposure, ctx.now, min_altitude_deg) is not None:
+            if check_feasible(star, exposure, ctx.now, min_altitude_deg,
+                              min_moon_distance_deg=min_moon_distance_deg) is not None:
                 continue
             return Candidate(
                 queried_name=star.name,

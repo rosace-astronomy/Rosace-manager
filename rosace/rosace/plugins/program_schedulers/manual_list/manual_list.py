@@ -231,6 +231,7 @@ class ManualListScheduler:
 
     async def _propose(self, ctx, path, errors) -> Candidate | None:
         min_altitude_deg = ctx.params.get("min_altitude_deg")
+        min_moon_distance_deg = ctx.params.get("min_moon_distance_deg")
         max_series_failures = ctx.params.get("max_series_failures", DEFAULT_MAX_SERIES_FAILURES)
         resolved = await self._resolve(_read_observation_list(path, ctx.now, errors), errors)
 
@@ -284,7 +285,8 @@ class ManualListScheduler:
                 failures = await db_count_trailing_failures(program_name, star.name, ctx.now)
                 status, why = check_window(window, ctx.now, duration_s)
                 why = (why if status == "refused" else None) or \
-                    check_feasible(star, item["exposure"], ctx.now, min_altitude_deg)
+                    check_feasible(star, item["exposure"], ctx.now, min_altitude_deg,
+                                   min_moon_distance_deg=min_moon_distance_deg)
                 if failures >= max_series_failures:
                     log.info(f"[SCHEDULER] {item['star']}: series stopped after {failures} "
                              f"consecutive failures (line {item['line']})")
@@ -317,7 +319,8 @@ class ManualListScheduler:
             span_s = (window.end_before - start).total_seconds() \
                 if item["series"] and window and window.end_before else duration_s
             reason = check_feasible(star, item["exposure"], ctx.now, min_altitude_deg,
-                                    duration_s=span_s, start=start)
+                                    duration_s=span_s, start=start,
+                                    min_moon_distance_deg=min_moon_distance_deg)
             if reason:
                 skip(item, reason)
                 continue

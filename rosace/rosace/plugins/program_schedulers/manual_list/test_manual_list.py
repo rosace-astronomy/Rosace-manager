@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import pytest_asyncio
 
+from rosace.astro_math import MoonState
 from rosace.database import db_init, db_insert_observation, db_insert_session, db_set_stage_status, db_stamp_stage
 from rosace.models import Observation, OrchestratorStage, SessionContext, Target
 from rosace.plugins.program_schedulers import SchedulingContext, Site
@@ -546,3 +547,14 @@ class TestWindowedLinesCounting:
             candidate = await ManualListScheduler().propose(_ctx(path))
         assert candidate.priority == 2 and "booked" in candidate.reason
         assert not any("series over" in r.getMessage() for r in caplog.records)
+
+
+async def test_own_moon_distance(tmp_path, monkeypatch):
+    a = f"A_{_uid()}"
+    program, _ = await _program_with_stars(a)
+    path = _write(tmp_path, f"3, {program}, {a}, , , , x\n")
+    monkeypatch.setattr(checks, "MIN_MOON_DISTANCE_DEG", 0)
+    monkeypatch.setattr(checks, "moon_state", lambda ra, dec, lat, lon, at: MoonState(30.0, 1.0, 20.0))
+
+    assert await ManualListScheduler().propose(_ctx(path, min_moon_distance_deg=20)) is not None
+    assert await ManualListScheduler().propose(_ctx(path, min_moon_distance_deg=45)) is None

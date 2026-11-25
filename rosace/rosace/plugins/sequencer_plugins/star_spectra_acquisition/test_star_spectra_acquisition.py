@@ -272,6 +272,22 @@ class TestTemperatures:
         assert obs.measurements["ambient_temp_c"] == 12.35
         assert obs.measurements["camera_temp_c"] == -10.04
 
+    async def test_records_the_moon(self, tmp_path, monkeypatch):
+        from rosace.astro_math import MoonState
+        seen = []
+        monkeypatch.setattr(ssa_mod, "moon_state", lambda ra, dec, lat, lon: seen.append((ra, dec)) or
+                            MoonState(distance_deg=42.123, illumination=0.876, altitude_deg=-3.21))
+        camera = AsyncMock()
+        camera.expose.return_value = MagicMock()
+        obs = _make_obs(obs_dir=tmp_path, exposure=ExposureConfig(exposure_time=1.0), camera=camera,
+                        target=Target(name="Vega", ra=279.23, dec=38.78))
+
+        await StarSpectraAcquisitionPlugin().execute(obs)
+
+        assert seen == [(279.23, 38.78)]
+        assert (obs.measurements["moon_distance_deg"], obs.measurements["moon_illumination"],
+                obs.measurements["moon_altitude_deg"]) == (42.1, 0.88, -3.2)
+
     async def test_unreadable_temperature_never_blocks(self, tmp_path, caplog):
         camera = AsyncMock()
         camera.expose.return_value = MagicMock()

@@ -195,6 +195,11 @@ subplugin_params:
     # are declared in programs/*.yaml (`scheduler:` key).
     # Altitude (degrees) below which the telescope never points, whatever the program.
     min_altitude_deg: 10
+    # Minimum distance (degrees) between a target and a full Moon, scaled by the
+    # Moon's illuminated fraction (half Moon: half the distance); no constraint
+    # while the Moon is below the horizon. A program may ask for more
+    # (min_moon_distance_deg in its scheduler params). 0 = disabled.
+    min_moon_distance_deg: 0
     # Same rule as scheduler_rosace_2026's min_meridian_distance_deg (pier
     # flip during the two-step slew); 0 = disabled.
     min_meridian_distance_deg: 0

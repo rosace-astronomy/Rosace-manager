@@ -88,7 +88,10 @@ async def db_init() -> None:
                 pier_side            TEXT,
                 science_exposure_s   REAL,
                 slew_s               REAL,
-                guiding_settle_s     REAL
+                guiding_settle_s     REAL,
+                moon_distance_deg    REAL,
+                moon_illumination    REAL,
+                moon_altitude_deg    REAL
             )
         """)
         # The observation's final documents (Observation.documents), copied after
@@ -415,6 +418,9 @@ MEASUREMENT_COLUMNS = {
     "science_exposure_s": "science_exposure_s",
     "slew_s": "slew_s",
     "guiding_settle_s": "guiding_settle_s",
+    "moon_distance_deg": "moon_distance_deg",
+    "moon_illumination": "moon_illumination",
+    "moon_altitude_deg": "moon_altitude_deg",
 }
 
 

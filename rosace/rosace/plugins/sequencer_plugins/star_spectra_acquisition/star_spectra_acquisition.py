@@ -29,7 +29,8 @@ TIME_CATEGORY = "science"
 
 import logging
 
-from ....config import SUBPLUGIN_PARAMS
+from ....astro_math import moon_state
+from ....config import SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, SUBPLUGIN_PARAMS
 from ....hardware.spectroscope import LightSource
 from ....models import Observation
 from ...sub_plugin_base import SubPlugin
@@ -59,6 +60,22 @@ async def _record_temperatures(obs: Observation, camera) -> None:
             obs.measurements[name] = round(float(await device.get_temperature()), 2)
         except Exception as e:
             log.warning(f"[STAR_SPECTRA_ACQUISITION] Could not read {name}: {e}")
+
+
+def _record_moon(obs: Observation) -> None:
+    """Records the Moon's distance to the target, illuminated fraction and
+    altitude right before the science exposures (also when the Moon is down:
+    negative altitude). A computation only, never a reason to lose the
+    observation."""
+    try:
+        target = obs.scheduler_data["target"]
+        moon = moon_state(target.ra, target.dec, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG)
+    except Exception as e:
+        log.warning(f"[STAR_SPECTRA_ACQUISITION] Could not compute the Moon's position: {e}")
+        return
+    obs.measurements["moon_distance_deg"] = round(moon.distance_deg, 1)
+    obs.measurements["moon_illumination"] = round(moon.illumination, 2)
+    obs.measurements["moon_altitude_deg"] = round(moon.altitude_deg, 1)
 
 
 class StarSpectraAcquisitionPlugin(SubPlugin):
@@ -99,6 +116,7 @@ class StarSpectraAcquisitionPlugin(SubPlugin):
         log.info(f"[STAR_SPECTRA_ACQUISITION] {count} exposure(s) of {exposure_time}s")
         camera = obs.hardware["science_camera"]
         await _record_temperatures(obs, camera)
+        _record_moon(obs)
 
         queried_name = obs.scheduler_data.get("queried_name")
         root_name = build_fits_root_name(

@@ -4,7 +4,7 @@ Shared feasibility checks for multi-program scheduling.
 Used by the planners to choose their candidate and by the selector to verify
 it: both apply exactly the same rules, so a planner that relies on them never
 sees its candidate rejected. The rules are the installation's (floor
-altitude, local horizon, mount and meridian), set in subplugin_params.selector
+altitude, local horizon, mount and meridian, distance to the Moon), set in subplugin_params.selector
 (conf/config.yaml), plus HORIZON_FILE and the site position (Core).
 """
 
@@ -14,7 +14,7 @@ import math
 from datetime import datetime, timedelta
 from typing import Optional
 
-from ...astro_math import altitude_deg, azimuth_deg, hour_angle_deg
+from ...astro_math import altitude_deg, azimuth_deg, hour_angle_deg, moon_state
 from ...config import HORIZON_FILE, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, SUBPLUGIN_PARAMS
 from ...database import db_get_last_failure
 from ...horizon import HorizonFileError, horizon_altitude_deg, load_horizon
@@ -26,6 +26,9 @@ from ..sequencer_plugins.acquisition_helpers import compute_exposure_time_and_co
 
 _params = SUBPLUGIN_PARAMS.get("selector", {})
 MIN_ALTITUDE_DEG = _params.get("min_altitude_deg", 10)            # installation floor
+# Minimum distance to the Moon at full Moon, scaled by its illuminated fraction;
+# no constraint while the Moon is below the horizon. 0 = off.
+MIN_MOON_DISTANCE_DEG = _params.get("min_moon_distance_deg", 0)
 MIN_MERIDIAN_DISTANCE_DEG = _params.get("min_meridian_distance_deg", 0)   # 0 = off
 # How far past the meridian the mount keeps tracking without a flip; None = not checked.
 MERIDIAN_TOLERANCE_DEG = _params.get("meridian_tolerance_deg")
@@ -69,6 +72,7 @@ def check_feasible(
     min_altitude_deg: Optional[float] = None,
     duration_s: Optional[float] = None,
     start: Optional[datetime] = None,
+    min_moon_distance_deg: Optional[float] = None,
 ) -> Optional[str]:
     """Returns None if the observation can be made, otherwise the reason
     (one short sentence, meant for the log).
@@ -78,6 +82,10 @@ def check_feasible(
     planner running a series passes the whole series' duration instead.
     start: when the observation would begin, `now` by default; a booked
     observation passes its launch_time().
+    min_moon_distance_deg: the planner's own minimum distance to the Moon, on
+    top of the installation's (the larger one applies). Required distance =
+    that value x the Moon's illuminated fraction, only while the Moon is above
+    the horizon.
     """
     now = start or now
     if duration_s is None:
@@ -97,6 +105,8 @@ def check_feasible(
             return reason
 
     floor = MIN_ALTITUDE_DEG if min_altitude_deg is None else max(MIN_ALTITUDE_DEG, min_altitude_deg)
+    moon_limit = MIN_MOON_DISTANCE_DEG if min_moon_distance_deg is None \
+        else max(MIN_MOON_DISTANCE_DEG, min_moon_distance_deg)
     try:
         horizon = load_horizon(HORIZON_FILE) if HORIZON_FILE else None
     except HorizonFileError as e:
@@ -114,6 +124,12 @@ def check_feasible(
             if altitude < horizon_altitude:
                 return (f"below local horizon ({altitude:.1f}° < {horizon_altitude:.1f}° "
                         f"at az {azimuth:.1f}°, +{offset_s / 60:.0f} min)")
+        if moon_limit > 0:
+            moon = moon_state(star.ra, star.dec, SITE_LATITUDE_DEG, SITE_LONGITUDE_DEG, at)
+            required = moon_limit * moon.illumination
+            if moon.altitude_deg > 0 and moon.distance_deg < required:
+                return (f"too close to the Moon ({moon.distance_deg:.1f}° < {required:.1f}°: "
+                        f"{moon_limit:g}° x {moon.illumination:.0%} lit, at +{offset_s / 60:.0f} min)")
     return None
 
 

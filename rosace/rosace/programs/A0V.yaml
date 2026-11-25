@@ -23,6 +23,7 @@ scheduler:
     max_airmass: 1.5           # only stars at most this air mass at mid-observation
     airmass_margin: 0.1        # rotation among the stars within this margin of the best air mass
     retry_minutes: 30          # pause after a failed attempt (clouds)
+    min_moon_distance_deg: 30  # at full Moon, scaled by its phase (sky background tilted to the blue)
 
 sequencer:
   # The active hardware profile may prepend its own steps here (equipment-specific,

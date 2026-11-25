@@ -20,6 +20,7 @@ from rosace.plugins.program_schedulers import checks
 from rosace.plugins.program_schedulers.a0v_scheduler import a0v_scheduler
 from rosace.plugins.program_schedulers.a0v_scheduler.a0v_scheduler import A0vSchedulerScheduler
 from rosace.targets import ProgramCreate, StarCreate, program_add_star, program_insert, star_insert, targets_db_init
+from rosace.astro_math import MoonState
 
 NOW = datetime(2026, 1, 15, 22, 0, tzinfo=timezone.utc)   # well inside one astronomical night
 
@@ -191,3 +192,12 @@ async def test_infeasible_star_skipped(monkeypatch):
 
 async def test_unknown_program():
     assert await A0vSchedulerScheduler().propose(_ctx(f"nowhere_{_uid()}")) is None
+
+
+async def test_own_moon_distance(monkeypatch):
+    program = await _program(f"A_{_uid()}")
+    monkeypatch.setattr(checks, "MIN_MOON_DISTANCE_DEG", 0)
+    monkeypatch.setattr(checks, "moon_state", lambda ra, dec, lat, lon, at: MoonState(30.0, 1.0, 20.0))
+
+    assert await A0vSchedulerScheduler().propose(_ctx(program, min_moon_distance_deg=20)) is not None
+    assert await A0vSchedulerScheduler().propose(_ctx(program, min_moon_distance_deg=45)) is None

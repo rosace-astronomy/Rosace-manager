@@ -12,6 +12,7 @@ scheduler:
   share_percent: 10
   params:
     min_interval_days: 5       # a target is observed successfully at most once every 5 days
+    min_moon_distance_deg: 45  # at full Moon, scaled by its phase (faint targets: sky background)
 
 sequencer:
   # The active hardware profile may prepend its own steps here (equipment-specific,

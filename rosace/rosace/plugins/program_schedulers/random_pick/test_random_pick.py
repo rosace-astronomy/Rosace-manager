@@ -18,6 +18,7 @@ from rosace.plugins.program_schedulers import checks
 from rosace.plugins.program_schedulers.random_pick import random_pick
 from rosace.plugins.program_schedulers.random_pick.random_pick import RandomPickScheduler
 from rosace.targets import ProgramCreate, StarCreate, program_add_star, program_insert, star_insert, targets_db_init
+from rosace.astro_math import MoonState
 
 
 def _uid() -> str:
@@ -142,3 +143,14 @@ async def test_infeasible_target_skipped(monkeypatch):
 
 async def test_unknown_program():
     assert await RandomPickScheduler().propose(_ctx(f"nowhere_{_uid()}")) is None
+
+
+async def test_own_moon_distance(monkeypatch):
+    """The program's min_moon_distance_deg reaches the shared check: a star 30 deg
+    from a full Moon is fine at 20 deg, refused at 45 deg."""
+    program = await _program(f"A_{_uid()}")
+    monkeypatch.setattr(checks, "MIN_MOON_DISTANCE_DEG", 0)
+    monkeypatch.setattr(checks, "moon_state", lambda ra, dec, lat, lon, at: MoonState(30.0, 1.0, 20.0))
+
+    assert await RandomPickScheduler().propose(_ctx(program, min_moon_distance_deg=20)) is not None
+    assert await RandomPickScheduler().propose(_ctx(program, min_moon_distance_deg=45)) is None

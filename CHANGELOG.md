@@ -9,6 +9,20 @@ are listed, newest first. The reasons behind the changes are in
 
 ### Added
 
+- The distance to the Moon, for every program the multi-program selector
+  runs: while the Moon is up, a target closer to it than a minimum
+  distance × the Moon's illuminated fraction is not observed (half Moon:
+  half the distance; Moon down: no constraint). The installation's value
+  (`subplugin_params.selector.min_moon_distance_deg`, 0 = off) applies to
+  every program and to the manual list; a program may ask for more
+  (`min_moon_distance_deg` in its planner's params: 45° for `PN` and
+  `Cataclysmic`, 30° for `A0V`). Each observation now records the Moon's
+  distance, illuminated fraction and altitude at the start of its science
+  exposures. **Before starting this version**, add three columns to the
+  `observations` table of an existing `rosace.db` (`moon_distance_deg`,
+  `moon_illumination`, `moon_altitude_deg`, all `REAL`), or every
+  observation fails: `ALTER TABLE observations ADD COLUMN moon_distance_deg
+  REAL;` and the same for the two others.
 - The `A0V` program now observes on its own (with the multi-program
   selector): one reference star at the start of the night, then one every
   4 hours, the stars taking turns among those nearly as high as the best

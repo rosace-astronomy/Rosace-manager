@@ -11,7 +11,8 @@ call, from rosace.db's history only (no state kept):
   per star);
 - otherwise the candidates are the stars not failed recently
   (checks.check_not_recently_failed) and feasible now (checks.check_feasible:
-  altitude, local horizon, meridian rules, plus the optional min_altitude_deg),
+  altitude, local horizon, meridian rules, Moon, plus the optional
+  min_altitude_deg and min_moon_distance_deg),
   whose air mass at mid-observation (1 / sin(altitude)) is at most
   max_airmass — none: nothing;
 - rotation: among the candidates within airmass_margin of the lowest air mass,
@@ -29,7 +30,8 @@ program_stars, otherwise computed from the magnitude.
 
 Params (scheduler.params of the program's YAML): interval_hours (4),
 first_window_minutes (90), max_airmass (1.5), airmass_margin (0.1),
-retry_minutes (30), min_altitude_deg (none: the installation floor only).
+retry_minutes (30), min_altitude_deg (none: the installation floor only),
+min_moon_distance_deg (none: the installation's only).
 """
 
 import logging
@@ -69,6 +71,7 @@ class A0vSchedulerScheduler:
         airmass_margin = float(params.get("airmass_margin", 0.1))
         retry = timedelta(minutes=float(params.get("retry_minutes", 30)))
         min_altitude_deg = params.get("min_altitude_deg")
+        min_moon_distance_deg = params.get("min_moon_distance_deg")
 
         last_success_per_star = await db_get_last_success_per_target(program.name)
         last_success = max(last_success_per_star.values(), default=None)
@@ -82,7 +85,7 @@ class A0vSchedulerScheduler:
             return None
 
         reachable = await self._reachable(await program_get_stars(program.id), ctx, program.name,
-                                          max_airmass, min_altitude_deg)
+                                          max_airmass, min_altitude_deg, min_moon_distance_deg)
         if not reachable:
             log.debug(f"[SCHEDULER] {program.name}: no reference star at air mass <= {max_airmass:g}")
             return None
@@ -115,14 +118,16 @@ class A0vSchedulerScheduler:
 
     @staticmethod
     async def _reachable(stars: list[StarInProgram], ctx: SchedulingContext, program: str,
-                         max_airmass: float, min_altitude_deg: Optional[float]) -> list[_Reachable]:
+                         max_airmass: float, min_altitude_deg: Optional[float],
+                         min_moon_distance_deg: Optional[float]) -> list[_Reachable]:
         """The stars that may be observed now, with their air mass at mid-observation."""
         reachable = []
         for star in stars:
             if await checks.check_not_recently_failed(program, star.name, ctx.now) is not None:
                 continue
             exposure = ExposureConfig(exposure_time=star.exposure_time)
-            if checks.check_feasible(star, exposure, ctx.now, min_altitude_deg) is not None:
+            if checks.check_feasible(star, exposure, ctx.now, min_altitude_deg,
+                                     min_moon_distance_deg=min_moon_distance_deg) is not None:
                 continue
             duration_s = checks.estimate_duration_s(star, exposure)
             altitude = checks.altitude_deg(star.ra, star.dec, ctx.site.latitude_deg, ctx.site.longitude_deg,

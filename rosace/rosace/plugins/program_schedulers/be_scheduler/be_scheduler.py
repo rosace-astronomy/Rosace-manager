@@ -27,7 +27,8 @@ At every call, at most one star of the program (targets.db) with magnitude_v
   not failed recently (failure_backoff_hours), estimated duration not above
   max_duration_minutes (a guard, logged as a WARNING once per star and night),
   feasible over its whole duration (checks.check_feasible: altitude, local
-  horizon, meridian rules, plus this program's min_altitude_deg if set).
+  horizon, meridian rules, Moon, plus this program's min_altitude_deg and
+  min_moon_distance_deg if set).
 
 THE BESS ROBOT FILE
 -------------------
@@ -191,6 +192,7 @@ class BeSchedulerScheduler:
         min_period = float(params.get("min_period_days", DEFAULT_MIN_PERIOD_DAYS))
         max_duration_s = 60 * float(params.get("max_duration_minutes", DEFAULT_MAX_DURATION_MINUTES))
         min_altitude_deg = params.get("min_altitude_deg")
+        min_moon_distance_deg = params.get("min_moon_distance_deg")
         robot_path = Path(params.get("robot_path", DEFAULT_ROBOT_PATH)).expanduser()
         night = astronomical_day_start_utc(ctx.now)
         night_start = datetime.fromisoformat(night)
@@ -232,7 +234,8 @@ class BeSchedulerScheduler:
                              f"above max_duration_minutes ({max_duration_s / 60:g}) — set its "
                              f"exposure time in targets.db")
                 continue
-            if checks.check_feasible(r.star, exposure, ctx.now, min_altitude_deg) is not None:
+            if checks.check_feasible(r.star, exposure, ctx.now, min_altitude_deg,
+                                     min_moon_distance_deg=min_moon_distance_deg) is not None:
                 continue
             return Candidate(
                 queried_name=r.star.name,

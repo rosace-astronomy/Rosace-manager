@@ -41,6 +41,7 @@ def _installation(monkeypatch):
     monkeypatch.setattr(checks, "MIN_EXPOSURE_COUNT", 5)
     monkeypatch.setattr(checks, "HORIZON_FILE", None)
     monkeypatch.setattr(checks, "LOOKAHEAD_MINUTES", 60)
+    monkeypatch.setattr(checks, "MIN_MOON_DISTANCE_DEG", 0)
 
 
 def _altitude_over_time(monkeypatch, altitude_at):
@@ -188,6 +189,54 @@ class TestCheckFeasible:
         assert checks.check_feasible(_star(), ExposureConfig(exposure_time=60), NOW, duration_s=3600) is None
         self._hour_angle_over_time(monkeypatch, -178.0)   # crosses -180 -> +180: not the meridian
         assert checks.check_feasible(_star(), ExposureConfig(exposure_time=60), NOW, duration_s=3600) is None
+
+    def _moon(self, monkeypatch, distance_deg, illumination, altitude_deg):
+        from rosace.astro_math import MoonState
+        monkeypatch.setattr(checks, "moon_state",
+                            lambda ra, dec, lat, lon, at: MoonState(distance_deg, illumination, altitude_deg))
+
+    def test_moon_rule(self, monkeypatch):
+        _altitude_over_time(monkeypatch, lambda minutes: 45.0)
+        exposure = ExposureConfig(exposure_time=60)
+        self._moon(monkeypatch, distance_deg=20.0, illumination=0.95, altitude_deg=30.0)
+        assert checks.check_feasible(_star(), exposure, NOW) is None          # rule off by default
+        monkeypatch.setattr(checks, "MIN_MOON_DISTANCE_DEG", 25)
+        reason = checks.check_feasible(_star(), exposure, NOW)
+        assert reason == "too close to the Moon (20.0° < 23.8°: 25° x 95% lit, at +0 min)"
+
+    def test_moon_rule_scales_with_the_phase(self, monkeypatch):
+        _altitude_over_time(monkeypatch, lambda minutes: 45.0)
+        monkeypatch.setattr(checks, "MIN_MOON_DISTANCE_DEG", 25)
+        self._moon(monkeypatch, distance_deg=20.0, illumination=0.5, altitude_deg=30.0)   # needs 12.5
+        assert checks.check_feasible(_star(), ExposureConfig(exposure_time=60), NOW) is None
+
+    def test_moon_below_the_horizon(self, monkeypatch):
+        _altitude_over_time(monkeypatch, lambda minutes: 45.0)
+        monkeypatch.setattr(checks, "MIN_MOON_DISTANCE_DEG", 25)
+        self._moon(monkeypatch, distance_deg=5.0, illumination=1.0, altitude_deg=-2.0)
+        assert checks.check_feasible(_star(), ExposureConfig(exposure_time=60), NOW) is None
+
+    def test_program_moon_distance_is_stricter_only(self, monkeypatch):
+        _altitude_over_time(monkeypatch, lambda minutes: 45.0)
+        exposure = ExposureConfig(exposure_time=60)
+        monkeypatch.setattr(checks, "MIN_MOON_DISTANCE_DEG", 25)
+        self._moon(monkeypatch, distance_deg=30.0, illumination=1.0, altitude_deg=30.0)
+        assert checks.check_feasible(_star(), exposure, NOW) is None
+        assert "45° x 100% lit" in checks.check_feasible(_star(), exposure, NOW, min_moon_distance_deg=45)
+        assert checks.check_feasible(_star(), exposure, NOW, min_moon_distance_deg=10) is None
+        self._moon(monkeypatch, distance_deg=20.0, illumination=1.0, altitude_deg=30.0)
+        assert "25° x 100% lit" in checks.check_feasible(_star(), exposure, NOW, min_moon_distance_deg=10)
+
+    def test_moon_checked_over_the_whole_observation(self, monkeypatch):
+        from rosace.astro_math import MoonState
+        _altitude_over_time(monkeypatch, lambda minutes: 45.0)
+        monkeypatch.setattr(checks, "MIN_MOON_DISTANCE_DEG", 25)
+        # The Moon rises 20 minutes after the start, 10 deg from the target.
+        monkeypatch.setattr(checks, "moon_state", lambda ra, dec, lat, lon, at: MoonState(
+            10.0, 1.0, -5.0 + 0.5 * (at - NOW).total_seconds() / 60))
+        exposure = ExposureConfig(exposure_time=60)
+        assert checks.check_feasible(_star(), exposure, NOW) is None                      # 10 min
+        assert "at +15 min" in checks.check_feasible(_star(), exposure, NOW, duration_s=3600)
 
     def test_imposed_duration_checks_whole_series(self, monkeypatch):
         # Fine for one 10-minute observation, too low before the end of a 2-hour series.
