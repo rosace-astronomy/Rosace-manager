@@ -58,6 +58,8 @@ from rosace.database import (
     db_get_bess_validations,
     db_record_measurements,
     db_get_last_failure,
+    db_get_last_program_failure,
+    db_get_first_observation_time,
     db_get_last_success_per_target,
     SPECTRUM_FLUX_MEASUREMENT_COLUMNS,
 )
@@ -759,6 +761,32 @@ class TestDatabase:
         await db_set_stage_status(obs.id, OrchestratorStage.SEQUENCER, "error")
         last = await db_get_last_failure(program, target)
         assert last is not None and last >= obs.created_at
+
+    async def test_last_program_failure(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        program = f"prog_{uuid.uuid4().hex[:8]}"
+        done, failed = self._make_obs(ctx.session_id), self._make_obs(ctx.session_id)
+        for obs in (done, failed):
+            obs.scheduler_data["program"] = program
+            await db_insert_observation(obs, ctx.session_id)
+
+        assert await db_get_last_program_failure(program) is None
+        await db_stamp_stage(done.id, OrchestratorStage.SEQUENCER)
+        assert await db_get_last_program_failure(program) is None
+        await db_set_stage_status(failed.id, OrchestratorStage.SEQUENCER, "error")
+        last = await db_get_last_program_failure(program)
+        assert last is not None and last >= failed.created_at
+        assert await db_get_last_program_failure(f"other_{program}") is None
+
+    async def test_first_observation_time(self):
+        ctx = self._make_ctx()
+        await db_insert_session(ctx)
+        obs = self._make_obs(ctx.session_id)
+        await db_insert_observation(obs, ctx.session_id)
+
+        first = await db_get_first_observation_time()
+        assert first is not None and first <= obs.created_at
 
     async def test_stamp_ignored_stage(self):
         """An unmapped stage (e.g. IDLE) doesn't raise an error."""

@@ -340,6 +340,28 @@ def list_programs() -> list[str]:
     return sorted(p.stem for p in PROGRAMS_DIR.glob("*.yaml"))
 
 
+def list_program_summaries() -> list[tuple[str, str | None, float | None, str]]:
+    """Returns (name, planner, share_percent, description) for every program
+    YAML, sorted by name — for `rosace --list-programs`. planner is
+    scheduler.name (None: no planner, the program is only observed through the
+    manual list), share_percent its time share when declared. Read from the
+    YAML files only, never from the databases; an unreadable YAML gets
+    "(unreadable: <error>)" as its description instead of stopping the list."""
+    rows = []
+    for name in list_programs():
+        try:
+            program = load_program_yaml(name)
+        except Exception as e:
+            rows.append((name, None, None, f"(unreadable: {e})"))
+            continue
+        scheduler = program.get("scheduler")
+        scheduler = scheduler if isinstance(scheduler, dict) else {}
+        share = scheduler.get("share_percent")
+        rows.append((name, scheduler.get("name"), share if isinstance(share, (int, float)) else None,
+                     str(program.get("description") or "")))
+    return rows
+
+
 def load_program_yaml(program_name: str) -> dict:
     """
     Loads and returns a program's raw YAML content.

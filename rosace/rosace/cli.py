@@ -37,7 +37,7 @@ SALON_NO_HARDWARE_PROFILE = "hardware_salon_replay"
 SUBPLUGIN_FAMILIES = ("sequencer", "reduction", "sharing")
 
 # The tool options: they run, then exit, and never start the server.
-_TOOL_OPTIONS = ("check_config", "init_config", "create_admin", "list_subplugins",
+_TOOL_OPTIONS = ("check_config", "init_config", "create_admin", "list_subplugins", "list_programs",
                  "purge_simulated", "purge_failed", "purge_demo", "build_validation_data")
 _APPLY_OPTIONS = ("purge_simulated", "purge_failed", "purge_demo", "build_validation_data")
 
@@ -165,6 +165,12 @@ def build_parser() -> argparse.ArgumentParser:
              "optionally one family only: " + ", ".join(SUBPLUGIN_FAMILIES),
     )
     exclusive.add_argument(
+        "--list-programs", action="store_true",
+        help="list every scientific program (programs/*.yaml) with its planner, "
+             "its time share and its description; a program without a planner "
+             "is only observed through the manual list",
+    )
+    exclusive.add_argument(
         "--purge-simulated", action="store_true",
         help="remove the data of the sessions run with simulated equipment "
              "(INDI simulators, internal backend): their database rows and the "
@@ -226,7 +232,7 @@ def main(argv: list[str] | None = None) -> None:
 
 def run_cli(argv: list[str], parser: argparse.ArgumentParser | None = None) -> argparse.Namespace:
     """Parses argv (sys.argv[1:]). A tool option (--check-config, --init-config,
-    --create-admin, --list-subplugins, --purge-simulated, --purge-failed, --purge-demo,
+    --create-admin, --list-subplugins, --list-programs, --purge-simulated, --purge-failed, --purge-demo,
     --build-validation-data) runs and exits the process, as do --help,
     --version and a usage error (exit 2); otherwise --demo-mode, --salon-mode
     or a config path set ROSACE_CONFIG where needed (--salon-mode also
@@ -321,6 +327,12 @@ def run_cli(argv: list[str], parser: argparse.ArgumentParser | None = None) -> a
         rows = list_subplugins([family] if family else None)
         for row_family, name, summary in rows:
             print(f"{row_family:10s} {name:20s} {summary}")
+        sys.exit(0)
+    elif tool == "list_programs":
+        from rosace.plugins.pipeline_loader import list_program_summaries
+        for name, planner, share, description in list_program_summaries():
+            share_text = f"{share:g} %" if share is not None else ""
+            print(f"{name:20s} {planner or '(manual list)':16s} {share_text:>5s}  {description}")
         sys.exit(0)
     elif tool == "purge_demo":
         apply = args.apply

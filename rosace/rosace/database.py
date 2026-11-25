@@ -316,6 +316,33 @@ async def db_get_last_failure(
             return datetime.fromisoformat(last) if last else None
 
 
+async def db_get_last_program_failure(program_name: str, now: datetime | None = None) -> datetime | None:
+    """Time of the most recent failed observation (SEQUENCER error) of a
+    program, any target, during the current astronomical day, or None — for a
+    planner that pauses after a failure. ended_at when known, else created_at."""
+    since = astronomical_day_start_utc(now)
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        async with db.execute(
+            """SELECT MAX(COALESCE(ended_at, created_at)) FROM observations
+               WHERE created_at >= ? AND program_name = ? AND sequencer_status = 'error'""",
+            (since, program_name)
+        ) as cursor:
+            (last,) = await cursor.fetchone()
+            return datetime.fromisoformat(last) if last else None
+
+
+async def db_get_first_observation_time(now: datetime | None = None) -> datetime | None:
+    """Start time of the first observation of the current astronomical day,
+    any program and outcome, or None — when the night's observing began."""
+    since = astronomical_day_start_utc(now)
+    async with aiosqlite.connect(DB_PATH, timeout=30.0) as db:
+        async with db.execute(
+            "SELECT MIN(created_at) FROM observations WHERE created_at >= ?", (since,)
+        ) as cursor:
+            (first,) = await cursor.fetchone()
+            return datetime.fromisoformat(first) if first else None
+
+
 async def db_count_trailing_failures(
     program_name: str, target_name: str, now: datetime | None = None
 ) -> int:

@@ -1,8 +1,9 @@
 # ── Program: A0V ──────────────────────────────────────────────────────────────
 # Reference stars (CALSPEC and clean A0V): measuring the instrumental response,
 # and later the night's aerosol optical depth, from their spectra.
-# Not active yet (no scheduler block): only the manual list triggers its
-# observations, e.g. for a dedicated instrumental-response campaign night.
+# Observed by its planner (one at the start of the night, then one every
+# interval_hours) and through the manual list (e.g. a dedicated
+# instrumental-response campaign night).
 # Same pipeline as Be_stars, without bess_validation and export_demetra: the
 # response measurement reads the wavelength-calibrated spectrum
 # (lambda_target_spectrum, before the response step); the final spectrum and
@@ -10,6 +11,18 @@
 
 program: A0V
 description: "Reference stars (CALSPEC, A0V) for the instrumental and atmospheric response"
+
+# Active as soon as active_scheduler is `selector` (config.yaml) — see
+# plugins/program_schedulers/a0v_scheduler/a0v_scheduler.py.
+scheduler:
+  name: a0v_scheduler
+  share_percent: 5
+  params:
+    interval_hours: 4          # a new reference star once the last success is this old
+    first_window_minutes: 90   # the night's first one: window after the night's first observation
+    max_airmass: 1.5           # only stars at most this air mass at mid-observation
+    airmass_margin: 0.1        # rotation among the stars within this margin of the best air mass
+    retry_minutes: 30          # pause after a failed attempt (clouds)
 
 sequencer:
   # The active hardware profile may prepend its own steps here (equipment-specific,

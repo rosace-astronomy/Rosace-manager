@@ -9,6 +9,14 @@ are listed, newest first. The reasons behind the changes are in
 
 ### Added
 
+- The `A0V` program now observes on its own (with the multi-program
+  selector): one reference star at the start of the night, then one every
+  4 hours, the stars taking turns among those nearly as high as the best
+  one (air mass at most 1.5); after a failed attempt (clouds) it waits
+  30 minutes. Time shares: `Be_stars` 75 % (was 80 %), `A0V` 5 %.
+- `rosace --list-programs`: every scientific program with its planner
+  (or « manual list » when it has none), its time share and its
+  description.
 - The `A0V` program, for reference stars (CALSPEC and clean A0V) used to
   measure the instrumental response: the same acquisition and reduction as
   `Be_stars`, without the BeSS validation queue or the Demetra export. Not

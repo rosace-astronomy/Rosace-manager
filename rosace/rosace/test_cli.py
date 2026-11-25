@@ -255,6 +255,21 @@ class TestListSubpluginsCLI:
         assert "invalid choice: 'nope'" in result.stderr
 
 
+class TestListProgramsCLI:
+
+    def test_lists_the_programs_with_their_planner(self):
+        result = _run("--list-programs")
+        assert result.returncode == 0
+        rows = {line.split()[0]: line.split() for line in result.stdout.splitlines() if line.strip()}
+        assert rows["A0V"][1] == "a0v_scheduler"
+        assert rows["Be_stars"][1] == "be_scheduler"
+        assert rows["All_stars"][1:3] == ["(manual", "list)"]
+
+    def test_apply_refused(self):
+        result = _run("--list-programs", "--apply")
+        assert result.returncode == 2
+
+
 class TestPurgeSimulatedCLI:
     """Run against a database of its own (ROSACE_CONFIG on a tmp config), never
     the real one."""

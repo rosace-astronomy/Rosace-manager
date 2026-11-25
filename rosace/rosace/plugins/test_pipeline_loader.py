@@ -238,8 +238,8 @@ class TestLoadPipelines:
 
     def test_a0v_reduction_chain_resolves(self):
         """A0V.yaml runs Be_stars' acquisition and its native reduction chain up
-        to the summary, without the BeSS queue or the Demetra export; every step
-        resolves to a real sub-plugin."""
+        to the summary, without the BeSS queue or the Demetra export, and has its
+        own planner; every step resolves to a real sub-plugin."""
         import yaml as _yaml
         from rosace.plugins import pipeline_loader
 
@@ -248,7 +248,7 @@ class TestLoadPipelines:
         pipeline = build_pipeline(program["reduction"], "reduction")
 
         assert len(pipeline) == len(program["reduction"])
-        assert "scheduler" not in program
+        assert program["scheduler"]["name"] == "a0v_scheduler"
         assert program["sequencer"] == be_stars["sequencer"]
         assert program["reduction"] == [step for step in be_stars["reduction"]
                                         if step not in ("bess_validation", "export_demetra")]
@@ -274,6 +274,23 @@ class TestLoadPipelines:
         seq, red = load_pipelines("test_custom")
         assert len(seq) == 2
         assert len(red) == 2
+
+    def test_list_program_summaries(self, tmp_path, monkeypatch):
+        """One row per program YAML: planner and share when declared, an
+        unreadable YAML listed with the reason instead of stopping the list."""
+        from rosace.plugins import pipeline_loader
+
+        (tmp_path / "planned.yaml").write_text(
+            "description: With a planner\nscheduler:\n  name: random_pick\n  share_percent: 10\n")
+        (tmp_path / "listed.yaml").write_text("description: Manual list only\n")
+        (tmp_path / "broken.yaml").write_text("description: [unclosed\n")
+        monkeypatch.setattr(pipeline_loader, "PROGRAMS_DIR", tmp_path)
+
+        rows = pipeline_loader.list_program_summaries()
+        assert [row[0] for row in rows] == ["broken", "listed", "planned"]
+        assert rows[1] == ("listed", None, None, "Manual list only")
+        assert rows[2] == ("planned", "random_pick", 10, "With a planner")
+        assert rows[0][1:3] == (None, None) and rows[0][3].startswith("(unreadable: ")
 
     def test_raises_if_sequencer_key_missing(self, tmp_path, monkeypatch):
         import yaml as _yaml
