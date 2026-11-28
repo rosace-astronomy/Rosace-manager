@@ -94,23 +94,6 @@ Claude peut le suggérer, jamais le faire lui-même.
       que ce sont les bons indicateurs de nuages, et que le fond des zones de
       ciel des spectres ne l'est pas (surtout le halo de l'étoile)
       (2026-10-14)
-- [ ] Distance à la Lune : filtre scheduler sur la distance de la cible à la Lune (seuil à définir, probablement selon la phase) — pas urgent
-- [ ] Journalisation temporelle des étapes (time-series DB type InfluxDB). Définir les étapes que je veux suivre (pointing, science, focus, reference images... à compléter)
-- [ ] Bilan de temps d'une nuit (performance = temps d'obturateur science
-      ouvert / temps où Rosace est actif) : plan validé, à réaliser —
-      catégorie déclarée par chaque sous-plugin, intervalles enregistrés par
-      l'orchestrateur dans `rosace.db`, bilan par nuit (table, CSV, PDF A4
-      d'une page) produit par CLOSE_SESSION, guide du `blank_seq` mis à
-      jour. Plan :
-      `~/.claude/plans/ok-a-me-va-mellow-crayon-of-f077e402-c8e3-464d-9195-e0e5e0499deb.md`,
-      prototype : `~/Téléchargements/night_time_budget_prototype.py`
-      (16/10 : 87,7 % d'obturateur ouvert) (2026-11-23)
-- [ ] Bilan de temps des nuits passées : `rosace --build-time-budget <date>
-      [--apply]` reconstruisant `time_segments` et `night_time_budget` à
-      partir des `session.log` (logique du prototype
-      `~/Téléchargements/night_time_budget_prototype.py` ; déplacement et
-      stabilisation PHD2 estimés depuis le log, ces mesures n'existant pas
-      avant), pour avoir l'historique depuis septembre (2026-11-24)
 - [ ] Documentation Sphinx (dépôt `Rosace-docs`) : ajouter le bilan de temps
       d'une nuit et `TIME_CATEGORY` — texte prêt dans
       `~/Téléchargements/sphinx_time_category.rst` (un point dans la liste des
@@ -278,14 +261,7 @@ Claude peut le suggérer, jamais le faire lui-même.
       observation, un graphe montrant la RI et les trois courbes de RA
       (Rayleigh, aérosols, ozone), avec la valeur de l'AOD utilisée
       (2026-11-22)
-- [ ] Observer systématiquement une étoile A0V (de préférence CALSPEC) en
-      début de nuit pour mesurer l'AOD de la nuit, et garder en base les
-      résultats de toutes les A0V observées (AOD, masse d'air, forme
-      mesurée), pour des statistiques à terme sur la RI et la RA
-      (2026-11-22)
-- [ ] Pour chaque A0V observée, enregistrer en base l'AOD mesurée (τ₅₅₀)
-      et l'AOD donnée par CAMS au même instant et au même endroit, pour
-      suivre dans la durée la convergence des deux valeurs (2026-11-22)
+- [ ] Mesurer et garder en base l'AOD de chaque A0V observée (τ₅₅₀, α, masse d'air, forme mesurée), une fois la RI établie par la campagne
 - [ ] Comprendre la lumière diffuse en fond d'image des flats : hors de la
       bande éclairée par la fente, les poses de flat reçoivent 700 à 1 200 ADU
       au-dessus du bias (5 à 6 % du signal), et sous 3950 Å le flat n'est

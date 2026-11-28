@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Rosace — présentation v1.2 / presentation v1.2</title>
+<!--
+  Editable source of Rosace_presentation_v1.2.pdf (French then English, two A4 pages each).
+  Edit the text below in any text editor, then regenerate the PDF with:
+      ~/.local/bin/weasyprint rosace_presentation_v1.2.html Rosace_presentation_v1.2.pdf
+  Version and date: change them in the two @page rules (footers) and in the two "version" lines under ROSACE.
+-->
+<style>
+  @page { size: A4; margin: 10mm 14mm 11mm 14mm; }
+  @page fr { counter-increment: frpage; @bottom-right { content: "Rosace — présentation v1.2 — 28 novembre 2026 — " counter(frpage) "/2"; font: 8pt "DejaVu Sans", sans-serif; color: #888; } }
+  @page en { counter-increment: enpage; @bottom-right { content: "Rosace — presentation v1.2 — 28 November 2026 — " counter(enpage) "/2"; font: 8pt "DejaVu Sans", sans-serif; color: #888; } }
+  .fr { page: fr; }
+  .en { page: en; break-before: page; }
+  :root { --ink: #1d2433; --muted: #5a6475; --accent: #6b3fa0; --accent2: #0f7c8c; --line: #dfe3ea; --soft: #f5f3fa; }
+  body { font-family: "DejaVu Sans", "Liberation Sans", sans-serif; color: var(--ink); font-size: 8.7pt; line-height: 1.3; margin: 0; }
+  h1 { font-size: 25pt; margin: 0; letter-spacing: 0.5pt; color: var(--accent); }
+  h1 .version { font-size: 11pt; letter-spacing: 0; color: var(--muted); font-weight: normal; margin-left: 6pt; }
+  .acronym { font-size: 10pt; color: var(--muted); margin: 2pt 0 0 0; }
+  .lead { font-size: 11pt; line-height: 1.38; margin: 7pt 0 7pt 0; padding: 8pt 11pt; background: var(--soft); border-left: 4pt solid var(--accent); }
+  h2 { font-size: 11.5pt; color: var(--accent); margin: 7pt 0 3pt 0; padding-bottom: 2pt; border-bottom: 1pt solid var(--line); }
+  p { margin: 0 0 5pt 0; }
+  .cycle { display: flex; align-items: stretch; gap: 0; margin: 4pt 0 3pt 0; }
+  .step { flex: 1; text-align: center; border: 1pt solid var(--accent2); border-radius: 4pt; padding: 4pt 2pt; font-size: 7.8pt; line-height: 1.25; background: #fff; }
+  .step b { display: block; font-size: 8.4pt; color: var(--accent2); margin-bottom: 1pt; }
+  .arrow { width: 9pt; text-align: center; align-self: center; color: var(--accent2); font-size: 10pt; }
+  .loop { border: 1.2pt dashed var(--accent2); border-radius: 6pt; padding: 4pt; display: flex; flex: 5.3; gap: 0; position: relative; }
+  .loop-label { font-size: 7.6pt; color: var(--accent2); text-align: center; margin-top: 2pt; }
+  .caption { font-size: 8pt; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6pt 10pt; }
+  .card { border: 1pt solid var(--line); border-radius: 5pt; padding: 6pt 8pt; break-inside: avoid; }
+  .card h3 { font-size: 9.8pt; margin: 0 0 3pt 0; color: var(--ink); }
+  .card h3 span { color: var(--accent); }
+  .card p { margin: 0; }
+  .fact { color: var(--accent2); font-weight: bold; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12pt; }
+  ul { margin: 2pt 0 4pt 0; padding-left: 13pt; }
+  li { margin-bottom: 2pt; }
+  .figures { display: flex; gap: 8pt; margin: 4pt 0 6pt 0; }
+  .figure { flex: 1; text-align: center; background: var(--soft); border-radius: 5pt; padding: 4pt 4pt; }
+  .figure b { display: block; font-size: 14pt; color: var(--accent); }
+  .figure span { font-size: 7.8pt; color: var(--muted); }
+  .contact { margin-top: 10pt; padding: 8pt 11pt; border: 1pt solid var(--accent); border-radius: 5pt; }
+  .contact p { margin: 1pt 0; }
+  .status { display: inline-block; font-size: 7.4pt; padding: 0 4pt; border-radius: 3pt; background: #e6f4f1; color: var(--accent2); font-weight: bold; vertical-align: 1pt; }
+  .links { border-collapse: collapse; margin-top: 3pt; }
+  .links td { padding: 1pt 10pt 1pt 0; vertical-align: top; }
+  .links td:first-child { color: var(--muted); white-space: nowrap; }
+  a { color: var(--accent2); text-decoration: none; }
+  .mono { font-family: "DejaVu Sans Mono", monospace; font-size: 8pt; }
+  .pillars { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8pt; margin: 2pt 0 2pt 0; }
+  .pillar { position: relative; border: 1.2pt solid var(--accent); border-top: 5pt solid var(--accent); border-radius: 5pt; padding: 6pt 8pt 6pt 8pt; background: #fff; }
+  .pillar .num { position: absolute; top: 4pt; right: 7pt; font-size: 18pt; font-weight: bold; color: #ddd2ec; }
+  .pillar h3 { font-size: 10.2pt; margin: 0 16pt 4pt 0; color: var(--accent); line-height: 1.2; }
+  .pillar p { margin: 0; font-size: 8.2pt; }
+  h2.newpage { break-before: page; margin-top: 0; }
+  h2.newpage + .grid { gap: 10pt 12pt; margin-bottom: 14pt; }
+  h2.newpage + .grid .card { padding: 9pt 11pt; font-size: 9.4pt; line-height: 1.4; }
+  h2.newpage + .grid .card h3 { font-size: 10.6pt; margin-bottom: 5pt; }
+</style>
+</head>
+<body>
+<!-- ═══════════════════════════ FRANÇAIS ═══════════════════════════ -->
+<div class="fr">
+
+<h1>ROSACE <span class="version">Présentation — version 1.2</span></h1>
+<p class="acronym"><b>R</b>obotic <b>O</b>bservations and <b>S</b>pectroscopic <b>A</b>stronomy, a <b>C</b>ollaborative <b>E</b>xperience — logiciel libre (GPLv3)</p>
+
+<div class="lead">
+Rosace conduit <b>seul</b> une nuit de spectroscopie : il choisit la cible, pointe, met l'étoile sur la fente,
+acquiert les spectres et leurs calibrations, réduit les données jusqu'au spectre final, rédige un rapport
+d'observation — puis passe à la cible suivante jusqu'au matin. Il est conçu pour tourner sans
+surveillance, et surtout pour <b>savoir quoi faire quand quelque chose se passe mal</b>.
+</div>
+
+<div class="pillars">
+  <div class="pillar"><div class="num">1</div><h3>Plusieurs programmes scientifiques</h3>
+  <p>Un seul télescope sert plusieurs programmes. Chacun a son propre planificateur ; Rosace arbitre entre
+  eux selon une seule question : <i>« que perd-on à attendre ? »</i>, avec un % de temps par programme.
+  Le plus abouti, <b>Étoiles Be</b> : <span class="fact">1 335 étoiles</span> du catalogue BeSS, la plus
+  en retard sur sa cadence d'abord, spectres prêts pour BeSS. Nébuleuses planétaires, variables
+  cataclysmiques et étoiles de référence tournent déjà ; <b>d'autres programmes viendront</b>.</p></div>
+
+  <div class="pillar"><div class="num">2</div><h3>S'adapte à votre matériel, par plugins</h3>
+  <p>Chaque étape de la nuit est un <b>plugin</b> ; un programme déclare simplement, dans un fichier YAML,
+  les étapes qu'il enchaîne. Le matériel (caméras, monture, porte-oculaire, spectrographe) est décrit
+  par un <b>profil</b>, piloté par INDI ; la configuration de l'observatoire reste hors du code.
+  Adapter Rosace à un autre instrument, ajouter un algorithme de planification ou une étape de
+  réduction <b>ne touche pas au cœur du logiciel</b>.</p></div>
+
+  <div class="pillar"><div class="num">3</div><h3>Open source, développement collaboratif</h3>
+  <p>Licence <b>GPLv3</b>, code public sur GitHub et Codeberg, documentation en ligne. Le projet est fait
+  pour <b>ne dépendre de personne en particulier</b> : chacun peut lire le code, le corriger, y ajouter
+  son programme ou son matériel et le partager avec les autres. Écrit en Python, sur des outils libres
+  (astrometry.net, PHD2, INDI, Astropy) ; <span class="fact">1 700+ tests</span> automatiques vérifient
+  chaque modification.</p></div>
+</div>
+
+<h2>Le cycle d'une nuit</h2>
+<div class="cycle">
+  <div class="step"><b>Ouverture</b>connexion du matériel, refroidissement de la caméra</div>
+  <div class="arrow">→</div>
+  <div class="loop">
+    <div class="step"><b>Choix de la cible</b></div><div class="arrow">→</div>
+    <div class="step"><b>Pointage &amp; acquisitions</b></div><div class="arrow">→</div>
+    <div class="step"><b>Réduction</b>jusqu'au spectre final</div><div class="arrow">→</div>
+    <div class="step"><b>Rapport</b>PDF, page de validation</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="step"><b>Fermeture</b>parking, journal et bilan de la nuit</div>
+</div>
+<p class="loop-label">⟲ répété pour chaque observation, toute la nuit</p>
+<p class="caption">Les étapes après les acquisitions tournent en parallèle : pendant que la réduction d'une observation
+se fait, le télescope est déjà sur la suivante — aucune seconde de ciel perdue au calcul.</p>
+
+<h2>Suivi en direct</h2>
+<p>Une <b>interface web</b> montre la nuit en cours : images de guidage et de spectre 2D avec leurs repères
+(fente, zones de mesure), spectre 1D final, journal en direct, progression étape par étape de chaque observation ;
+démarrage et arrêt programmés à l'heure voulue. Une <b>API REST</b> documentée permet de tout piloter.
+<b>Catalogue intégré</b> : étoiles importées depuis Simbad par leur nom, programmes et listes d'observation par fichier.</p>
+
+<h2>Éprouvé sur le ciel</h2>
+<p>Rosace est développé et testé nuit après nuit sur un vrai instrument à St-Pancrasse : lunette 72ED,
+spectrographe Alpy 600, caméra Atik 314, caméra de guidage QHY, monture AM3, le tout piloté par INDI et PHD2.</p>
+<div class="figures">
+  <div class="figure"><b>28 / 28</b><span>observations réussies et réduites<br>nuit du 16 octobre 2026</span></div>
+  <div class="figure"><b>87,7 %</b><span>du temps obturateur ouvert<br>cette même nuit</span></div>
+  <div class="figure"><b>1 335</b><span>étoiles Be suivies<br>par le programme Be</span></div>
+</div>
+
+<h2>Essayer sans risque, par étapes</h2>
+<div class="two">
+<div>
+<ul>
+  <li><b>Démo Docker</b> : rien à installer, une vraie nuit rejouée dans le navigateur
+  (image publique <span class="mono">codeberg.org/francoiscochard/rosace-demo</span>).</li>
+  <li><b>Mode démo</b> : installé localement, sans aucun matériel.</li>
+</ul>
+</div>
+<div>
+<ul>
+  <li><b>Simulateurs INDI</b> : la vraie chaîne de pilotage, sans télescope.</li>
+  <li><b>Votre instrument</b> : même logiciel, votre profil matériel.</li>
+</ul>
+</div>
+</div>
+
+<h2 class="newpage">Ce que Rosace fait pour vous</h2>
+<div class="grid">
+
+  <div class="card"><h3><span>■</span> L'étoile sur la fente, sans intervention</h3>
+  <p>Résolution astrométrique de chaque champ, correction de l'erreur de pointage de la monture, puis
+  <b>mesure de la position de la fente à chaque observation</b> (elle bouge avec les flexions) ;
+  PHD2 amène ensuite l'étoile sur la fente <span class="fact">au sous-pixel</span>.
+  En début de nuit, la monture est mise en référence sur une position mesurée sur le ciel.</p></div>
+
+  <div class="card"><h3><span>■</span> Toujours observable : horizon, méridien, Lune</h3>
+  <p>Une cible n'est proposée que si elle reste observable <b>pendant toute la pose</b> : hauteur minimale,
+  <b>horizon local</b> du site (fichier exporté de KStars), retournement de la monture anticipé,
+  <b>distance à la Lune</b> adaptée à sa phase et à chaque programme. Une cible refusée revient plus tard.</p></div>
+
+  <div class="card"><h3><span>■</span> Calibrations sans y penser</h3>
+  <p>Darks, offsets, flats et lampe de calibration acquis automatiquement et <b>réutilisés intelligemment</b> :
+  bibliothèque de darks par température, lampe refaite selon son âge, flats une fois par nuit.
+  La température de consigne de la caméra est calculée d'après la température ambiante.</p></div>
+
+  <div class="card"><h3><span>■</span> Robuste quand la nuit se gâte</h3>
+  <p>Jamais bloqué en attente : rien d'observable → il réessaie un peu plus tard ; une observation qui
+  échoue laisse la place à la suivante ; perte de la caméra de guidage <b>détectée et réparée</b>
+  (reconnexion), arrêt propre de la session sinon. Chaque attente du matériel est bornée.</p></div>
+
+  <div class="card"><h3><span>■</span> Réduction native, jusqu'au FITS BeSS</h3>
+  <p>Masters, prétraitement et pixels chauds, correction du tilt et du smile, extraction 1D avec fond de
+  ciel colonne par colonne, loi de dispersion trouvée automatiquement sur la lampe, calibration en longueur
+  d'onde, réponse instrumentale, <b>FITS final au format BeSS</b>, graphiques PNG/PDF/SVG.
+  Export vers <b>Demetra</b> en plus, si on le souhaite.</p></div>
+
+  <div class="card"><h3><span>■</span> Un rapport d'observation pour chaque cible</h3>
+  <p>Un <b>PDF de quelques pages</b> par observation : conditions, spectre final et lampe avec ses raies,
+  image de guidage avec la fente et l'étoile, flux et fond de ciel pose par pose, courbes du
+  <b>guidage PHD2</b>, image 2D avec les zones d'extraction, avertissements de la nuit — et les indicateurs
+  de qualité : <b>signal sur bruit</b>, <b>pouvoir de résolution</b>, précision du guidage.</p></div>
+
+  <div class="card"><h3><span>■</span> Validation avant l'envoi à BeSS</h3>
+  <p>Les spectres Be passent par une <b>page web de validation</b> : spectre interactif, image de guidage,
+  image 2D, qualité, et <b>comparaison avec les spectres précédents</b> de l'étoile dans BeSS, avec
+  l'évolution de la largeur équivalente de Hα. L'observateur accepte ou refuse, puis suit chaque spectre
+  jusqu'à sa validation par BeSS.</p></div>
+
+  <div class="card"><h3><span>■</span> Tout est tracé et mesuré</h3>
+  <p>Un <b>dossier par observation</b>, un <b>journal par session</b>, une <b>base de données</b> pour les
+  statistiques sur des mois : flux de chaque pose, netteté du guidage, position de la fente, erreur de
+  pointage. Chaque nuit, un <b>bilan du temps</b> : part du temps obturateur ouvert, et où passe le reste.</p></div>
+
+</div>
+
+<div class="contact">
+<p><b>Rosace est un projet communautaire : vos retours et contributions sont les bienvenus.</b></p>
+<table class="links">
+<tr><td>Documentation</td><td><a href="https://rosace-astronomy.github.io/rosace-docs/">https://rosace-astronomy.github.io/rosace-docs/</a></td></tr>
+<tr><td>Code source (GitHub)</td><td><a href="https://github.com/rosace-astronomy/Rosace-manager">https://github.com/rosace-astronomy/Rosace-manager</a></td></tr>
+<tr><td>Code source (Codeberg)</td><td><a href="https://codeberg.org/FrancoisCochard/Rosace-manager">https://codeberg.org/FrancoisCochard/Rosace-manager</a></td></tr>
+<tr><td>Contact</td><td>François Cochard — francois.cochard@shelyak.com</td></tr>
+</table>
+</div>
+
+</div>
+
+<!-- ═══════════════════════════ ENGLISH ═══════════════════════════ -->
+<div class="en" lang="en">
+
+<h1>ROSACE <span class="version">Presentation — version 1.2</span></h1>
+<p class="acronym"><b>R</b>obotic <b>O</b>bservations and <b>S</b>pectroscopic <b>A</b>stronomy, a <b>C</b>ollaborative <b>E</b>xperience — free software (GPLv3)</p>
+
+<div class="lead">
+Rosace runs a spectroscopy night <b>on its own</b>: it chooses the target, slews, puts the star on the slit,
+acquires the spectra and their calibrations, reduces the data down to the final spectrum, writes an
+observation report — then moves on to the next target until morning. It is built to run unattended,
+and above all to <b>know what to do when something goes wrong</b>.
+</div>
+
+<div class="pillars">
+  <div class="pillar"><div class="num">1</div><h3>Several science programs</h3>
+  <p>One telescope serves several programs. Each has its own planner; Rosace arbitrates between them
+  with a single question: <i>“what do we lose by waiting?”</i>, with a % of time per program.
+  The most mature, <b>Be stars</b>: <span class="fact">1,335 stars</span> from the BeSS catalogue, the one
+  most behind its cadence first, spectra ready for BeSS. Planetary nebulae, cataclysmic variables and
+  reference stars already run; <b>more programs will come</b>.</p></div>
+
+  <div class="pillar"><div class="num">2</div><h3>Fits your hardware, through plugins</h3>
+  <p>Each step of the night is a <b>plugin</b>; a program simply declares, in a YAML file, the steps it
+  chains. The hardware (cameras, mount, focuser, spectrograph) is described by a <b>profile</b>, driven
+  through INDI; the observatory's configuration stays out of the code. Adapting Rosace to another
+  instrument, adding a planning algorithm or a reduction step <b>does not touch the core of the
+  software</b>.</p></div>
+
+  <div class="pillar"><div class="num">3</div><h3>Open source, collaborative development</h3>
+  <p><b>GPLv3</b> license, public code on GitHub and Codeberg, online documentation. The project is meant
+  <b>not to depend on any single person</b>: anyone can read the code, fix it, add their own program or
+  hardware and share it with the others. Written in Python, on free tools (astrometry.net, PHD2, INDI,
+  Astropy); <span class="fact">1,700+ automated tests</span> check every change.</p></div>
+</div>
+
+<h2>The cycle of a night</h2>
+<div class="cycle">
+  <div class="step"><b>Opening</b>hardware connection, camera cooldown</div>
+  <div class="arrow">→</div>
+  <div class="loop">
+    <div class="step"><b>Target choice</b></div><div class="arrow">→</div>
+    <div class="step"><b>Pointing &amp; acquisitions</b></div><div class="arrow">→</div>
+    <div class="step"><b>Reduction</b>down to the final spectrum</div><div class="arrow">→</div>
+    <div class="step"><b>Report</b>PDF, validation page</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="step"><b>Closing</b>parking, night log and time budget</div>
+</div>
+<p class="loop-label">⟲ repeated for every observation, all night long</p>
+<p class="caption">The steps after the acquisitions run in parallel: while one observation is being reduced,
+the telescope is already on the next one — not a second of sky lost to computing.</p>
+
+<h2>Live monitoring</h2>
+<p>A <b>web interface</b> shows the night as it goes: guiding and 2D spectrum images with their markers
+(slit, measurement zones), final 1D spectrum, live log, step-by-step progress of each observation;
+start and stop scheduled at the chosen time. A documented <b>REST API</b> controls everything.
+<b>Built-in catalogue</b>: stars imported from Simbad by name, programs and observation lists from files.</p>
+
+<h2>Proven on the sky</h2>
+<p>Rosace is developed and tested night after night on a real instrument at St-Pancrasse (France): 72ED
+refractor, Alpy 600 spectrograph, Atik 314 camera, QHY guiding camera, AM3 mount, all driven through INDI and PHD2.</p>
+<div class="figures">
+  <div class="figure"><b>28 / 28</b><span>observations successful and reduced<br>night of 16 October 2026</span></div>
+  <div class="figure"><b>87.7 %</b><span>of the time with the shutter open<br>that same night</span></div>
+  <div class="figure"><b>1,335</b><span>Be stars followed<br>by the Be program</span></div>
+</div>
+
+<h2>Try it safely, step by step</h2>
+<div class="two">
+<div>
+<ul>
+  <li><b>Docker demo</b>: nothing to install, a real night replayed in the browser
+  (public image <span class="mono">codeberg.org/francoiscochard/rosace-demo</span>).</li>
+  <li><b>Demo mode</b>: installed locally, no hardware at all.</li>
+</ul>
+</div>
+<div>
+<ul>
+  <li><b>INDI simulators</b>: the real control chain, without a telescope.</li>
+  <li><b>Your instrument</b>: same software, your hardware profile.</li>
+</ul>
+</div>
+</div>
+
+<h2 class="newpage">What Rosace does for you</h2>
+<div class="grid">
+
+  <div class="card"><h3><span>■</span> The star on the slit, hands-off</h3>
+  <p>Plate solving of every field, correction of the mount's pointing error, then
+  <b>measurement of the slit position at every observation</b> (it moves with flexure);
+  PHD2 then brings the star onto the slit <span class="fact">to sub-pixel accuracy</span>.
+  At the start of the night, the mount is referenced on a position measured on the sky.</p></div>
+
+  <div class="card"><h3><span>■</span> Always observable: horizon, meridian, Moon</h3>
+  <p>A target is only proposed if it stays observable <b>for the whole exposure</b>: minimum altitude,
+  the site's <b>local horizon</b> (file exported from KStars), mount pier flip anticipated,
+  <b>distance to the Moon</b> scaled by its phase and set per program. A rejected target comes back later.</p></div>
+
+  <div class="card"><h3><span>■</span> Calibrations without a thought</h3>
+  <p>Darks, biases, flats and calibration lamp acquired automatically and <b>reused intelligently</b>:
+  dark library by temperature, lamp redone according to its age, flats once per night.
+  The camera's setpoint temperature is computed from the ambient temperature.</p></div>
+
+  <div class="card"><h3><span>■</span> Robust when the night turns bad</h3>
+  <p>Never stuck waiting: nothing observable → it tries again a little later; a failed observation
+  makes way for the next one; loss of the guiding camera <b>detected and repaired</b>
+  (reconnection), otherwise a clean stop of the session. Every wait on the hardware is bounded.</p></div>
+
+  <div class="card"><h3><span>■</span> Native reduction, down to the BeSS FITS</h3>
+  <p>Masters, preprocessing and hot pixels, tilt and smile correction, 1D extraction with column-by-column
+  sky background, dispersion law found automatically on the lamp, wavelength calibration, instrumental
+  response, <b>final FITS in BeSS format</b>, PNG/PDF/SVG plots.
+  Export to <b>Demetra</b> as well, if wanted.</p></div>
+
+  <div class="card"><h3><span>■</span> An observation report for every target</h3>
+  <p>A <b>PDF of a few pages</b> per observation: conditions, final spectrum and lamp with its lines,
+  guide image with the slit and the star, flux and sky level frame by frame, <b>PHD2 guiding</b>
+  curves, 2D image with the extraction zones, the night's warnings — and the quality indicators:
+  <b>signal-to-noise ratio</b>, <b>resolving power</b>, guiding accuracy.</p></div>
+
+  <div class="card"><h3><span>■</span> Validation before sending to BeSS</h3>
+  <p>Be spectra go through a <b>web validation page</b>: interactive spectrum, guide image, 2D image,
+  quality, and <b>comparison with the star's earlier spectra</b> in BeSS, with the trend of the Hα
+  equivalent width. The observer accepts or rejects, then follows each spectrum until BeSS
+  validates it.</p></div>
+
+  <div class="card"><h3><span>■</span> Everything recorded and measured</h3>
+  <p>A <b>file per observation</b>, a <b>log per session</b>, a <b>database</b> for statistics over
+  months: flux of every exposure, guiding sharpness, slit position, pointing error. Every night, a
+  <b>time budget</b>: the share of time with the shutter open, and where the rest goes.</p></div>
+
+</div>
+
+<div class="contact">
+<p><b>Rosace is a community project: your feedback and contributions are welcome.</b></p>
+<table class="links">
+<tr><td>Documentation</td><td><a href="https://rosace-astronomy.github.io/rosace-docs/">https://rosace-astronomy.github.io/rosace-docs/</a></td></tr>
+<tr><td>Source code (GitHub)</td><td><a href="https://github.com/rosace-astronomy/Rosace-manager">https://github.com/rosace-astronomy/Rosace-manager</a></td></tr>
+<tr><td>Source code (Codeberg)</td><td><a href="https://codeberg.org/FrancoisCochard/Rosace-manager">https://codeberg.org/FrancoisCochard/Rosace-manager</a></td></tr>
+<tr><td>Contact</td><td>François Cochard — francois.cochard@shelyak.com</td></tr>
+</table>
+</div>
+
+</div>
+
+</body>
+</html>
